@@ -35,11 +35,11 @@ import gspread
 from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow, InstalledAppFlow
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive",
 ]
 
 # 26 cards × 2 cols each, starting at col F (index 5, gspread col 6)
@@ -112,14 +112,69 @@ def _get_client() -> gspread.Client:
             client_secrets_file = os.environ.get("GOOGLE_CLIENT_SECRETS_FILE")
 
             if client_secrets_file and os.path.exists(client_secrets_file):
-                # Load directly from the downloaded client secret JSON file
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    client_secrets_file, SCOPES
-                )
+                with open(client_secrets_file) as _f:
+                    _raw = json.load(_f)
+
+                if "installed" in _raw:
+                    # Desktop app credential — use InstalledAppFlow with local server
+                    flow = InstalledAppFlow.from_client_config(_raw, SCOPES)
+                    creds = flow.run_local_server(port=0)
+                elif "web" in _raw:
+                    # Web app credential — use a fixed port that must be registered
+                    # in Google Cloud Console as an Authorized redirect URI:
+                    #   http://localhost:8765/
+                    _REDIRECT_PORT = int(os.environ.get("GOOGLE_OAUTH_PORT", "8765"))
+                    _redirect_uri = f"http://localhost:{_REDIRECT_PORT}/"
+                    flow = Flow.from_client_config(_raw, SCOPES, redirect_uri=_redirect_uri)
+                    auth_url, _ = flow.authorization_url(prompt="consent")
+                    print(
+                        f"\n{'='*60}\n"
+                        f"Open this URL in your browser to authorize:\n\n  {auth_url}\n\n"
+                        f"(Waiting for Google to redirect to {_redirect_uri} ...)\n"
+                        f"{'='*60}\n"
+                    )
+                    # Spin up a one-shot local HTTP server to catch the callback
+                    import http.server
+                    import threading
+                    import urllib.parse
+
+                    _auth_code: list[str] = []
+
+                    class _Handler(http.server.BaseHTTPRequestHandler):
+                        def do_GET(self):
+                            qs = urllib.parse.urlparse(self.path).query
+                            params = urllib.parse.parse_qs(qs)
+                            if "code" in params:
+                                _auth_code.append(params["code"][0])
+                            self.send_response(200)
+                            self.end_headers()
+                            self.wfile.write(b"<h2>Authorization complete. You can close this tab.</h2>")
+                        def log_message(self, *args):
+                            pass  # silence request logs
+
+                    server = http.server.HTTPServer(("localhost", _REDIRECT_PORT), _Handler)
+                    t = threading.Thread(target=server.handle_request)
+                    t.start()
+                    t.join(timeout=120)
+                    server.server_close()
+
+                    if not _auth_code:
+                        raise RuntimeError(
+                            "OAuth timed out waiting for the browser callback. "
+                            f"Make sure http://localhost:{_REDIRECT_PORT}/ is registered "
+                            "as an Authorized redirect URI in your Google Cloud Console credential."
+                        )
+                    flow.fetch_token(code=_auth_code[0])
+                    creds = flow.credentials
+                else:
+                    raise RuntimeError(
+                        f"Unrecognised client secrets format in {client_secrets_file}. "
+                        "Expected a top-level 'installed' or 'web' key."
+                    )
             elif client_id and client_secret:
-                # Fall back to individual env vars
+                # Fall back to individual env vars — assume Desktop app
                 client_config = {
-                    "web": {
+                    "installed": {
                         "client_id": client_id,
                         "client_secret": client_secret,
                         "redirect_uris": ["http://localhost"],
@@ -128,13 +183,13 @@ def _get_client() -> gspread.Client:
                     }
                 }
                 flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+                creds = flow.run_local_server(port=0)
             else:
                 raise RuntimeError(
                     "OAuth credentials missing. Set GOOGLE_CLIENT_SECRETS_FILE to the "
                     "path of your downloaded client secret JSON, or set "
                     "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in credit_cards/.env"
                 )
-            creds = flow.run_local_server(port=0)
 
         # Cache the token for future runs
         with open(token_path, "w") as f:

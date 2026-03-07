@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # start.sh — set up and run the Credit Card Optimizer API
-# Usage: ./start.sh [--seed] [--port 8000]
+# Usage: ./start.sh [--port 8000]
 #
-#   --seed    Re-run the database seeder before starting the server
 #   --port N  Listen on port N (default: 8000)
+#
+# First-time setup (run once, in order):
+#   1. cp .env.example .env && fill in values
+#   2. python -m credit_cards.seed_data      ← imports data/Financial.xlsx into DB
+#   3. python scripts/create_sheet.py        ← creates the Google Sheet
+#   4. ./start.sh
 
 set -euo pipefail
 
@@ -11,12 +16,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 PORT=8000
-RUN_SEED=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --seed) RUN_SEED=true; shift ;;
     --port) PORT="$2"; shift 2 ;;
     *) echo "Unknown argument: $1"; exit 1 ;;
   esac
@@ -35,26 +38,20 @@ echo "→ Checking dependencies..."
 pip install -q -r credit_cards/requirements.txt
 
 # ─── 3. Environment file ─────────────────────────────────────────────────────
-if [[ ! -f "credit_cards/.env" ]]; then
-  if [[ -f "credit_cards/.env.example" ]]; then
+if [[ ! -f ".env" ]]; then
+  if [[ -f ".env.example" ]]; then
     echo ""
-    echo "⚠️  No credit_cards/.env found."
-    echo "   Copy credit_cards/.env.example to credit_cards/.env and fill in:"
-    echo "     DATABASE_URL              — your Supabase (or other PostgreSQL) connection string"
-    echo "     GOOGLE_CREDENTIALS_PATH   — path to your service account JSON file"
+    echo "⚠️  No .env found."
+    echo "   Copy .env.example to .env and fill in:"
+    echo "     DATABASE_URL                 — your Supabase connection string"
+    echo "     GOOGLE_CLIENT_SECRETS_FILE   — path to your OAuth client secret JSON"
     echo ""
     echo "   Then re-run: ./start.sh"
     exit 1
   fi
 fi
 
-# ─── 4. Seed the database (optional) ─────────────────────────────────────────
-if [[ "$RUN_SEED" == true ]]; then
-  echo "→ Seeding database from Financial.xlsx..."
-  python -m credit_cards.seed_data
-fi
-
-# ─── 5. Start the API server ─────────────────────────────────────────────────
+# ─── 4. Start the API server ─────────────────────────────────────────────────
 echo ""
 echo "→ Starting Credit Card Optimizer API on http://localhost:${PORT}"
 echo "   Docs: http://localhost:${PORT}/docs"

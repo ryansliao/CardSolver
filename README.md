@@ -11,31 +11,7 @@ A Python FastAPI application that replicates the credit card wallet optimizer sp
 
 ---
 
-## Quick start
-
-```bash
-# 1. Configure environment (first time only)
-cp credit_cards/.env.example credit_cards/.env
-#    → fill in DATABASE_URL and GOOGLE_CREDENTIALS_PATH
-
-# 2. Start the server (creates venv + installs deps automatically)
-./start.sh
-
-# 3. First-time only: seed the database from Financial.xlsx
-./start.sh --seed
-```
-
-The server starts at **http://localhost:8000** — open [/docs](http://localhost:8000/docs) for the interactive Swagger UI.
-
-```bash
-# Other options
-./start.sh --port 8080          # custom port
-./start.sh --seed --port 8080   # seed + custom port
-```
-
----
-
-## Manual setup
+## First-time setup
 
 ### 1. Supabase (PostgreSQL)
 
@@ -46,30 +22,38 @@ The server starts at **http://localhost:8000** — open [/docs](http://localhost
    postgresql+asyncpg://postgres:[YOUR-PASSWORD]@db.[REF].supabase.co:5432/postgres
    ```
 
-### 2. Environment variables
+### 2. Google Cloud project
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a project
+2. Enable these two APIs:
+   - [Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com)
+   - [Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com)
+3. Go to **APIs & Services → OAuth consent screen**:
+   - Set User Type to **External**, fill in app name and support email
+   - Add scopes: `spreadsheets` and `drive`
+   - Under **Test users**, add your Google account email
+4. Go to **APIs & Services → Credentials → Create Credentials → OAuth client ID**:
+   - Application type: **Web application**
+   - Under **Authorized redirect URIs**, add: `http://localhost:8765/`
+   - Click **Save**, then **Download JSON**
+5. Save the downloaded file into the `secrets/` folder:
+   ```bash
+   mv ~/Downloads/client_secret_*.json secrets/
+   ```
+
+### 3. Environment variables
 
 ```bash
-cp credit_cards/.env.example credit_cards/.env
-# Edit .env and fill in DATABASE_URL and GOOGLE_CREDENTIALS_PATH
+cp .env.example .env
 ```
 
-### 3. Google Sheets credentials
+Edit `.env` and fill in:
 
-The app defaults to **OAuth 2.0** — no service account key file required.
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com) → **APIs & Services → Credentials**
-2. Click **Create Credentials → OAuth client ID**, choose **Desktop app**, give it any name
-3. Copy the **Client ID** and **Client Secret** into `credit_cards/.env`:
-   ```
-   GOOGLE_CLIENT_ID=YOUR_CLIENT_ID.apps.googleusercontent.com
-   GOOGLE_CLIENT_SECRET=YOUR_CLIENT_SECRET
-   ```
-4. Enable the **Google Sheets API** and **Google Drive API** for your project
-5. Share your Google Sheet with **your Google account** (the one you'll log in with)
-
-On the first call to `/sync/read` or `/sync/write`, a browser window will open asking you to authorize access. After that, the token is cached in `.oauth_token.json` and reused automatically (never committed — it's in `.gitignore`).
-
-> **Service account alternative:** If you have a key file, set `GOOGLE_AUTH_METHOD=service_account` and `GOOGLE_CREDENTIALS_PATH=credentials.json` in `.env` instead.
+```ini
+# Required
+DATABASE_URL=postgresql+asyncpg://postgres:[PASSWORD]@db.[REF].supabase.co:5432/postgres
+GOOGLE_CLIENT_SECRETS_FILE=secrets/client_secret_YOUR_ID.apps.googleusercontent.com.json
+```
 
 ### 4. Python environment
 
@@ -82,14 +66,85 @@ pip install -r credit_cards/requirements.txt
 
 ### 5. Seed the database
 
+**One-time only.** Populates all 26 cards, multipliers, credits, and default spend categories into Supabase. The DB is the source of truth from this point forward.
+
 ```bash
 python -m credit_cards.seed_data
 ```
 
-### 6. Run the API
+### 6. Create the Google Sheet
 
 ```bash
-uvicorn credit_cards.main:app --reload
+python scripts/create_sheet.py
+```
+
+This will:
+1. Open a browser window asking you to authorize Google Sheets + Drive access
+2. Create a new spreadsheet named **"Credit Card Tool"** pre-populated with all card names, row labels, and default spend amounts
+3. Print the spreadsheet URL and ID
+4. Cache the OAuth token in `secrets/.oauth_token.json` (never committed)
+
+The spreadsheet ID is automatically saved to `.env` as `SPREADSHEET_ID`.
+
+> **Note:** On the Google authorization screen you may see "Google hasn't verified this app". Click **Advanced → Go to [app name] (unsafe)** — this is expected for personal OAuth apps in test mode.
+
+### 7. Start the API
+
+```bash
+./start.sh
+```
+
+The server starts at **http://localhost:8000** — open [/docs](http://localhost:8000/docs) for the interactive Swagger UI.
+
+```bash
+./start.sh --port 8080    # custom port
+```
+
+---
+
+## Day-to-day usage
+
+### Updating your spend or card selection
+
+Edit cells directly in the [Google Sheet](https://docs.google.com/spreadsheets/d/10HPAiTRfF_JMtcQ-Pt3Pv45XRwEHo-pBsfzzYxwJRAw):
+
+| What to change | Where in the sheet |
+|---|---|
+| Years to count | Cell **C1** |
+| Select / deselect a card | Row 1 flag column next to the card name (set `TRUE` or `FALSE`) |
+| Annual spend per category | Column **E**, rows 19–35 |
+
+Then call the sync endpoints to push changes to the DB and pull results back:
+
+```bash
+# Pull spend + card selection from sheet → update DB
+curl -X POST http://localhost:8000/sync/read \
+  -H "Content-Type: application/json" \
+  -d '{"spreadsheet_id": "10HPAiTRfF_JMtcQ-Pt3Pv45XRwEHo-pBsfzzYxwJRAw", "sheet_name": "Credit Card Tool"}'
+
+# Compute results and write them back to the sheet
+curl -X POST http://localhost:8000/sync/write \
+  -H "Content-Type: application/json" \
+  -d '{"spreadsheet_id": "10HPAiTRfF_JMtcQ-Pt3Pv45XRwEHo-pBsfzzYxwJRAw", "sheet_name": "Credit Card Tool"}'
+```
+
+Or use the Swagger UI at [/docs](http://localhost:8000/docs).
+
+### Resetting the sheet structure
+
+If you accidentally break the sheet layout, recreate it in place (preserves the same spreadsheet ID):
+
+```bash
+python scripts/create_sheet.py --id 10HPAiTRfF_JMtcQ-Pt3Pv45XRwEHo-pBsfzzYxwJRAw
+```
+
+This clears and rewrites the structure without creating a new spreadsheet.
+
+### Re-authorizing Google (if the token expires)
+
+```bash
+rm secrets/.oauth_token.json
+python scripts/create_sheet.py --id 10HPAiTRfF_JMtcQ-Pt3Pv45XRwEHo-pBsfzzYxwJRAw
 ```
 
 ---
@@ -139,7 +194,7 @@ uvicorn credit_cards.main:app --reload
 **Example body for both sync endpoints:**
 ```json
 {
-  "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms",
+  "spreadsheet_id": "10HPAiTRfF_JMtcQ-Pt3Pv45XRwEHo-pBsfzzYxwJRAw",
   "sheet_name": "Credit Card Tool"
 }
 ```
@@ -182,8 +237,20 @@ GET /scenarios/1/results?reference_date=2025-07-01
 
 ```
 Credit Cards/
-├── Financial.xlsx                  # Original spreadsheet (used for seeding)
-└── credit_cards/
+├── .env                            # Local secrets (gitignored)
+├── .env.example                    # Template — copy to .env and fill in
+├── .gitignore
+├── README.md
+├── start.sh                        # One-command dev server launcher
+│
+├── secrets/                        # Gitignored — all credential files live here
+│   ├── client_secret_*.json        # OAuth client secret (downloaded from Google Cloud)
+│   └── .oauth_token.json           # OAuth token cache (written after first login)
+│
+├── scripts/
+│   └── create_sheet.py             # One-time script to create the Google Sheet
+│
+└── credit_cards/                   # FastAPI application package
     ├── __init__.py
     ├── main.py                     # FastAPI app + all endpoints
     ├── calculator.py               # Pure Python formula engine
@@ -192,9 +259,8 @@ Credit Cards/
     ├── schemas.py                  # Pydantic v2 request/response schemas
     ├── database.py                 # Async PostgreSQL session factory
     ├── db_helpers.py               # DB → calculator dataclass converters
-    ├── seed_data.py                # One-time data seeder from Financial.xlsx
-    ├── requirements.txt
-    └── .env.example
+    ├── seed_data.py                # One-time DB seeder
+    └── requirements.txt
 ```
 
 ---
@@ -215,6 +281,6 @@ The engine in `calculator.py` mirrors all spreadsheet formulas:
 | Row 16: Opp. Cost Abs. | `calc_opp_cost_abs` — absolute cross-card opportunity cost |
 | Row 17: Avg. Multiplier | `calc_avg_spend_multiplier` — weighted average earn rate |
 
-Special rules preserved from the spreadsheet:
+Special rules:
 - **Chase Freedom Unlimited / Flex**: earn rates are boosted (cpp = 2.0) when a Chase Sapphire Reserve, Preferred, or Ink Preferred is also selected
 - **Delta cobrand cards**: points adjusted by `1/0.85` factor to normalize SkyMiles vs transferable currency

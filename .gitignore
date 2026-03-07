@@ -9,14 +9,8 @@ build/
 .eggs/
 
 # Environment & secrets
-credit_cards/.env
-credentials.json
-*.json.key
-*.pem
-# OAuth token cache (written automatically after first browser login)
-.oauth_token.json
-# Google OAuth client secret files
-client_secret*.json
+.env
+secrets/
 
 # OS
 .DS_Store
@@ -27,5 +21,5 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Alembic (generated migration files are fine to commit, but not the compiled cache)
+# Alembic
 alembic/__pycache__/

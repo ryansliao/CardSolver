@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from credit_cards.database import AsyncSessionLocal, create_tables
 from credit_cards.models import Card, CardCategoryMultiplier, CardCredit, SpendCategory
 
-XLSX_PATH = Path(__file__).resolve().parent.parent / "Financial.xlsx"
+XLSX_PATH = Path(__file__).resolve().parent.parent.parent / "Financial.xlsx"
 
 CATEGORIES = [
     "All Other",
