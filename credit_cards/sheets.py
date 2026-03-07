@@ -109,25 +109,31 @@ def _get_client() -> gspread.Client:
         else:
             client_id = os.environ.get("GOOGLE_CLIENT_ID")
             client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
-            if not client_id or not client_secret:
-                raise RuntimeError(
-                    "OAuth credentials missing. Set GOOGLE_CLIENT_ID and "
-                    "GOOGLE_CLIENT_SECRET in credit_cards/.env, or set "
-                    "GOOGLE_AUTH_METHOD=service_account and provide a key file."
+            client_secrets_file = os.environ.get("GOOGLE_CLIENT_SECRETS_FILE")
+
+            if client_secrets_file and os.path.exists(client_secrets_file):
+                # Load directly from the downloaded client secret JSON file
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    client_secrets_file, SCOPES
                 )
-            # Support both "web" and "installed" (Desktop) OAuth client types.
-            # Web clients must use a localhost redirect; installed clients can
-            # also use run_local_server, so we treat them the same way here.
-            client_config = {
-                "web": {
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                    "redirect_uris": ["http://localhost"],
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
+            elif client_id and client_secret:
+                # Fall back to individual env vars
+                client_config = {
+                    "web": {
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "redirect_uris": ["http://localhost"],
+                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                    }
                 }
-            }
-            flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+                flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+            else:
+                raise RuntimeError(
+                    "OAuth credentials missing. Set GOOGLE_CLIENT_SECRETS_FILE to the "
+                    "path of your downloaded client secret JSON, or set "
+                    "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in credit_cards/.env"
+                )
             creds = flow.run_local_server(port=0)
 
         # Cache the token for future runs
