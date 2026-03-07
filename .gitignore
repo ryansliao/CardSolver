@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment & secrets
+credit_cards/.env
+credentials.json
+*.json.key
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.cursor/
+.vscode/
+.idea/
+
+# Alembic (generated migration files are fine to commit, but not the compiled cache)
+alembic/__pycache__/
