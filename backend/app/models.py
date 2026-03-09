@@ -16,6 +16,134 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
 
+class Issuer(Base):
+    """A credit card issuer (e.g. Chase, American Express, Citi)."""
+
+    __tablename__ = "issuers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+
+    currencies: Mapped[list["Currency"]] = relationship(
+        back_populates="issuer", cascade="all, delete-orphan"
+    )
+    ecosystem_boosts: Mapped[list["EcosystemBoost"]] = relationship(
+        back_populates="issuer", cascade="all, delete-orphan"
+    )
+    cards: Mapped[list["Card"]] = relationship(back_populates="issuer")
+
+    def __repr__(self) -> str:
+        return f"<Issuer id={self.id} name={self.name!r}>"
+
+
+class Currency(Base):
+    """
+    A reward currency tied to an issuer.
+
+    Cashback variants (is_cashback=True) represent earnings on cards that have
+    no premium anchor in the wallet — e.g. 'Chase UR Cash' for Freedom Unlimited
+    held alone.  When the ecosystem boost activates, the card's effective currency
+    switches to the non-cashback transferable variant (e.g. 'Chase UR').
+    """
+
+    __tablename__ = "currencies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    issuer_id: Mapped[int] = mapped_column(
+        ForeignKey("issuers.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    cents_per_point: Mapped[float] = mapped_column(Float, default=1.0)
+    # True for cash-back earnings (no transfer partners); False for point currencies
+    is_cashback: Mapped[bool] = mapped_column(Boolean, default=False)
+    # True when points can be transferred to airline/hotel partners
+    is_transferable: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Normalization factor for wallet comparison: 1.0 for most currencies.
+    # Set < 1.0 for currencies whose redemption value is structurally discounted
+    # relative to transferable points (e.g. 0.85 for Delta SkyMiles).
+    comparison_factor: Mapped[float] = mapped_column(Float, default=1.0)
+
+    issuer: Mapped["Issuer"] = relationship(back_populates="currencies")
+    cards: Mapped[list["Card"]] = relationship(
+        back_populates="currency_obj",
+        foreign_keys="Card.currency_id",
+    )
+    boosted_by: Mapped[list["EcosystemBoost"]] = relationship(
+        back_populates="boosted_currency",
+        foreign_keys="EcosystemBoost.boosted_currency_id",
+    )
+
+    def __repr__(self) -> str:
+        return f"<Currency id={self.id} name={self.name!r}>"
+
+
+class EcosystemBoost(Base):
+    """
+    Issuer-level wallet upgrade: when at least one anchor card is held, every
+    beneficiary card switches its effective currency from its default (cashback)
+    currency to boosted_currency — a transferable point currency of the same issuer.
+
+    Examples
+    --------
+    - Chase UR Upgrade: anchors = CSR / CSP / CIP,
+        beneficiaries = Freedom Unlimited / Freedom Flex,
+        boosted_currency = 'Chase UR' (cpp=1.5, is_transferable=True)
+    - Citi TY Upgrade: anchors = Strata Elite,
+        beneficiaries = Strata Premier / Custom Cash / Double Cash,
+        boosted_currency = 'Citi TY' (cpp=1.5, is_transferable=True)
+    """
+
+    __tablename__ = "ecosystem_boosts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    issuer_id: Mapped[int] = mapped_column(
+        ForeignKey("issuers.id", ondelete="CASCADE"), nullable=False
+    )
+    # The currency cards switch TO when this boost is active
+    boosted_currency_id: Mapped[int] = mapped_column(
+        ForeignKey("currencies.id", ondelete="RESTRICT"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    issuer: Mapped["Issuer"] = relationship(back_populates="ecosystem_boosts")
+    boosted_currency: Mapped["Currency"] = relationship(
+        back_populates="boosted_by",
+        foreign_keys=[boosted_currency_id],
+    )
+    anchors: Mapped[list["EcosystemBoostAnchor"]] = relationship(
+        back_populates="boost", cascade="all, delete-orphan"
+    )
+    beneficiary_cards: Mapped[list["Card"]] = relationship(
+        back_populates="ecosystem_boost",
+        foreign_keys="Card.ecosystem_boost_id",
+    )
+
+    def __repr__(self) -> str:
+        return f"<EcosystemBoost id={self.id} name={self.name!r}>"
+
+
+class EcosystemBoostAnchor(Base):
+    """A card that, when present in the wallet, activates an EcosystemBoost."""
+
+    __tablename__ = "ecosystem_boost_anchors"
+    __table_args__ = (UniqueConstraint("boost_id", "card_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    boost_id: Mapped[int] = mapped_column(
+        ForeignKey("ecosystem_boosts.id", ondelete="CASCADE"), nullable=False
+    )
+    card_id: Mapped[int] = mapped_column(
+        ForeignKey("cards.id", ondelete="CASCADE"), nullable=False
+    )
+
+    boost: Mapped["EcosystemBoost"] = relationship(back_populates="anchors")
+    card: Mapped["Card"] = relationship(back_populates="anchor_for_boosts")
+
+    def __repr__(self) -> str:
+        return f"<EcosystemBoostAnchor boost={self.boost_id} card={self.card_id}>"
+
+
 class Card(Base):
     """Static data for a single credit card."""
 
@@ -23,11 +151,21 @@ class Card(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
-    issuer: Mapped[str] = mapped_column(String(60), nullable=False)
-    # Reward currency (e.g. "Amex MR", "Chase UR", "Citi TY", "Bilt", "Delta", "Hilton")
-    currency: Mapped[str] = mapped_column(String(60), nullable=False)
+
+    issuer_id: Mapped[int] = mapped_column(
+        ForeignKey("issuers.id", ondelete="RESTRICT"), nullable=False
+    )
+    # Default currency for this card (may be a cashback currency)
+    currency_id: Mapped[int] = mapped_column(
+        ForeignKey("currencies.id", ondelete="RESTRICT"), nullable=False
+    )
+    # If set, this card benefits from the referenced ecosystem boost (its
+    # effective currency switches to boost.boosted_currency when the boost fires)
+    ecosystem_boost_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("ecosystem_boosts.id", ondelete="SET NULL"), nullable=True
+    )
+
     annual_fee: Mapped[float] = mapped_column(Float, default=0)
-    cents_per_point: Mapped[float] = mapped_column(Float, default=1.0)
 
     # Sign-up bonus
     sub_points: Mapped[int] = mapped_column(Integer, default=0)
@@ -36,15 +174,22 @@ class Card(Base):
     # Points earned just from hitting the SUB spend (e.g. BBP 2x on that spend)
     sub_spend_points: Mapped[int] = mapped_column(Integer, default=0)
 
-    # Recurring annual bonus points (e.g. Chase Ink Preferred 10k points per year)
+    # Recurring annual bonus points (e.g. Chase Ink Preferred 10k points/year)
     annual_bonus_points: Mapped[int] = mapped_column(Integer, default=0)
 
-    # Chase Freedom cards earn more when a CSR/CSP/CIP is also held
-    boosted_by_chase_premium: Mapped[bool] = mapped_column(Boolean, default=False)
-
-    # Delta SkyMiles points are worth less when redeemed vs. transferred — track a discount factor
-    # For most cards this is 1.0 (no adjustment). For Delta cobrand cards stored as 1/0.85 ≈ 1.1765
-    points_adjustment_factor: Mapped[float] = mapped_column(Float, default=1.0)
+    issuer: Mapped["Issuer"] = relationship(
+        back_populates="cards", foreign_keys=[issuer_id]
+    )
+    currency_obj: Mapped["Currency"] = relationship(
+        back_populates="cards", foreign_keys=[currency_id]
+    )
+    ecosystem_boost: Mapped[Optional["EcosystemBoost"]] = relationship(
+        back_populates="beneficiary_cards", foreign_keys=[ecosystem_boost_id]
+    )
+    # Boosts this card activates as an anchor card
+    anchor_for_boosts: Mapped[list["EcosystemBoostAnchor"]] = relationship(
+        back_populates="card", cascade="all, delete-orphan"
+    )
 
     multipliers: Mapped[list["CardCategoryMultiplier"]] = relationship(
         back_populates="card", cascade="all, delete-orphan"
@@ -89,7 +234,7 @@ class CardCredit(Base):
 
 
 class SpendCategory(Base):
-    """User's annual spend per category (synced from Google Sheet row 19–35 col E)."""
+    """User's annual spend per category."""
 
     __tablename__ = "spend_categories"
 
@@ -109,7 +254,6 @@ class Scenario(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # The reference date for "today" when evaluating this scenario
     as_of_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     scenario_cards: Mapped[list["ScenarioCard"]] = relationship(
@@ -137,7 +281,6 @@ class ScenarioCard(Base):
     card_id: Mapped[int] = mapped_column(ForeignKey("cards.id", ondelete="CASCADE"))
     start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    # How many years to amortize this card's annual fee / SUB over
     years_counted: Mapped[int] = mapped_column(Integer, default=2)
 
     scenario: Mapped["Scenario"] = relationship(back_populates="scenario_cards")

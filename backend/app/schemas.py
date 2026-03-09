@@ -9,6 +9,66 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 # ---------------------------------------------------------------------------
+# Issuer schemas
+# ---------------------------------------------------------------------------
+
+
+class IssuerRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+
+
+# ---------------------------------------------------------------------------
+# Currency schemas
+# ---------------------------------------------------------------------------
+
+
+class CurrencyRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    issuer_id: int
+    name: str
+    cents_per_point: float
+    is_cashback: bool
+    is_transferable: bool
+    comparison_factor: float
+
+
+class CurrencyUpdate(BaseModel):
+    cents_per_point: Optional[float] = None
+    is_cashback: Optional[bool] = None
+    is_transferable: Optional[bool] = None
+    comparison_factor: Optional[float] = None
+
+
+# ---------------------------------------------------------------------------
+# Ecosystem boost schemas
+# ---------------------------------------------------------------------------
+
+
+class EcosystemBoostAnchorRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    card_id: int
+
+
+class EcosystemBoostRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    issuer_id: int
+    boosted_currency_id: int
+    name: str
+    description: Optional[str] = None
+    boosted_currency: CurrencyRead
+    anchors: list[EcosystemBoostAnchorRead] = []
+
+
+# ---------------------------------------------------------------------------
 # Card schemas
 # ---------------------------------------------------------------------------
 
@@ -23,41 +83,41 @@ class CardMultiplierSchema(BaseModel):
     multiplier: float
 
 
-class CardBase(BaseModel):
+class CardRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
     name: str
-    issuer: str
-    currency: str
-    annual_fee: float = 0.0
-    cents_per_point: float = 1.0
-    sub_points: int = 0
+    issuer_id: int
+    currency_id: int
+    ecosystem_boost_id: Optional[int] = None
+    annual_fee: float
+    sub_points: int
     sub_min_spend: Optional[int] = None
     sub_months: Optional[int] = None
-    sub_spend_points: int = 0
-    annual_bonus_points: int = 0
-    boosted_by_chase_premium: bool = False
-    points_adjustment_factor: float = 1.0
+    sub_spend_points: int
+    annual_bonus_points: int
+
+    # Nested objects for convenience
+    issuer: IssuerRead
+    currency_obj: CurrencyRead
+    ecosystem_boost: Optional[EcosystemBoostRead] = None
+
+    multipliers: list[CardMultiplierSchema] = []
+    credits: list[CardCreditSchema] = []
 
 
 class CardUpdate(BaseModel):
-    """Partial update for a card's static data."""
+    """Partial update for a card's editable fields."""
 
     annual_fee: Optional[float] = None
-    cents_per_point: Optional[float] = None
     sub_points: Optional[int] = None
     sub_min_spend: Optional[int] = None
     sub_months: Optional[int] = None
     sub_spend_points: Optional[int] = None
     annual_bonus_points: Optional[int] = None
-    boosted_by_chase_premium: Optional[bool] = None
-    points_adjustment_factor: Optional[float] = None
-
-
-class CardRead(CardBase):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    multipliers: list[CardMultiplierSchema] = []
-    credits: list[CardCreditSchema] = []
+    currency_id: Optional[int] = None
+    ecosystem_boost_id: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -143,10 +203,14 @@ class CardResultSchema(BaseModel):
     annual_bonus_points: int = 0
     sub_extra_spend: float = 0.0
     sub_spend_points: int = 0
-    sub_opportunity_cost: float = 0.0
-    opp_cost_abs: float = 0.0
+    # Opportunity cost in dollars (net: gross minus value earned on target card)
+    sub_opp_cost_dollars: float = 0.0
+    # Gross opportunity cost in dollars (what the wallet would have earned)
+    sub_opp_cost_gross_dollars: float = 0.0
     avg_spend_multiplier: float = 0.0
     cents_per_point: float = 0.0
+    # Effective currency name (may differ from default when ecosystem boost is active)
+    effective_currency_name: str = ""
 
 
 class WalletResultSchema(BaseModel):
@@ -154,13 +218,9 @@ class WalletResultSchema(BaseModel):
     total_annual_ev: float
     total_points_earned: float
     total_annual_pts: float
-    amex_mr_pts: float = 0.0
-    chase_ur_pts: float = 0.0
-    capital_one_pts: float = 0.0
-    citi_ty_pts: float = 0.0
-    bilt_pts: float = 0.0
-    delta_pts: float = 0.0
-    hilton_pts: float = 0.0
+    # Dynamic: currency name -> annual points earned in that currency.
+    # Cashback cards whose boost fires accumulate under the boosted currency name.
+    currency_pts: dict[str, float] = {}
     card_results: list[CardResultSchema] = []
 
 
@@ -172,18 +232,16 @@ class ScenarioResultSchema(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Direct calculation request (no Google Sheets needed)
+# Direct calculation request
 # ---------------------------------------------------------------------------
 
 
 class CalculateRequest(BaseModel):
-    """
-    Direct calculation endpoint — pass inputs without touching the spreadsheet.
-    """
+    """Direct calculation endpoint — no spreadsheet required."""
 
     years_counted: int = Field(default=2, ge=1, le=20)
     selected_card_ids: list[int] = []
     spend_overrides: dict[str, float] = Field(
         default_factory=dict,
-        description="Override annual spend per category (key=category name)",
+        description="Override annual spend per category (key = category name)",
     )

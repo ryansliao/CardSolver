@@ -1,13 +1,15 @@
 # Credit Card Optimizer
 
-A full-stack web application that calculates the expected value (EV) of any combination of 26 credit cards. Built with FastAPI, React, and deployed on Azure.
+A full-stack web application for modeling the expected value (EV) of any combination of credit cards across multiple issuers. Built with FastAPI, React, and deployed on Azure.
 
 ## Features
 
-- **Wallet calculator** — select cards, set your annual spend per category, and compute annual EV, points earned by currency group, and per-card breakdowns
-- **Roadmap scenarios** — model future wallet states by assigning cards to date windows (e.g. "add Chase Sapphire Reserve on 2025-07-01")
-- **Card library** — browse all 26 cards with their multipliers, credits, and SUB details
-- **REST API** — full CRUD for cards, spend categories, and scenarios; interactive docs at `/docs`
+- **Wallet calculator** — select cards, set annual spend per category, and compute annual EV, per-card breakdowns, and points earned by currency
+- **Issuer ecosystem modeling** — cards automatically upgrade from cashback to transferable-point earning when a premium anchor card (e.g. Sapphire Reserve, Citi Strata Elite) is present in the wallet; generalizes across all supported issuers
+- **Opportunity cost analysis** — estimates in dollar terms how much earning from the rest of your wallet you would forego to hit a new card's sign-up bonus; cross-currency aware using best-alternative earn rates per category
+- **Roadmap scenarios** — model future wallet states by assigning cards to date windows and computing EV at any reference date
+- **Card library** — browse all cards with their multipliers, credits, and SUB details
+- **REST API** — full CRUD for cards, currencies, spend categories, and scenarios; interactive docs at `/docs`
 
 ---
 
@@ -24,7 +26,7 @@ A full-stack web application that calculates the expected value (EV) of any comb
 cp .env.example .env
 ```
 
-Edit `.env` and fill in `DATABASE_URL`. For local dev you can use any PostgreSQL database:
+Edit `.env` and fill in `DATABASE_URL`. For local dev, any PostgreSQL database works:
 
 ```ini
 DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/creditcards
@@ -38,6 +40,8 @@ pip install -r backend/requirements.txt openpyxl
 cd backend && python -m app.seed_data && cd ..
 ```
 
+This populates issuers, currencies, ecosystem boosts, all cards, multipliers, credits, and default spend categories from `docs/Financial.xlsx`.
+
 ### 4. Start both servers
 
 ```bash
@@ -45,7 +49,7 @@ cd backend && python -m app.seed_data && cd ..
 ```
 
 This starts:
-- **FastAPI** at `http://localhost:8000` (with `/docs` for Swagger UI)
+- **FastAPI** at `http://localhost:8000` (Swagger UI at `/docs`)
 - **Vite dev server** at `http://localhost:5173` (proxies `/api` → FastAPI)
 
 Open **http://localhost:5173** in your browser.
@@ -160,21 +164,22 @@ Credit Card Tool/
 ├── README.md
 │
 ├── backend/                        # Python backend
-│   ├── app/                        # FastAPI application package
-│   │   ├── main.py                 # API endpoints + static file serving
-│   │   ├── calculator.py           # Pure Python formula engine
-│   │   ├── models.py               # SQLAlchemy ORM models
-│   │   ├── schemas.py              # Pydantic v2 schemas
-│   │   ├── database.py             # Async PostgreSQL session factory
+│   ├── README.md                   # Backend architecture + API reference
+│   ├── app/
+│   │   ├── main.py                 # FastAPI app, all endpoints, SPA serving
+│   │   ├── calculator.py           # Pure-Python EV engine (no DB dependency)
+│   │   ├── models.py               # SQLAlchemy ORM: Issuer, Currency, EcosystemBoost, Card, …
+│   │   ├── schemas.py              # Pydantic v2 request/response schemas
+│   │   ├── database.py             # Async PostgreSQL session factory + Azure Identity
 │   │   ├── db_helpers.py           # DB → calculator dataclass converters
-│   │   └── seed_data.py            # One-time DB seeder (reads docs/Financial.xlsx)
-│   └── requirements.txt            # Production Python dependencies
+│   │   └── seed_data.py            # One-time seeder (reads docs/Financial.xlsx)
+│   └── requirements.txt
 │
 ├── frontend/                       # React app (Vite + TypeScript + Tailwind)
 │   ├── src/
 │   │   ├── api/client.ts           # Typed API client
 │   │   ├── pages/
-│   │   │   ├── Calculator.tsx      # Main wallet calculator
+│   │   │   ├── Calculator.tsx      # Wallet calculator
 │   │   │   ├── Scenarios.tsx       # Scenario manager
 │   │   │   └── Cards.tsx           # Card library browser
 │   │   └── components/
@@ -194,67 +199,4 @@ Credit Card Tool/
 
 ---
 
-## API reference
-
-### Cards
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/cards` | List all 26 cards with multipliers and credits |
-| `GET` | `/cards/{id}` | Get a single card |
-| `PATCH` | `/cards/{id}` | Update annual fee, CPP, SUB offer, etc. |
-
-### Spend categories
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/spend` | List all 17 spend categories |
-| `PUT` | `/spend/{category}` | Update annual spend for a category |
-
-### Calculation
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/calculate` | Compute wallet EV for selected cards |
-
-**Example request:**
-```json
-{
-  "years_counted": 2,
-  "selected_card_ids": [2, 9],
-  "spend_overrides": { "Dining": 9000, "Groceries": 6000 }
-}
-```
-
-### Scenarios
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/scenarios` | List all scenarios |
-| `POST` | `/scenarios` | Create a new scenario |
-| `GET` | `/scenarios/{id}` | Get a scenario |
-| `PATCH` | `/scenarios/{id}` | Update scenario metadata |
-| `DELETE` | `/scenarios/{id}` | Delete a scenario |
-| `POST` | `/scenarios/{id}/cards` | Add a card (with date window) |
-| `DELETE` | `/scenarios/{id}/cards/{card_id}` | Remove a card |
-| `GET` | `/scenarios/{id}/results` | Compute wallet EV for the scenario |
-
----
-
-## Calculation logic
-
-The engine in `calculator.py` mirrors all spreadsheet formulas:
-
-| Formula | Function |
-|---------|----------|
-| Annual EV | `calc_annual_ev` — SUB-amortized EV over `years_counted` |
-| Total Points | cumulative over `years_counted` |
-| Annual Point Earn | `calc_annual_point_earn` — category spend × multiplier + annual bonus |
-| 2nd Year+ EV | `calc_2nd_year_ev` — steady-state EV (no SUB) |
-| Credit Valuation | `calc_credit_valuation` — sum of all benefit credits |
-| SUB Extra Spend | `calc_sub_extra_spend` — gap to hit SUB threshold |
-| SUB Opp. Cost | `calc_sub_opportunity_cost` — points foregone on redirected spend |
-
-Special rules:
-- **Chase Freedom Unlimited / Flex**: earn rates are boosted (cpp = 2.0) when a Chase Sapphire Reserve, Preferred, or Ink Preferred is also in the wallet
-- **Delta cobrand cards**: points adjusted by `1/0.85` factor to normalize SkyMiles vs. transferable currencies
+See [`backend/README.md`](backend/README.md) for the full API reference, data model, and calculation engine documentation.

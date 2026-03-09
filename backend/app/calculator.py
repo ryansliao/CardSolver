@@ -1,16 +1,15 @@
 """
 Credit card value calculation engine.
 
-All functions mirror the spreadsheet formulas exactly.
-
 Terminology
 -----------
-- card       : a dict with the card's static data (from DB or schemas)
-- spend      : a dict of {category: annual_spend_dollars}
-- cpp        : cents per point
-- EV         : expected value (dollars)
-- SUB        : sign-up bonus
-- years      : years_counted (C1 in the sheet)
+- CardData    : all static data for a card, including nested CurrencyData
+- CurrencyData: issuer currency with its CPP, transferability, and comparison factor
+- spend       : dict of {category: annual_spend_dollars}
+- cpp         : cents per point (from the effective currency, accounting for boost)
+- EV          : expected value (dollars)
+- SUB         : sign-up bonus
+- years       : years_counted
 """
 
 from __future__ import annotations
@@ -20,25 +19,53 @@ from typing import Optional
 
 
 # ---------------------------------------------------------------------------
-# Data containers (plain dataclasses so the engine has no DB dependency)
+# Data containers (plain dataclasses — no DB dependency)
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class CardData:
+class CurrencyData:
+    """Snapshot of a reward currency for use in the calculator engine."""
+
     id: int
     name: str
-    issuer: str
-    currency: str
-    annual_fee: float
+    issuer_name: str
     cents_per_point: float
+    is_cashback: bool
+    is_transferable: bool
+    # Multiplier applied when comparing this currency's points to transferable
+    # point currencies in the same wallet.  1.0 for most; < 1.0 for currencies
+    # whose redemption path is structurally discounted (e.g. 0.85 for Delta).
+    comparison_factor: float = 1.0
+
+
+@dataclass
+class CardData:
+    """All static data for one card, ready for the calculator engine."""
+
+    id: int
+    name: str
+    issuer_name: str              # denormalised for display
+
+    # Default currency this card earns (may be a cashback currency)
+    currency: CurrencyData
+
+    annual_fee: float
     sub_points: int
     sub_min_spend: Optional[int]
     sub_months: Optional[int]
     sub_spend_points: int
     annual_bonus_points: int
-    boosted_by_chase_premium: bool
-    points_adjustment_factor: float  # 1.0 for most; ~1.1765 for Delta cobrand
+
+    # Ecosystem boost: if set and the boost is active (anchor present in wallet),
+    # this card's effective currency switches to ecosystem_boost_currency.
+    ecosystem_boost_id: Optional[int] = None
+    ecosystem_boost_currency: Optional[CurrencyData] = None
+
+    # Boost IDs that THIS card activates as an anchor
+    is_anchor_for_boost_ids: list[int] = field(default_factory=list)
+
+    # category -> multiplier
     multipliers: dict[str, float] = field(default_factory=dict)
     # credit_name -> value in dollars
     credits: dict[str, float] = field(default_factory=dict)
@@ -46,10 +73,11 @@ class CardData:
 
 @dataclass
 class CardResult:
+    """Per-card outputs from the calculator, zeroed when card is not selected."""
+
     card_id: int
     card_name: str
     selected: bool
-    # Per-card computed values (all 0 when not selected)
     annual_ev: float = 0.0
     second_year_ev: float = 0.0
     total_points: float = 0.0
@@ -60,63 +88,66 @@ class CardResult:
     annual_bonus_points: int = 0
     sub_extra_spend: float = 0.0
     sub_spend_points: int = 0
-    sub_opportunity_cost: float = 0.0
-    opp_cost_abs: float = 0.0
+    # Opportunity cost: net dollar value foregone on the rest of the wallet
+    # to cover the SUB extra spend (gross opp cost minus sub_spend_points value)
+    sub_opp_cost_dollars: float = 0.0
+    # Gross dollar opportunity cost (best alternative earn on the extra spend,
+    # before crediting back the sub_spend_points earned on the target card)
+    sub_opp_cost_gross_dollars: float = 0.0
     avg_spend_multiplier: float = 0.0
     cents_per_point: float = 0.0
+    # Effective currency name (may differ from default when boost is active)
+    effective_currency_name: str = ""
 
 
 @dataclass
 class WalletResult:
+    """Aggregated wallet outputs."""
+
     years_counted: int
     total_annual_ev: float
     total_points_earned: float
     total_annual_pts: float
-    # Currency group breakdowns
-    amex_mr_pts: float = 0.0
-    chase_ur_pts: float = 0.0
-    capital_one_pts: float = 0.0
-    citi_ty_pts: float = 0.0
-    bilt_pts: float = 0.0
-    delta_pts: float = 0.0
-    hilton_pts: float = 0.0
+    # Dynamic map of currency_name -> annual points earned in that currency.
+    # Cashback cards whose boost is active will accumulate under the boosted
+    # currency name (e.g. "Chase UR"), not their default ("Chase UR Cash").
+    currency_pts: dict[str, float] = field(default_factory=dict)
     card_results: list[CardResult] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Boost helpers
 # ---------------------------------------------------------------------------
 
-def _has_chase_premium(selected_cards: list[CardData]) -> bool:
-    """Return True if any Chase premium travel card is in the selected wallet."""
-    PREMIUM = {
-        "Chase Sapphire Reserve",
-        "Chase Sapphire Preferred",
-        "Chase Ink Preferred",
-    }
-    return any(c.name in PREMIUM for c in selected_cards)
+
+def _active_boost_ids(selected_cards: list[CardData]) -> set[int]:
+    """
+    Return the set of EcosystemBoost IDs that are currently active,
+    i.e. at least one anchor card for each boost is in the selected wallet.
+    """
+    active: set[int] = set()
+    for card in selected_cards:
+        active.update(card.is_anchor_for_boost_ids)
+    return active
 
 
-def _effective_multiplier(card: CardData, category: str, chase_premium: bool) -> float:
+def _effective_currency(card: CardData, active_boost_ids: set[int]) -> CurrencyData:
     """
-    Return the effective multiplier for a card/category pair.
-    Chase Freedom Unlimited and Freedom Flex earn 1.5x on points transferred
-    to a premium Chase card (UR → 1.5cpp instead of 1cpp), which the sheet
-    models as multiplying the base rate by the partner card's cpp (1.5x on 1cpp = same
-    face value as 1x on 1.5cpp).  The sheet uses cpp=2 for UR when a premium
-    Chase card is held — so the *multiplier* stays the same and the cpp handles it.
+    Return the currency this card actually earns in, given the wallet state.
+    If the card's ecosystem boost is active the card switches to the boost's
+    target currency (e.g. 'Chase UR Cash' → 'Chase UR').
     """
-    return card.multipliers.get(category, 1.0)
+    if (
+        card.ecosystem_boost_id is not None
+        and card.ecosystem_boost_id in active_boost_ids
+        and card.ecosystem_boost_currency is not None
+    ):
+        return card.ecosystem_boost_currency
+    return card.currency
 
 
-def _effective_cpp(card: CardData, chase_premium: bool) -> float:
-    """
-    Chase Freedom Unlimited/Flex: base cpp is 1 (cash-back mode).
-    When a premium Chase card is held the points transfer to UR at 1.5cpp.
-    The spreadsheet stores cpp=2 for these cards (already accounting for the
-    premium transfer), so we just return the stored value.
-    """
-    return card.cents_per_point
+def _effective_cpp(card: CardData, active_boost_ids: set[int]) -> float:
+    return _effective_currency(card, active_boost_ids).cents_per_point
 
 
 # ---------------------------------------------------------------------------
@@ -124,63 +155,33 @@ def _effective_cpp(card: CardData, chase_premium: bool) -> float:
 # ---------------------------------------------------------------------------
 
 
-def calc_points_earned_by_category(
-    card: CardData,
-    spend: dict[str, float],
-    chase_premium: bool,
-) -> dict[str, float]:
-    """
-    Points earned per category for a single card.
-    Returns {category: points}.
-    """
-    result: dict[str, float] = {}
-    for cat, annual_spend in spend.items():
-        mult = _effective_multiplier(card, cat, chase_premium)
-        result[cat] = annual_spend * mult
-    return result
-
-
 def calc_annual_point_earn(
     card: CardData,
     spend: dict[str, float],
-    chase_premium: bool,
 ) -> float:
-    """
-    Total points earned per year (no SUB, no annual bonus).
-    Corresponds to spreadsheet row 4 (Annual Point Earn).
-    Formula: SUM(card_col rows 9, 19:35)
-    Row 9 = annual bonus, rows 19-35 = category spend * multiplier
-    """
-    cat_points = calc_points_earned_by_category(card, spend, chase_premium)
-    return float(card.annual_bonus_points) + sum(cat_points.values())
+    """Total points earned per year from category spend plus any annual bonus."""
+    cat_pts = sum(spend.get(cat, 0.0) * mult for cat, mult in card.multipliers.items())
+    return float(card.annual_bonus_points) + cat_pts
 
 
 def calc_credit_valuation(card: CardData) -> float:
-    """
-    Total dollar value of all annual credits/perks.
-    Corresponds to row 6 (Credit Valuation) = SUM(credit rows 36-48).
-    """
+    """Total dollar value of all annual credits / perks."""
     return sum(card.credits.values())
 
 
 def calc_2nd_year_ev(
     card: CardData,
     spend: dict[str, float],
-    chase_premium: bool,
+    active_boost_ids: set[int],
 ) -> float:
     """
-    Steady-state annual EV (no SUB amortization).
-    Formula: SUM(cat_pts) / 100 * cpp + credits - fee
-
-    For Chase Freedom Unlimited/Flex: the sheet multiplies by cpp only when a
-    premium Chase card is held; otherwise uses 1.  We store the correct cpp
-    (2.0 when premium card is in wallet, 1.0 otherwise) in card.cents_per_point,
-    so the formula is straightforward here.
+    Steady-state annual EV (no SUB amortisation).
+    Formula: annual_earn / 100 * cpp * comparison_factor + credits - fee
     """
-    cpp = _effective_cpp(card, chase_premium)
-    annual_earn = calc_annual_point_earn(card, spend, chase_premium)
+    currency = _effective_currency(card, active_boost_ids)
+    annual_earn = calc_annual_point_earn(card, spend)
     credits = calc_credit_valuation(card)
-    return annual_earn / 100 * cpp + credits - card.annual_fee
+    return annual_earn / 100 * currency.cents_per_point * currency.comparison_factor + credits - card.annual_fee
 
 
 def calc_sub_extra_spend(
@@ -188,152 +189,95 @@ def calc_sub_extra_spend(
     spend: dict[str, float],
 ) -> float:
     """
-    How many additional dollars must be spent to hit the SUB minimum spend,
-    beyond what the card earns naturally (from its category assignments).
-
-    Formula (LET in spreadsheet):
-      total_natural_spend = SUMIF(card_spend, ">0", total_spend)
-      IF(total_natural_spend < threshold, threshold - total_natural_spend, 0)
-
-    Because in the model spend is already split by category across selected cards,
-    'natural spend on this card' = sum of all categories where this card has a
-    positive multiplier and the category spend > 0.
+    Additional dollars that must be spent to hit the SUB minimum spend,
+    beyond what the card earns naturally from its category assignments.
     """
-    if card.sub_min_spend is None or card.sub_min_spend == 0:
+    if not card.sub_min_spend:
         return 0.0
-    natural_spend = sum(
-        v for cat, v in spend.items() if card.multipliers.get(cat, 0) > 0
-    )
-    gap = card.sub_min_spend - natural_spend
-    return max(0.0, gap)
+    natural_spend = sum(v for cat, v in spend.items() if card.multipliers.get(cat, 0) > 0)
+    return max(0.0, card.sub_min_spend - natural_spend)
 
 
-def _avg_alt_multiplier(
+def _best_wallet_earn_rate_dollars(
     card: CardData,
     selected_cards: list[CardData],
     spend: dict[str, float],
-    chase_premium: bool,
+    active_boost_ids: set[int],
 ) -> float:
     """
-    Average spend multiplier across other selected cards (excluding current card).
-    Used for SUB opportunity cost calculation.
+    Spend-weighted best dollar-equivalent earn rate across all other selected
+    cards for each category.
+
+    For every category with positive spend, this finds the other card that
+    would earn the most in dollar terms (multiplier × cpp × comparison_factor).
+    Returns a blended rate in $/$ (dollars earned per dollar spent).
+
+    This replaces the old avg-multiplier approach: it is cross-currency aware
+    and picks the *best* alternative rather than averaging all of them.
     """
     others = [c for c in selected_cards if c.id != card.id]
     if not others:
         return 0.0
 
-    total_earn = 0.0
     total_spend = 0.0
-    for other in others:
-        for cat, s in spend.items():
-            mult = _effective_multiplier(other, cat, chase_premium)
-            if mult > 0:
-                total_earn += s * mult
-                total_spend += s
+    total_best_earn = 0.0
 
-    if total_spend == 0:
-        return 0.0
-    return total_earn / total_spend
+    for cat, s in spend.items():
+        if s <= 0:
+            continue
+        # Best dollar-earn rate for this category among other selected cards
+        best_rate = max(
+            c.multipliers.get(cat, 1.0)
+            * _effective_cpp(c, active_boost_ids)
+            * _effective_currency(c, active_boost_ids).comparison_factor
+            / 100.0
+            for c in others
+        )
+        total_spend += s
+        total_best_earn += s * best_rate
+
+    return total_best_earn / total_spend if total_spend > 0 else 0.0
 
 
 def calc_sub_opportunity_cost(
     card: CardData,
     selected_cards: list[CardData],
     spend: dict[str, float],
-    chase_premium: bool,
-) -> float:
+    active_boost_ids: set[int],
+) -> tuple[float, float]:
     """
-    Points cost of redirecting extra SUB spend from other cards to this one.
-    Formula (from spreadsheet LET):
-      extra_spend = sub_extra_spend
-      avg_alt = average multiplier of other selected cards (excluding current)
-      points_if_redirected = extra_spend * avg_alt
-      net_cost_points = points_if_redirected - sub_spend_points  (points LOST)
-      result = MAX(0, net_cost_points) if extra_spend > 0 else 0
+    Dollar opportunity cost of redirecting extra SUB spend from the rest of
+    the wallet to this card.
 
-    Returns the POINT cost (not dollar cost).
+    Returns (gross_opp_cost_dollars, net_opp_cost_dollars):
+      gross = extra_spend × best_wallet_earn_rate
+      net   = gross − value_of_sub_spend_points_earned_on_this_card
+              (i.e. what you truly lose after accounting for what the new card
+               earns on that same spend)
     """
     extra_spend = calc_sub_extra_spend(card, spend)
     if extra_spend <= 0:
-        return 0.0
+        return 0.0, 0.0
 
-    avg_alt = _avg_alt_multiplier(card, selected_cards, spend, chase_premium)
-    points_if_redirected = extra_spend * avg_alt
-    sub_spend_pts = float(card.sub_spend_points)
-    net_cost = points_if_redirected - sub_spend_pts
-    return max(0.0, net_cost)
+    best_rate = _best_wallet_earn_rate_dollars(card, selected_cards, spend, active_boost_ids)
+    gross = extra_spend * best_rate
 
+    currency = _effective_currency(card, active_boost_ids)
+    sub_spend_value = card.sub_spend_points * currency.cents_per_point * currency.comparison_factor / 100.0
+    net = max(0.0, gross - sub_spend_value)
 
-def calc_opp_cost_abs(
-    card: CardData,
-    selected_cards: list[CardData],
-    spend: dict[str, float],
-    chase_premium: bool,
-) -> float:
-    """
-    Absolute opportunity cost in points, accounting for how other cards'
-    opportunity costs spill over into this card.
-
-    This is a close Python translation of the complex LET formula in the sheet:
-
-    total_other_opp = sum of sub_opp_cost of all OTHER selected cards
-    all_other_points = this card's sub_spend_points (absorption capacity)
-    remaining_after_all_other = MAX(0, total_other_opp - all_other_points)
-    all_other_absorption = MIN(all_other_points, total_other_opp)
-    proportional_share = (1/avg_mult_this) / sum(1/avg_mult_all)
-    other_categories_total = sum of spend assigned to this card across all categories
-    other_absorption = MIN(other_categories_total, proportional_share * remaining_after_all_other)
-    result = all_other_absorption + other_absorption
-    """
-    # Per-card opp costs for all selected cards
-    opp_costs: dict[int, float] = {}
-    for c in selected_cards:
-        opp_costs[c.id] = calc_sub_opportunity_cost(c, selected_cards, spend, chase_premium)
-
-    total_other_opp = sum(v for cid, v in opp_costs.items() if cid != card.id)
-    all_other_points = float(card.sub_spend_points)
-
-    remaining_after_all_other = max(0.0, total_other_opp - all_other_points)
-    all_other_absorption = min(all_other_points, total_other_opp)
-
-    # Proportional share based on inverse of average multiplier
-    def avg_mult(c: CardData) -> float:
-        pts = [c.multipliers.get(cat, 1.0) for cat, s in spend.items() if s > 0 and c.multipliers.get(cat, 0) > 0]
-        return sum(pts) / len(pts) if pts else 0.0
-
-    inv_mult = 1 / avg_mult(card) if avg_mult(card) > 0 else 0.0
-    sum_inv = sum(
-        (1 / avg_mult(c) if avg_mult(c) > 0 else 0.0) for c in selected_cards
-    )
-    proportional_share = inv_mult / sum_inv if sum_inv > 0 else 0.0
-
-    # Total spend assigned to this card (categories where this card has the multiplier)
-    other_categories_total = sum(
-        v for cat, v in spend.items() if card.multipliers.get(cat, 0) > 0
-    )
-
-    other_absorption = min(
-        other_categories_total,
-        proportional_share * remaining_after_all_other,
-    )
-
-    return all_other_absorption + other_absorption
+    return round(gross, 4), round(net, 4)
 
 
 def calc_avg_spend_multiplier(
     card: CardData,
     spend: dict[str, float],
-    chase_premium: bool,
 ) -> float:
-    """
-    Weighted average points multiplier across all categories where spend > 0.
-    Corresponds to row 17 (Avg. Spend Multiplier):
-      AVERAGEIF(card_spend_range, ">0", multiplier_range)
-    """
+    """Spend-weighted average multiplier across categories with positive spend."""
     total_spend = 0.0
     total_pts = 0.0
     for cat, s in spend.items():
-        mult = _effective_multiplier(card, cat, chase_premium)
+        mult = card.multipliers.get(cat, 1.0)
         if s > 0:
             total_spend += s
             total_pts += s * mult
@@ -344,82 +288,55 @@ def calc_total_points(
     card: CardData,
     spend: dict[str, float],
     years: int,
-    chase_premium: bool,
+    active_boost_ids: set[int],
 ) -> float:
     """
-    Total points over `years` years including SUB and annual bonuses.
-    Formula: (cat_pts + annual_bonus + sub_points - sub_opp_cost - sub_extra_spend_pts)
-             + cat_pts * (years - 1)
-    Corresponds to spreadsheet row 3 (Points Earned).
+    Total points over `years` including SUB and annual bonuses.
+    Applies comparison_factor from the effective currency so that currencies
+    with a structural discount (e.g. Delta SkyMiles at 0.85) are normalised.
     """
-    annual_earn = calc_annual_point_earn(card, spend, chase_premium)
-    sub_opp = calc_sub_opportunity_cost(card, [card], spend, chase_premium)
-    # Points = first year (earn + SUB - losses) + recurring for remaining years
-    first_year = (
-        annual_earn
-        + card.sub_points
-        + card.sub_spend_points
-        - sub_opp
-        - calc_sub_extra_spend(card, spend)
-    )
-    # Actually the sheet formula is simpler — it doesn't subtract sub_extra_spend from points
-    # Let's match sheet row 3 exactly:
-    # =IF(selected, (cat_pts + annual_bonus + sub_pts - sub_opp - sub_extra_pts) + cat_pts * (years-1), 0)
-    # sub_extra_pts here = calc_sub_extra_spend (the dollars, not points)
-    # Checking: row 3 formula = (F4 + F14 + F8 - F15 - F16) + F4*(years-1)
-    # F4 = annual_point_earn, F14 = sub_spend_points, F8 = sub_points,
-    # F15 = sub_opp_cost (points), F16 = opp_cost_abs (points)
-    opp_abs = calc_opp_cost_abs(card, [card], spend, chase_premium)
+    currency = _effective_currency(card, active_boost_ids)
+    annual_earn = calc_annual_point_earn(card, spend)
+    _, net_opp = calc_sub_opportunity_cost(card, [card], spend, active_boost_ids)
+
+    # Convert net opp cost back to a points deduction in the card's currency
+    cpp = currency.cents_per_point
+    net_opp_pts = (net_opp / (cpp / 100.0)) if cpp > 0 else 0.0
+
     total = (
         annual_earn
         + card.sub_spend_points
         + card.sub_points
-        - sub_opp
-        - opp_abs
+        - net_opp_pts
     ) + annual_earn * (years - 1)
-    return total * card.points_adjustment_factor
+    return total * currency.comparison_factor
 
 
 def calc_annual_ev(
     card: CardData,
     spend: dict[str, float],
     years: int,
-    chase_premium: bool,
+    active_boost_ids: set[int],
 ) -> float:
     """
-    Annual EV over `years`, amortizing the SUB.
-    Formula (row 2):
-      ((cat_pts + annual_bonus) / 100 * cpp) * years
-      + sub_pts / 100
-      + sub_spend_pts * (years - 1)   ← annual bonus recurring
-      + credits
-      - fee
+    Annual EV over `years`, amortising the SUB.
+
+    Formula:
+      ( (annual_earn + sub_spend_pts) / 100 * cpp * comparison_factor * years
+        + sub_pts / 100
+        + annual_bonus_pts * (years - 1)
+        + credits
+        - fee
       ) / years
-    Exact sheet formula for most cards:
-      =IF(selected,
-          ((F4 + F14)/100 * F18) * years
-          + F8/100
-          + F9*(years-1)
-          + F6 - F7
-          , 0) / years
-    Where F4=annual_earn, F14=sub_spend_pts, F18=cpp, F8=sub_pts,
-          F9=annual_bonus_pts, F6=credits, F7=fee.
-
-    For Chase Freedom Unlimited/Flex: cpp is multiplied by IF(chase_premium, cpp, 1).
-    We already store the correct cpp value so the formula works without branching.
-
-    For Delta cobrand cards: the sheet divides the points formula by 0.85 (via
-    points_adjustment_factor stored on the card).
     """
-    cpp = _effective_cpp(card, chase_premium)
-    annual_earn = calc_annual_point_earn(card, spend, chase_premium)
+    currency = _effective_currency(card, active_boost_ids)
+    cpp = currency.cents_per_point
+    cf = currency.comparison_factor
+    annual_earn = calc_annual_point_earn(card, spend)
     credits = calc_credit_valuation(card)
 
-    # For Delta cobrand cards the sheet wraps the points portion with * (1/0.85)
-    pts_adj = card.points_adjustment_factor
-
     value = (
-        ((annual_earn + card.sub_spend_points) / 100 * cpp) * years * pts_adj
+        ((annual_earn + card.sub_spend_points) / 100 * cpp * cf) * years
         + card.sub_points / 100
         + card.annual_bonus_points * (years - 1)
         + credits
@@ -432,16 +349,6 @@ def calc_annual_ev(
 # Wallet-level aggregation
 # ---------------------------------------------------------------------------
 
-CURRENCY_GROUPS = {
-    "Amex MR": "amex_mr_pts",
-    "Chase UR": "chase_ur_pts",
-    "Capital One Miles": "capital_one_pts",
-    "Citi TY": "citi_ty_pts",
-    "Bilt Rewards": "bilt_pts",
-    "Delta SkyMiles": "delta_pts",
-    "Hilton Honors": "hilton_pts",
-}
-
 
 def compute_wallet(
     all_cards: list[CardData],
@@ -451,10 +358,10 @@ def compute_wallet(
 ) -> WalletResult:
     """
     Compute results for every card in `all_cards`.
-    Only cards with id in `selected_ids` are considered active.
+    Only cards with id in `selected_ids` contribute to EV and currency totals.
     """
     selected_cards = [c for c in all_cards if c.id in selected_ids]
-    chase_premium = _has_chase_premium(selected_cards)
+    active_boosts = _active_boost_ids(selected_cards)
 
     card_results: list[CardResult] = []
 
@@ -469,20 +376,21 @@ def compute_wallet(
                     selected=False,
                     annual_fee=card.annual_fee,
                     sub_points=card.sub_points,
-                    cents_per_point=card.cents_per_point,
+                    cents_per_point=card.currency.cents_per_point,
+                    effective_currency_name=card.currency.name,
                 )
             )
             continue
 
-        annual_ev = calc_annual_ev(card, spend, years, chase_premium)
-        second_year_ev = calc_2nd_year_ev(card, spend, chase_premium)
-        annual_point_earn = calc_annual_point_earn(card, spend, chase_premium)
-        total_points = calc_total_points(card, spend, years, chase_premium)
+        eff_currency = _effective_currency(card, active_boosts)
+        annual_ev = calc_annual_ev(card, spend, years, active_boosts)
+        second_year_ev = calc_2nd_year_ev(card, spend, active_boosts)
+        annual_point_earn = calc_annual_point_earn(card, spend)
+        total_points = calc_total_points(card, spend, years, active_boosts)
         credit_val = calc_credit_valuation(card)
         sub_extra = calc_sub_extra_spend(card, spend)
-        sub_opp = calc_sub_opportunity_cost(card, selected_cards, spend, chase_premium)
-        opp_abs = calc_opp_cost_abs(card, selected_cards, spend, chase_premium)
-        avg_mult = calc_avg_spend_multiplier(card, spend, chase_premium)
+        gross_opp, net_opp = calc_sub_opportunity_cost(card, selected_cards, spend, active_boosts)
+        avg_mult = calc_avg_spend_multiplier(card, spend)
 
         card_results.append(
             CardResult(
@@ -499,10 +407,11 @@ def compute_wallet(
                 annual_bonus_points=card.annual_bonus_points,
                 sub_extra_spend=round(sub_extra, 2),
                 sub_spend_points=card.sub_spend_points,
-                sub_opportunity_cost=round(sub_opp, 2),
-                opp_cost_abs=round(opp_abs, 2),
+                sub_opp_cost_dollars=net_opp,
+                sub_opp_cost_gross_dollars=gross_opp,
                 avg_spend_multiplier=round(avg_mult, 4),
-                cents_per_point=card.cents_per_point,
+                cents_per_point=eff_currency.cents_per_point,
+                effective_currency_name=eff_currency.name,
             )
         )
 
@@ -511,18 +420,18 @@ def compute_wallet(
     total_points_earned = round(sum(r.total_points for r in selected_results), 2)
     total_annual_pts = round(sum(r.annual_point_earn for r in selected_results), 2)
 
-    currency_totals: dict[str, float] = {v: 0.0 for v in CURRENCY_GROUPS.values()}
+    # Dynamic currency totals — grouped by effective currency name
+    currency_pts: dict[str, float] = {}
     for card in selected_cards:
-        earn = calc_annual_point_earn(card, spend, chase_premium)
-        group_key = CURRENCY_GROUPS.get(card.currency)
-        if group_key:
-            currency_totals[group_key] += earn
+        eff = _effective_currency(card, active_boosts)
+        earn = calc_annual_point_earn(card, spend)
+        currency_pts[eff.name] = currency_pts.get(eff.name, 0.0) + earn
 
     return WalletResult(
         years_counted=years,
         total_annual_ev=total_annual_ev,
         total_points_earned=total_points_earned,
         total_annual_pts=total_annual_pts,
+        currency_pts=currency_pts,
         card_results=card_results,
-        **currency_totals,
     )

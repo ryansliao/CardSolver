@@ -1,11 +1,20 @@
 """
-Seed the database with all 26 credit cards parsed from Financial.xlsx.
+Seed the database with all credit cards parsed from Financial.xlsx.
 
 Run directly (from the backend/ directory):
     python -m app.seed_data
 
 Or from the project root:
     cd backend && python -m app.seed_data
+
+Seeding order (respects FK dependencies):
+    1. Issuers
+    2. Currencies          (FK -> issuers)
+    3. EcosystemBoosts     (FK -> issuers, currencies)
+    4. EcosystemBoostAnchors after cards are created
+    5. Cards               (FK -> issuers, currencies, ecosystem_boosts)
+    6. EcosystemBoostAnchors (FK -> ecosystem_boosts, cards)
+    7. CardCategoryMultipliers / CardCredits / SpendCategories
 """
 
 from __future__ import annotations
@@ -19,11 +28,19 @@ import openpyxl
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Allow running as a script: insert backend/ so `app` package is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.database import AsyncSessionLocal, create_tables
-from app.models import Card, CardCategoryMultiplier, CardCredit, SpendCategory
+from app.models import (
+    Card,
+    CardCategoryMultiplier,
+    CardCredit,
+    Currency,
+    EcosystemBoost,
+    EcosystemBoostAnchor,
+    Issuer,
+    SpendCategory,
+)
 
 XLSX_PATH = Path(__file__).resolve().parent.parent.parent / "docs" / "Financial.xlsx"
 
@@ -63,75 +80,171 @@ CREDIT_TYPES = [
     "Miscellaneous",
 ]
 
-# Cards whose earn rates are boosted when a Chase premium card (CSR/CSP/CIP) is also held
-CHASE_BOOSTED_CARDS = {"Chase Freedom Unlimited", "Chase Freedom Flex"}
+# ---------------------------------------------------------------------------
+# Issuer seed data
+# ---------------------------------------------------------------------------
 
-# Delta cobrand cards earn SkyMiles that are worth less vs. transferred points.
-# The spreadsheet divides their point totals by 0.85 to normalise to a cents-per-point basis.
-DELTA_COBRAND_CARDS = {
-    "Delta SkyMiles Gold",
-    "Delta SkyMiles Gold Business",
-    "Delta SkyMiles Platinum",
-    "Delta SkyMiles Reserve",
+ISSUERS = [
+    "American Express",
+    "Chase",
+    "Capital One",
+    "Citi",
+    "Bilt",
+    "Delta / American Express",
+    "Hilton / American Express",
+]
+
+# ---------------------------------------------------------------------------
+# Currency seed data
+# Each entry: (issuer_name, currency_name, cpp, is_cashback, is_transferable, comparison_factor)
+# ---------------------------------------------------------------------------
+
+CURRENCIES: list[tuple[str, str, float, bool, bool, float]] = [
+    # American Express
+    ("American Express", "Amex MR",        2.0,  False, True,  1.0),
+    # Chase — cashback variant (Freedom Unlimited/Flex alone) + transferable variant
+    ("Chase",            "Chase UR Cash",   1.0,  True,  False, 1.0),
+    ("Chase",            "Chase UR",        1.5,  False, True,  1.0),
+    # Capital One
+    ("Capital One",      "Capital One Miles", 1.5, False, True, 1.0),
+    # Citi — cashback variant + transferable variant
+    ("Citi",             "Citi TY Cash",    1.0,  True,  False, 1.0),
+    ("Citi",             "Citi TY",         1.5,  False, True,  1.0),
+    # Bilt
+    ("Bilt",             "Bilt Rewards",    1.5,  False, True,  1.0),
+    # Delta cobrand — non-transferable, comparison_factor < 1 to normalise vs MR/UR
+    ("Delta / American Express", "Delta SkyMiles", 1.2, False, False, 0.85),
+    # Hilton cobrand — non-transferable, low cpp but high earn multipliers
+    ("Hilton / American Express", "Hilton Honors", 0.5, False, False, 1.0),
+]
+
+# ---------------------------------------------------------------------------
+# Ecosystem boost seed data
+# Each entry: (issuer_name, boost_name, boosted_currency_name, description)
+# ---------------------------------------------------------------------------
+
+ECOSYSTEM_BOOSTS: list[tuple[str, str, str, str]] = [
+    (
+        "Chase",
+        "Chase UR Upgrade",
+        "Chase UR",
+        (
+            "When a Chase Sapphire Reserve, Sapphire Preferred, or Ink Preferred "
+            "is in the wallet, cashback-earning Chase cards (Freedom Unlimited, "
+            "Freedom Flex) convert to transferable Chase UR points."
+        ),
+    ),
+    (
+        "Citi",
+        "Citi TY Upgrade",
+        "Citi TY",
+        (
+            "When a Citi Strata Elite is in the wallet, other Citi ThankYou cards "
+            "(Strata Premier, Custom Cash, Double Cash) convert from cashback to "
+            "transferable Citi TY points."
+        ),
+    ),
+]
+
+# ---------------------------------------------------------------------------
+# Card -> issuer / currency / ecosystem_boost mappings
+# ---------------------------------------------------------------------------
+
+# card name -> issuer name
+CARD_ISSUER_MAP: dict[str, str] = {
+    "American Express Platinum":        "American Express",
+    "American Express Gold":            "American Express",
+    "American Express Business Gold":   "American Express",
+    "American Express Blue Business Plus": "American Express",
+    "Chase Sapphire Reserve":           "Chase",
+    "Chase Sapphire Preferred":         "Chase",
+    "Chase Ink Preferred":              "Chase",
+    "Chase Ink Cash":                   "Chase",
+    "Chase Freedom Unlimited":          "Chase",
+    "Chase Freedom Flex":               "Chase",
+    "Capital One Venture X":            "Capital One",
+    "Capital One Savor":                "Capital One",
+    "Citi Strata Elite":                "Citi",
+    "Citi Strata Premier":              "Citi",
+    "Citi Strata":                      "Citi",
+    "Citi Custom Cash":                 "Citi",
+    "Citi Double Cash":                 "Citi",
+    "Bilt Palladium":                   "Bilt",
+    "Bilt Obsidian":                    "Bilt",
+    "Bilt Blue":                        "Bilt",
+    "Delta SkyMiles Gold":              "Delta / American Express",
+    "Delta SkyMiles Gold Business":     "Delta / American Express",
+    "Delta SkyMiles Platinum":          "Delta / American Express",
+    "Delta SkyMiles Reserve":           "Delta / American Express",
+    "Hilton Honors Surpass":            "Hilton / American Express",
+    "Hilton Honors Aspire":             "Hilton / American Express",
 }
 
-ISSUER_MAP = {
-    "American Express": "American Express",
-    "Chase": "Chase",
-    "Capital One": "Capital One",
-    "Citi": "Citi",
-    "Bilt": "Bilt",
-    "Delta": "Delta / American Express",
-    "Hilton": "Hilton / American Express",
-}
-
-CURRENCY_MAP = {
-    "American Express Platinum": "Amex MR",
-    "American Express Gold": "Amex MR",
-    "American Express Business Gold": "Amex MR",
+# card name -> default currency name
+# Cashback-capable Chase/Citi cards default to their cashback currency;
+# the ecosystem boost will upgrade them at runtime.
+CARD_CURRENCY_MAP: dict[str, str] = {
+    "American Express Platinum":        "Amex MR",
+    "American Express Gold":            "Amex MR",
+    "American Express Business Gold":   "Amex MR",
     "American Express Blue Business Plus": "Amex MR",
-    "Chase Sapphire Reserve": "Chase UR",
-    "Chase Sapphire Preferred": "Chase UR",
-    "Chase Ink Preferred": "Chase UR",
-    "Chase Ink Cash": "Chase UR",
-    "Chase Freedom Unlimited": "Chase UR",
-    "Chase Freedom Flex": "Chase UR",
-    "Capital One Venture X": "Capital One Miles",
-    "Capital One Savor": "Capital One Miles",
-    "Citi Strata Elite": "Citi TY",
-    "Citi Strata Premier": "Citi TY",
-    "Citi Strata": "Citi TY",
-    "Citi Custom Cash": "Citi TY",
-    "Citi Double Cash": "Citi TY",
-    "Bilt Palladium": "Bilt Rewards",
-    "Bilt Obsidian": "Bilt Rewards",
-    "Bilt Blue": "Bilt Rewards",
-    "Delta SkyMiles Gold": "Delta SkyMiles",
-    "Delta SkyMiles Gold Business": "Delta SkyMiles",
-    "Delta SkyMiles Platinum": "Delta SkyMiles",
-    "Delta SkyMiles Reserve": "Delta SkyMiles",
-    "Hilton Honors Surpass": "Hilton Honors",
-    "Hilton Honors Aspire": "Hilton Honors",
+    "Chase Sapphire Reserve":           "Chase UR",
+    "Chase Sapphire Preferred":         "Chase UR",
+    "Chase Ink Preferred":              "Chase UR",
+    "Chase Ink Cash":                   "Chase UR",
+    "Chase Freedom Unlimited":          "Chase UR Cash",
+    "Chase Freedom Flex":               "Chase UR Cash",
+    "Capital One Venture X":            "Capital One Miles",
+    "Capital One Savor":                "Capital One Miles",
+    "Citi Strata Elite":                "Citi TY",
+    "Citi Strata Premier":              "Citi TY Cash",
+    "Citi Strata":                      "Citi TY Cash",
+    "Citi Custom Cash":                 "Citi TY Cash",
+    "Citi Double Cash":                 "Citi TY Cash",
+    "Bilt Palladium":                   "Bilt Rewards",
+    "Bilt Obsidian":                    "Bilt Rewards",
+    "Bilt Blue":                        "Bilt Rewards",
+    "Delta SkyMiles Gold":              "Delta SkyMiles",
+    "Delta SkyMiles Gold Business":     "Delta SkyMiles",
+    "Delta SkyMiles Platinum":          "Delta SkyMiles",
+    "Delta SkyMiles Reserve":           "Delta SkyMiles",
+    "Hilton Honors Surpass":            "Hilton Honors",
+    "Hilton Honors Aspire":             "Hilton Honors",
+}
+
+# card name -> ecosystem boost name (only cards that BENEFIT from a boost)
+CARD_BOOST_MAP: dict[str, str] = {
+    "Chase Freedom Unlimited":  "Chase UR Upgrade",
+    "Chase Freedom Flex":       "Chase UR Upgrade",
+    "Citi Strata Premier":      "Citi TY Upgrade",
+    "Citi Strata":              "Citi TY Upgrade",
+    "Citi Custom Cash":         "Citi TY Upgrade",
+    "Citi Double Cash":         "Citi TY Upgrade",
+}
+
+# boost name -> list of anchor card names
+BOOST_ANCHORS: dict[str, list[str]] = {
+    "Chase UR Upgrade": [
+        "Chase Sapphire Reserve",
+        "Chase Sapphire Preferred",
+        "Chase Ink Preferred",
+    ],
+    "Citi TY Upgrade": [
+        "Citi Strata Elite",
+    ],
 }
 
 
-def _issuer(name: str) -> str:
-    for prefix, issuer in ISSUER_MAP.items():
-        if name.startswith(prefix):
-            return issuer
-    return "Unknown"
+# ---------------------------------------------------------------------------
+# XLSX parsing
+# ---------------------------------------------------------------------------
 
 
 def parse_xlsx() -> dict:
-    """
-    Parse Financial.xlsx and return a dict of card_name -> card_data.
-    """
     wb = openpyxl.load_workbook(XLSX_PATH, data_only=False)
     ws = wb["Credit Card Tool"]
     rows = list(ws.iter_rows(min_row=1, values_only=True))
 
-    # Card data columns are at even 0-based indices starting at 5 (F, H, J, …)
-    # The paired "flag/multiplier" column is always col+1
     card_cols = list(range(5, 57, 2))
     card_names = [rows[0][c] for c in card_cols]
 
@@ -141,14 +254,12 @@ def parse_xlsx() -> dict:
             continue
         mult_col = col + 1
 
-        annual_fee = rows[6][col] or 0
-        sub_points = rows[7][col] or 0
-        sub_min_spend = rows[9][col]
-        sub_months = rows[10][col]
-        sub_spend_points = rows[13][col] or 0
-        annual_bonus_points = rows[8][col] or 0
-        cpp_raw = rows[17][col]
-        cents_per_point = float(cpp_raw) if cpp_raw is not None else 1.0
+        annual_fee        = rows[6][col] or 0
+        sub_points        = rows[7][col] or 0
+        sub_min_spend     = rows[9][col]
+        sub_months        = rows[10][col]
+        sub_spend_points  = rows[13][col] or 0
+        annual_bonus_pts  = rows[8][col] or 0
 
         multipliers: dict[str, float] = {}
         for cat, row_idx in zip(CATEGORIES, range(18, 35)):
@@ -166,46 +277,149 @@ def parse_xlsx() -> dict:
                 }
 
         all_cards[name] = {
-            "name": name,
-            "issuer": _issuer(name),
-            "currency": CURRENCY_MAP.get(name, "Unknown"),
-            "annual_fee": float(annual_fee),
-            "cents_per_point": cents_per_point,
-            "sub_points": int(sub_points),
-            "sub_min_spend": int(sub_min_spend) if sub_min_spend is not None else None,
-            "sub_months": int(sub_months) if sub_months is not None else None,
-            "sub_spend_points": int(sub_spend_points),
-            "annual_bonus_points": int(annual_bonus_points),
-            "boosted_by_chase_premium": name in CHASE_BOOSTED_CARDS,
-            # Delta cobrand cards: their points are worth ~0.85x vs transferable MR/UR
-            "points_adjustment_factor": round(1 / 0.85, 6) if name in DELTA_COBRAND_CARDS else 1.0,
-            "multipliers": multipliers,
-            "credits": credits,
+            "name":                name,
+            "annual_fee":          float(annual_fee),
+            "sub_points":          int(sub_points),
+            "sub_min_spend":       int(sub_min_spend) if sub_min_spend is not None else None,
+            "sub_months":          int(sub_months) if sub_months is not None else None,
+            "sub_spend_points":    int(sub_spend_points),
+            "annual_bonus_points": int(annual_bonus_pts),
+            "multipliers":         multipliers,
+            "credits":             credits,
         }
 
     return all_cards
 
 
 def parse_spend_categories() -> list[dict]:
-    """Return the 17 spend categories with their default annual spend amounts."""
     wb = openpyxl.load_workbook(XLSX_PATH, data_only=False)
     ws = wb["Credit Card Tool"]
     rows = list(ws.iter_rows(min_row=1, values_only=True))
 
     result = []
     for cat, row_idx in zip(CATEGORIES, range(18, 35)):
-        spend = rows[row_idx][4]  # col E (index 4)
+        spend = rows[row_idx][4]
         result.append({"category": cat, "annual_spend": float(spend) if spend else 0.0})
     return result
 
 
+# ---------------------------------------------------------------------------
+# Seed helpers
+# ---------------------------------------------------------------------------
+
+
+async def _upsert_issuer(session: AsyncSession, name: str) -> Issuer:
+    existing = await session.execute(select(Issuer).where(Issuer.name == name))
+    obj = existing.scalar_one_or_none()
+    if obj is None:
+        obj = Issuer(name=name)
+        session.add(obj)
+        await session.flush()
+    return obj
+
+
+async def _upsert_currency(
+    session: AsyncSession,
+    issuer: Issuer,
+    name: str,
+    cpp: float,
+    is_cashback: bool,
+    is_transferable: bool,
+    comparison_factor: float,
+) -> Currency:
+    existing = await session.execute(select(Currency).where(Currency.name == name))
+    obj = existing.scalar_one_or_none()
+    if obj is None:
+        obj = Currency(
+            issuer_id=issuer.id,
+            name=name,
+            cents_per_point=cpp,
+            is_cashback=is_cashback,
+            is_transferable=is_transferable,
+            comparison_factor=comparison_factor,
+        )
+        session.add(obj)
+        await session.flush()
+    else:
+        obj.issuer_id = issuer.id
+        obj.cents_per_point = cpp
+        obj.is_cashback = is_cashback
+        obj.is_transferable = is_transferable
+        obj.comparison_factor = comparison_factor
+        await session.flush()
+    return obj
+
+
+async def _upsert_boost(
+    session: AsyncSession,
+    issuer: Issuer,
+    name: str,
+    boosted_currency: Currency,
+    description: str,
+) -> EcosystemBoost:
+    existing = await session.execute(
+        select(EcosystemBoost).where(EcosystemBoost.name == name)
+    )
+    obj = existing.scalar_one_or_none()
+    if obj is None:
+        obj = EcosystemBoost(
+            issuer_id=issuer.id,
+            boosted_currency_id=boosted_currency.id,
+            name=name,
+            description=description,
+        )
+        session.add(obj)
+        await session.flush()
+    else:
+        obj.issuer_id = issuer.id
+        obj.boosted_currency_id = boosted_currency.id
+        obj.description = description
+        await session.flush()
+    return obj
+
+
+# ---------------------------------------------------------------------------
+# Main seed function
+# ---------------------------------------------------------------------------
+
+
 async def seed(session: AsyncSession) -> None:
-    """Upsert all cards, multipliers, credits, and default spend categories."""
+    """Upsert all reference data and cards."""
 
-    all_cards = parse_xlsx()
+    # 1. Issuers
+    issuer_objs: dict[str, Issuer] = {}
+    for name in ISSUERS:
+        issuer_objs[name] = await _upsert_issuer(session, name)
+    print(f"  Issuers:  {len(issuer_objs)}")
+
+    # 2. Currencies
+    currency_objs: dict[str, Currency] = {}
+    for issuer_name, cur_name, cpp, is_cb, is_tf, cf in CURRENCIES:
+        currency_objs[cur_name] = await _upsert_currency(
+            session,
+            issuer_objs[issuer_name],
+            cur_name,
+            cpp,
+            is_cb,
+            is_tf,
+            cf,
+        )
+    print(f"  Currencies: {len(currency_objs)}")
+
+    # 3. Ecosystem boosts (anchor links come after cards are created)
+    boost_objs: dict[str, EcosystemBoost] = {}
+    for issuer_name, boost_name, boosted_cur_name, desc in ECOSYSTEM_BOOSTS:
+        boost_objs[boost_name] = await _upsert_boost(
+            session,
+            issuer_objs[issuer_name],
+            boost_name,
+            currency_objs[boosted_cur_name],
+            desc,
+        )
+    print(f"  EcosystemBoosts: {len(boost_objs)}")
+
+    # 4. Spend categories
     spend_cats = parse_spend_categories()
-
-    # --- Spend categories ---
     for sc in spend_cats:
         existing = await session.execute(
             select(SpendCategory).where(SpendCategory.category == sc["category"])
@@ -215,11 +429,34 @@ async def seed(session: AsyncSession) -> None:
             session.add(SpendCategory(**sc))
         else:
             obj.annual_spend = sc["annual_spend"]
+    print(f"  SpendCategories: {len(spend_cats)}")
 
-    # --- Cards ---
-    for card_data in all_cards.values():
+    # 5. Cards
+    all_cards_raw = parse_xlsx()
+    card_objs: dict[str, Card] = {}
+
+    for card_name, card_data in all_cards_raw.items():
         multipliers = card_data.pop("multipliers")
-        credits = card_data.pop("credits")
+        credits_data = card_data.pop("credits")
+
+        issuer_name = CARD_ISSUER_MAP.get(card_name, "Unknown")
+        currency_name = CARD_CURRENCY_MAP.get(card_name, "Chase UR Cash")
+        boost_name = CARD_BOOST_MAP.get(card_name)
+
+        issuer = issuer_objs.get(issuer_name)
+        if issuer is None:
+            # Dynamically create unknown issuers
+            issuer = await _upsert_issuer(session, issuer_name)
+            issuer_objs[issuer_name] = issuer
+
+        currency = currency_objs.get(currency_name)
+        if currency is None:
+            raise ValueError(
+                f"Currency '{currency_name}' not found for card '{card_name}'. "
+                "Check CARD_CURRENCY_MAP and CURRENCIES."
+            )
+
+        boost = boost_objs.get(boost_name) if boost_name else None
 
         existing = await session.execute(
             select(Card).where(Card.name == card_data["name"])
@@ -227,15 +464,25 @@ async def seed(session: AsyncSession) -> None:
         card = existing.scalar_one_or_none()
 
         if card is None:
-            card = Card(**card_data)
+            card = Card(
+                issuer_id=issuer.id,
+                currency_id=currency.id,
+                ecosystem_boost_id=boost.id if boost else None,
+                **card_data,
+            )
             session.add(card)
-            await session.flush()  # get card.id
+            await session.flush()
         else:
+            card.issuer_id = issuer.id
+            card.currency_id = currency.id
+            card.ecosystem_boost_id = boost.id if boost else None
             for k, v in card_data.items():
                 setattr(card, k, v)
             await session.flush()
 
-        # Delete and re-insert multipliers and credits for simplicity
+        card_objs[card_name] = card
+
+        # Refresh multipliers and credits
         await session.execute(
             CardCategoryMultiplier.__table__.delete().where(
                 CardCategoryMultiplier.card_id == card.id
@@ -244,13 +491,9 @@ async def seed(session: AsyncSession) -> None:
         await session.execute(
             CardCredit.__table__.delete().where(CardCredit.card_id == card.id)
         )
-
         for cat, mult in multipliers.items():
-            session.add(
-                CardCategoryMultiplier(card_id=card.id, category=cat, multiplier=mult)
-            )
-
-        for ctype, cinfo in credits.items():
+            session.add(CardCategoryMultiplier(card_id=card.id, category=cat, multiplier=mult))
+        for ctype, cinfo in credits_data.items():
             session.add(
                 CardCredit(
                     card_id=card.id,
@@ -259,8 +502,31 @@ async def seed(session: AsyncSession) -> None:
                 )
             )
 
+    print(f"  Cards: {len(card_objs)}")
+
+    # 6. Ecosystem boost anchors (requires cards to exist)
+    for boost_name, anchor_card_names in BOOST_ANCHORS.items():
+        boost = boost_objs[boost_name]
+        for anchor_name in anchor_card_names:
+            anchor_card = card_objs.get(anchor_name)
+            if anchor_card is None:
+                print(f"  WARNING: anchor card '{anchor_name}' not found for boost '{boost_name}'")
+                continue
+            existing = await session.execute(
+                select(EcosystemBoostAnchor).where(
+                    EcosystemBoostAnchor.boost_id == boost.id,
+                    EcosystemBoostAnchor.card_id == anchor_card.id,
+                )
+            )
+            if existing.scalar_one_or_none() is None:
+                session.add(
+                    EcosystemBoostAnchor(boost_id=boost.id, card_id=anchor_card.id)
+                )
+    await session.flush()
+    print(f"  EcosystemBoostAnchors: seeded")
+
     await session.commit()
-    print(f"Seeded {len(all_cards)} cards and {len(spend_cats)} spend categories.")
+    print("Seed complete.")
 
 
 async def main() -> None:

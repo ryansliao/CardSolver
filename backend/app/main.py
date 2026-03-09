@@ -3,6 +3,8 @@ FastAPI application entry point.
 
 Endpoints
 ---------
+GET  /issuers                       List all issuers
+GET  /currencies                    List all currencies
 GET  /cards                         List all cards
 GET  /cards/{id}                    Get one card
 PATCH /cards/{id}                   Update card static data
@@ -41,13 +43,16 @@ from sqlalchemy.orm import selectinload
 from .calculator import compute_wallet
 from .database import create_tables, get_db
 from .db_helpers import load_card_data, load_spend
-from .models import Card, ScenarioCard
-from .models import Scenario, SpendCategory
+from .models import Card, Currency, EcosystemBoost, Issuer, Scenario, ScenarioCard, SpendCategory
 from .schemas import (
     CalculateRequest,
     CardRead,
     CardResultSchema,
     CardUpdate,
+    CurrencyRead,
+    CurrencyUpdate,
+    EcosystemBoostRead,
+    IssuerRead,
     ScenarioCardCreate,
     ScenarioCardRead,
     ScenarioCreate,
@@ -74,11 +79,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Credit Card Optimizer API",
     description="Credit card wallet optimizer — calculates EV for any combination of cards.",
-    version="2.0.0",
+    version="3.0.0",
     lifespan=lifespan,
 )
 
-_allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
+_allowed_origins = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+    if o.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -90,7 +99,7 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
-# Helper: card not found
+# Common 404 helpers
 # ---------------------------------------------------------------------------
 
 
@@ -103,27 +112,99 @@ def _scenario_404(scenario_id: int) -> HTTPException:
 
 
 # ---------------------------------------------------------------------------
+# Card selectinload options (reused across endpoints)
+# ---------------------------------------------------------------------------
+
+
+def _card_load_opts():
+    return [
+        selectinload(Card.issuer),
+        selectinload(Card.currency_obj).selectinload(Currency.issuer),
+        selectinload(Card.ecosystem_boost).selectinload(
+            EcosystemBoost.boosted_currency
+        ).selectinload(Currency.issuer),
+        selectinload(Card.ecosystem_boost).selectinload(EcosystemBoost.anchors),
+        selectinload(Card.multipliers),
+        selectinload(Card.credits),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Issuers
+# ---------------------------------------------------------------------------
+
+
+@app.get("/issuers", response_model=list[IssuerRead], tags=["issuers"])
+async def list_issuers(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Issuer).order_by(Issuer.name))
+    return result.scalars().all()
+
+
+# ---------------------------------------------------------------------------
+# Currencies
+# ---------------------------------------------------------------------------
+
+
+@app.get("/currencies", response_model=list[CurrencyRead], tags=["currencies"])
+async def list_currencies(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Currency)
+        .options(selectinload(Currency.issuer))
+        .order_by(Currency.name)
+    )
+    return result.scalars().all()
+
+
+@app.patch("/currencies/{currency_id}", response_model=CurrencyRead, tags=["currencies"])
+async def update_currency(
+    currency_id: int, payload: CurrencyUpdate, db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(Currency)
+        .options(selectinload(Currency.issuer))
+        .where(Currency.id == currency_id)
+    )
+    currency = result.scalar_one_or_none()
+    if not currency:
+        raise HTTPException(status_code=404, detail=f"Currency {currency_id} not found")
+    for field, value in payload.model_dump(exclude_none=True).items():
+        setattr(currency, field, value)
+    await db.commit()
+    await db.refresh(currency)
+    return currency
+
+
+# ---------------------------------------------------------------------------
+# Ecosystem boosts
+# ---------------------------------------------------------------------------
+
+
+@app.get("/ecosystem-boosts", response_model=list[EcosystemBoostRead], tags=["ecosystem-boosts"])
+async def list_ecosystem_boosts(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(EcosystemBoost).options(
+            selectinload(EcosystemBoost.boosted_currency).selectinload(Currency.issuer),
+            selectinload(EcosystemBoost.anchors),
+        )
+    )
+    return result.scalars().all()
+
+
+# ---------------------------------------------------------------------------
 # Cards
 # ---------------------------------------------------------------------------
 
 
 @app.get("/cards", response_model=list[CardRead], tags=["cards"])
 async def list_cards(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Card).options(
-            selectinload(Card.multipliers),
-            selectinload(Card.credits),
-        )
-    )
+    result = await db.execute(select(Card).options(*_card_load_opts()))
     return result.scalars().all()
 
 
 @app.get("/cards/{card_id}", response_model=CardRead, tags=["cards"])
 async def get_card(card_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Card)
-        .options(selectinload(Card.multipliers), selectinload(Card.credits))
-        .where(Card.id == card_id)
+        select(Card).options(*_card_load_opts()).where(Card.id == card_id)
     )
     card = result.scalar_one_or_none()
     if not card:
@@ -136,20 +217,33 @@ async def update_card(
     card_id: int, payload: CardUpdate, db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(
-        select(Card)
-        .options(selectinload(Card.multipliers), selectinload(Card.credits))
-        .where(Card.id == card_id)
+        select(Card).options(*_card_load_opts()).where(Card.id == card_id)
     )
     card = result.scalar_one_or_none()
     if not card:
         raise _card_404(card_id)
 
-    for field, value in payload.model_dump(exclude_none=True).items():
+    updates = payload.model_dump(exclude_none=True)
+
+    # Validate FK targets if being updated
+    if "currency_id" in updates:
+        cur = await db.get(Currency, updates["currency_id"])
+        if not cur:
+            raise HTTPException(status_code=422, detail=f"Currency {updates['currency_id']} not found")
+    if "ecosystem_boost_id" in updates:
+        boost = await db.get(EcosystemBoost, updates["ecosystem_boost_id"])
+        if not boost:
+            raise HTTPException(status_code=422, detail=f"EcosystemBoost {updates['ecosystem_boost_id']} not found")
+
+    for field, value in updates.items():
         setattr(card, field, value)
 
     await db.commit()
-    await db.refresh(card)
-    return card
+    # Reload with full opts to get updated nested objects
+    result = await db.execute(
+        select(Card).options(*_card_load_opts()).where(Card.id == card_id)
+    )
+    return result.scalar_one()
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +274,7 @@ async def update_spend(
 
 
 # ---------------------------------------------------------------------------
-# Direct calculation (no Google Sheets)
+# Direct calculation (no spreadsheet)
 # ---------------------------------------------------------------------------
 
 
@@ -232,7 +326,6 @@ async def create_scenario(payload: ScenarioCreate, db: AsyncSession = Depends(ge
     await db.flush()
 
     for sc in payload.cards:
-        # Validate card exists
         card_result = await db.execute(select(Card).where(Card.id == sc.card_id))
         if not card_result.scalar_one_or_none():
             raise HTTPException(
@@ -320,14 +413,12 @@ async def add_card_to_scenario(
     payload: ScenarioCardCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    # Validate scenario
     sc_result = await db.execute(
         select(Scenario).where(Scenario.id == scenario_id)
     )
     if not sc_result.scalar_one_or_none():
         raise _scenario_404(scenario_id)
 
-    # Validate card
     card_result = await db.execute(select(Card).where(Card.id == payload.card_id))
     card = card_result.scalar_one_or_none()
     if not card:
@@ -391,7 +482,6 @@ async def scenario_results(
       - end_date is None OR end_date > reference_date
 
     reference_date defaults to scenario.as_of_date, then today.
-    years_counted comes from the ScenarioCard entry (overrides global default).
     """
     result = await db.execute(
         select(Scenario)
@@ -404,7 +494,6 @@ async def scenario_results(
 
     ref_date = reference_date or scenario.as_of_date or date.today()
 
-    # Determine which cards are active and what years_counted to use
     active_years: dict[int, int] = {}
     for sc in scenario.scenario_cards:
         start_ok = sc.start_date is None or sc.start_date <= ref_date
@@ -413,7 +502,6 @@ async def scenario_results(
             active_years[sc.card_id] = sc.years_counted
 
     if not active_years:
-        # Return empty wallet result
         return ScenarioResultSchema(
             scenario_id=scenario_id,
             scenario_name=scenario.name,
@@ -426,7 +514,6 @@ async def scenario_results(
             ),
         )
 
-    # Use the most common years_counted among active cards (simple majority)
     years_counted = max(set(active_years.values()), key=list(active_years.values()).count)
 
     all_cards = await load_card_data(db)
@@ -453,8 +540,6 @@ async def scenario_results(
 
 
 def _wallet_to_schema(wallet) -> WalletResultSchema:
-    from .calculator import WalletResult
-
     card_schemas = [
         CardResultSchema(
             card_id=cr.card_id,
@@ -470,10 +555,11 @@ def _wallet_to_schema(wallet) -> WalletResultSchema:
             annual_bonus_points=cr.annual_bonus_points,
             sub_extra_spend=cr.sub_extra_spend,
             sub_spend_points=cr.sub_spend_points,
-            sub_opportunity_cost=cr.sub_opportunity_cost,
-            opp_cost_abs=cr.opp_cost_abs,
+            sub_opp_cost_dollars=cr.sub_opp_cost_dollars,
+            sub_opp_cost_gross_dollars=cr.sub_opp_cost_gross_dollars,
             avg_spend_multiplier=cr.avg_spend_multiplier,
             cents_per_point=cr.cents_per_point,
+            effective_currency_name=cr.effective_currency_name,
         )
         for cr in wallet.card_results
     ]
@@ -483,13 +569,7 @@ def _wallet_to_schema(wallet) -> WalletResultSchema:
         total_annual_ev=wallet.total_annual_ev,
         total_points_earned=wallet.total_points_earned,
         total_annual_pts=wallet.total_annual_pts,
-        amex_mr_pts=wallet.amex_mr_pts,
-        chase_ur_pts=wallet.chase_ur_pts,
-        capital_one_pts=wallet.capital_one_pts,
-        citi_ty_pts=wallet.citi_ty_pts,
-        bilt_pts=wallet.bilt_pts,
-        delta_pts=wallet.delta_pts,
-        hilton_pts=wallet.hilton_pts,
+        currency_pts=wallet.currency_pts,
         card_results=card_schemas,
     )
 
@@ -509,4 +589,7 @@ async def serve_spa(full_path: str):
     index = _FRONTEND_DIST / "index.html"
     if index.exists():
         return FileResponse(index)
-    raise HTTPException(status_code=404, detail="Frontend not built. Run: cd frontend && npm run build")
+    raise HTTPException(
+        status_code=404,
+        detail="Frontend not built. Run: cd frontend && npm run build",
+    )
