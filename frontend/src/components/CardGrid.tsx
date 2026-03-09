@@ -21,7 +21,7 @@ interface Props {
 }
 
 export default function CardGrid({ cards, selected, onToggle }: Props) {
-  const issuers = Array.from(new Set(cards.map((c) => c.issuer))).sort()
+  const issuers = Array.from(new Set(cards.map((c) => c.issuer.name))).sort()
 
   return (
     <div className="space-y-4">
@@ -32,7 +32,7 @@ export default function CardGrid({ cards, selected, onToggle }: Props) {
           </h3>
           <div className="grid grid-cols-2 gap-2">
             {cards
-              .filter((c) => c.issuer === issuer)
+              .filter((c) => c.issuer.name === issuer)
               .map((card) => {
                 const active = selected.has(card.id)
                 return (
@@ -41,7 +41,7 @@ export default function CardGrid({ cards, selected, onToggle }: Props) {
                     onClick={() => onToggle(card.id)}
                     className={`text-left p-3 rounded-lg border-2 transition-all cursor-pointer ${
                       active
-                        ? issuerColor(card.issuer) + ' border-opacity-100'
+                        ? issuerColor(card.issuer.name) + ' border-opacity-100'
                         : 'border-slate-700 bg-slate-800/50 hover:border-slate-500'
                     }`}
                   >
@@ -49,7 +49,7 @@ export default function CardGrid({ cards, selected, onToggle }: Props) {
                     <p className="text-xs text-slate-400 mt-0.5">
                       {card.annual_fee === 0 ? 'No fee' : `$${card.annual_fee}/yr`}
                       {' · '}
-                      {card.currency}
+                      {card.currency_obj.name}
                     </p>
                   </button>
                 )

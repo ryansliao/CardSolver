@@ -215,8 +215,8 @@ Issuers → Currencies → EcosystemBoosts → SpendCategories
 
 ```bash
 cd backend
-pip install openpyxl   # only needed for seeding
-python -m app.seed_data
+python3 -m pip install openpyxl   # only needed for seeding
+python3 -m app.seed_data
 ```
 
 Re-running seed is safe — all upserts are idempotent.

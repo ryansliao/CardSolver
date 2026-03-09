@@ -32,17 +32,28 @@ Edit `.env` and fill in `DATABASE_URL`. For local dev, any PostgreSQL database w
 DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/creditcards
 ```
 
-### 3. Seed the database (one-time)
+### 3. Set up PostgreSQL (one-time)
+
+Install and start PostgreSQL if you haven't already:
+
+```bash
+brew install postgresql@14
+brew services start postgresql@14
+createuser -s postgres   # create the default role
+createdb creditcards     # create the database
+```
+
+### 4. Seed the database (one-time)
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r backend/requirements.txt openpyxl
-cd backend && python -m app.seed_data && cd ..
+python3 -m pip install -r backend/requirements.txt openpyxl
+cd backend && python3 -m app.seed_data && cd ..
 ```
 
 This populates issuers, currencies, ecosystem boosts, all cards, multipliers, credits, and default spend categories from `docs/Financial.xlsx`.
 
-### 4. Start both servers
+### 5. Start both servers
 
 ```bash
 ./scripts/dev.sh
@@ -82,8 +93,8 @@ Set `DATABASE_URL` in your local `.env` to the Azure connection string, then:
 
 ```bash
 source .venv/bin/activate
-pip install openpyxl
-cd backend && python -m app.seed_data && cd ..
+python3 -m pip install openpyxl
+cd backend && python3 -m app.seed_data && cd ..
 ```
 
 ### Step 3 — Build the React frontend

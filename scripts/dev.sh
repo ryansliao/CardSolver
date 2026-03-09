@@ -4,7 +4,7 @@
 #
 # First-time setup (run once, in order):
 #   1. cp .env.example .env && fill in DATABASE_URL
-#   2. pip install openpyxl && cd backend && python -m app.seed_data
+#   2. python3 -m pip install openpyxl && cd backend && python3 -m app.seed_data
 #   3. ./scripts/dev.sh
 
 set -euo pipefail
@@ -32,7 +32,7 @@ source .venv/bin/activate
 
 # ─── 2. Install Python dependencies ──────────────────────────────────────────
 echo "→ Checking Python dependencies..."
-pip install -q -r backend/requirements.txt
+python3 -m pip install -q -r backend/requirements.txt
 
 # ─── 3. Environment file check ───────────────────────────────────────────────
 if [[ ! -f ".env" ]]; then
@@ -58,7 +58,7 @@ echo "   Press Ctrl+C to stop both."
 echo ""
 
 # Run FastAPI from backend/ so the `app` package is importable
-(cd backend && uvicorn app.main:app \
+(cd backend && python3 -m uvicorn app.main:app \
   --host 0.0.0.0 \
   --port "$PORT" \
   --reload \

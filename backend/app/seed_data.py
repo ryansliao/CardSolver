@@ -241,7 +241,7 @@ BOOST_ANCHORS: dict[str, list[str]] = {
 
 
 def parse_xlsx() -> dict:
-    wb = openpyxl.load_workbook(XLSX_PATH, data_only=False)
+    wb = openpyxl.load_workbook(XLSX_PATH, data_only=True)
     ws = wb["Credit Card Tool"]
     rows = list(ws.iter_rows(min_row=1, values_only=True))
 
@@ -292,7 +292,7 @@ def parse_xlsx() -> dict:
 
 
 def parse_spend_categories() -> list[dict]:
-    wb = openpyxl.load_workbook(XLSX_PATH, data_only=False)
+    wb = openpyxl.load_workbook(XLSX_PATH, data_only=True)
     ws = wb["Credit Card Tool"]
     rows = list(ws.iter_rows(min_row=1, values_only=True))
 

@@ -28,20 +28,35 @@ export interface CardCredit {
   credit_value: number
 }
 
+export interface IssuerRead {
+  id: number
+  name: string
+}
+
+export interface CurrencyRead {
+  id: number
+  issuer_id: number
+  name: string
+  cents_per_point: number
+  is_cashback: boolean
+  is_transferable: boolean
+  comparison_factor: number
+}
+
 export interface Card {
   id: number
   name: string
-  issuer: string
-  currency: string
+  issuer: IssuerRead
+  currency_obj: CurrencyRead
+  issuer_id: number
+  currency_id: number
+  ecosystem_boost_id: number | null
   annual_fee: number
-  cents_per_point: number
   sub_points: number
   sub_min_spend: number | null
   sub_months: number | null
   sub_spend_points: number
   annual_bonus_points: number
-  boosted_by_chase_premium: boolean
-  points_adjustment_factor: number
   multipliers: CardMultiplier[]
   credits: CardCredit[]
 }
@@ -66,10 +81,11 @@ export interface CardResult {
   annual_bonus_points: number
   sub_extra_spend: number
   sub_spend_points: number
-  sub_opportunity_cost: number
-  opp_cost_abs: number
+  sub_opp_cost_dollars: number
+  sub_opp_cost_gross_dollars: number
   avg_spend_multiplier: number
   cents_per_point: number
+  effective_currency_name: string
 }
 
 export interface WalletResult {
@@ -77,13 +93,7 @@ export interface WalletResult {
   total_annual_ev: number
   total_points_earned: number
   total_annual_pts: number
-  amex_mr_pts: number
-  chase_ur_pts: number
-  capital_one_pts: number
-  citi_ty_pts: number
-  bilt_pts: number
-  delta_pts: number
-  hilton_pts: number
+  currency_pts: Record<string, number>
   card_results: CardResult[]
 }
 

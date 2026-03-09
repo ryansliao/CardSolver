@@ -9,25 +9,12 @@ function pts(n: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(0)
 }
 
-const CURRENCY_LABELS: Record<string, string> = {
-  amex_mr_pts: 'Amex MR',
-  chase_ur_pts: 'Chase UR',
-  capital_one_pts: 'Cap One',
-  citi_ty_pts: 'Citi TY',
-  bilt_pts: 'Bilt',
-  delta_pts: 'SkyMiles',
-  hilton_pts: 'Hilton',
-}
-
 interface Props {
   result: WalletResult
 }
 
 export default function WalletSummary({ result }: Props) {
-  const resultAsAny = result as unknown as Record<string, number>
-  const currencies = Object.entries(CURRENCY_LABELS).filter(
-    ([key]) => resultAsAny[key] > 0,
-  )
+  const currencies = Object.entries(result.currency_pts).filter(([, v]) => v > 0)
 
   const selected = result.card_results.filter((c) => c.selected)
 
@@ -52,11 +39,11 @@ export default function WalletSummary({ result }: Props) {
         <div>
           <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Points by Currency</p>
           <div className="grid grid-cols-2 gap-2">
-            {currencies.map(([key, label]) => (
-              <div key={key} className="bg-slate-800 rounded-lg px-3 py-2 flex justify-between">
-                <span className="text-xs text-slate-400">{label}</span>
+            {currencies.map(([name, amount]) => (
+              <div key={name} className="bg-slate-800 rounded-lg px-3 py-2 flex justify-between">
+                <span className="text-xs text-slate-400">{name}</span>
                 <span className="text-xs font-medium text-white">
-                  {pts(resultAsAny[key])}
+                  {pts(amount)}
                 </span>
               </div>
             ))}

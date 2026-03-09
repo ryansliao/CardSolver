@@ -36,7 +36,7 @@ function CardDetail({ card }: CardDetailProps) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-white">{card.name}</h2>
-          <p className="text-slate-400 text-sm mt-0.5">{card.issuer}</p>
+          <p className="text-slate-400 text-sm mt-0.5">{card.issuer.name}</p>
         </div>
         <div className="text-right shrink-0">
           <p className="text-2xl font-bold text-white">
@@ -47,9 +47,9 @@ function CardDetail({ card }: CardDetailProps) {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {badge(card.currency)}
+        {badge(card.currency_obj.name)}
         <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">
-          {card.cents_per_point}¢/pt
+          {card.currency_obj.cents_per_point}¢/pt
         </span>
       </div>
 
@@ -145,13 +145,13 @@ export default function Cards() {
   const [search, setSearch] = useState('')
   const [issuerFilter, setIssuerFilter] = useState('All')
 
-  const issuers = ['All', ...Array.from(new Set(cards?.map((c) => c.issuer) ?? [])).sort()]
+  const issuers = ['All', ...Array.from(new Set(cards?.map((c) => c.issuer.name) ?? [])).sort()]
 
   const filtered = cards?.filter((c) => {
     const matchSearch =
       c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.issuer.toLowerCase().includes(search.toLowerCase())
-    const matchIssuer = issuerFilter === 'All' || c.issuer === issuerFilter
+      c.issuer.name.toLowerCase().includes(search.toLowerCase())
+    const matchIssuer = issuerFilter === 'All' || c.issuer.name === issuerFilter
     return matchSearch && matchIssuer
   })
 
@@ -210,7 +210,7 @@ export default function Cards() {
                   >
                     <p className="text-sm font-medium text-white">{card.name}</p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-slate-400">{card.issuer}</span>
+                      <span className="text-xs text-slate-400">{card.issuer.name}</span>
                       <span className="text-slate-600">·</span>
                       <span className="text-xs text-slate-400">
                         {card.annual_fee === 0 ? 'No fee' : money(card.annual_fee)}
