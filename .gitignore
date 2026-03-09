@@ -4,9 +4,11 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.egg-info/
-dist/
 build/
 .eggs/
+
+# Frontend build output — committed so Azure App Service can serve it
+# frontend/dist/
 
 # Environment & secrets
 .env

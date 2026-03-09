@@ -1,10 +1,11 @@
 """
 Seed the database with all 26 credit cards parsed from Financial.xlsx.
 
-Run directly:
-    python -m credit_cards.seed_data
+Run directly (from the backend/ directory):
+    python -m app.seed_data
 
-Or call seed() from another async context.
+Or from the project root:
+    cd backend && python -m app.seed_data
 """
 
 from __future__ import annotations
@@ -18,13 +19,13 @@ import openpyxl
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Allow running as a script from the repo root
+# Allow running as a script: insert backend/ so `app` package is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from credit_cards.database import AsyncSessionLocal, create_tables
-from credit_cards.models import Card, CardCategoryMultiplier, CardCredit, SpendCategory
+from app.database import AsyncSessionLocal, create_tables
+from app.models import Card, CardCategoryMultiplier, CardCredit, SpendCategory
 
-XLSX_PATH = Path(__file__).resolve().parent.parent.parent / "Financial.xlsx"
+XLSX_PATH = Path(__file__).resolve().parent.parent.parent / "docs" / "Financial.xlsx"
 
 CATEGORIES = [
     "All Other",

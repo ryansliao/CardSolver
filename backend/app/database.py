@@ -1,19 +1,25 @@
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase
-from dotenv import load_dotenv
 import os
+
+from dotenv import load_dotenv
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-# Supabase / standard postgres URLs start with postgres:// — asyncpg needs postgresql+asyncpg://
+# Normalise scheme — asyncpg requires postgresql+asyncpg://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 elif DATABASE_URL.startswith("postgresql://") and "+asyncpg" not in DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+# Azure PostgreSQL requires SSL; pass via connect_args so it works with asyncpg
+_connect_args: dict = {}
+if "azure.com" in DATABASE_URL:
+    _connect_args["ssl"] = "require"
+
+engine = create_async_engine(DATABASE_URL, echo=False, future=True, connect_args=_connect_args)
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,

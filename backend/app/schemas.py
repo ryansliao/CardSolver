@@ -80,33 +80,6 @@ class SpendCategoryUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Sync schemas
-# ---------------------------------------------------------------------------
-
-
-class SyncReadPayload(BaseModel):
-    """
-    Data read from Google Sheets (or submitted directly).
-    Maps to spreadsheet inputs: years_counted (C1), card flags (row 1),
-    and category spend (rows 19-35 col E).
-    """
-
-    spreadsheet_id: str = Field(..., description="Google Sheets document ID")
-    sheet_name: str = Field(default="Credit Card Tool")
-
-
-class SyncWritePayload(BaseModel):
-    spreadsheet_id: str
-    sheet_name: str = "Credit Card Tool"
-
-
-class SyncResult(BaseModel):
-    ok: bool
-    message: str
-    rows_updated: int = 0
-
-
-# ---------------------------------------------------------------------------
 # Scenario schemas
 # ---------------------------------------------------------------------------
 

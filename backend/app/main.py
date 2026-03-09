@@ -10,10 +10,7 @@ PATCH /cards/{id}                   Update card static data
 GET  /spend                         Get spend categories
 PUT  /spend/{category}              Update a spend category
 
-POST /calculate                     Run wallet calculation directly (no Sheets)
-
-POST /sync/read                     Read inputs from Google Sheet → DB
-POST /sync/write                    Compute and write results to Google Sheet
+POST /calculate                     Run wallet calculation directly
 
 GET  /scenarios                     List scenarios
 POST /scenarios                     Create a scenario
@@ -28,18 +25,23 @@ GET  /scenarios/{id}/results        Compute wallet for a scenario
 from __future__ import annotations
 
 import contextlib
+import os
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from .calculator import CardData, compute_wallet
+from .calculator import compute_wallet
 from .database import create_tables, get_db
 from .db_helpers import load_card_data, load_spend
-from .models import Card, CardCategoryMultiplier, CardCredit, ScenarioCard
+from .models import Card, ScenarioCard
 from .models import Scenario, SpendCategory
 from .schemas import (
     CalculateRequest,
@@ -54,9 +56,6 @@ from .schemas import (
     ScenarioUpdate,
     SpendCategoryRead,
     SpendCategoryUpdate,
-    SyncReadPayload,
-    SyncResult,
-    SyncWritePayload,
     WalletResultSchema,
 )
 
@@ -74,12 +73,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Credit Card Optimizer API",
-    description=(
-        "Replicate and extend the credit card wallet optimizer spreadsheet. "
-        "Reads from / writes to Google Sheets and models card roadmap scenarios."
-    ),
-    version="1.0.0",
+    description="Credit card wallet optimizer — calculates EV for any combination of cards.",
+    version="2.0.0",
     lifespan=lifespan,
+)
+
+_allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -195,100 +201,6 @@ async def calculate(
         years=payload.years_counted,
     )
     return _wallet_to_schema(wallet)
-
-
-# ---------------------------------------------------------------------------
-# Google Sheets sync
-# ---------------------------------------------------------------------------
-
-
-@app.post("/sync/read", response_model=SyncResult, tags=["sync"])
-async def sync_read(payload: SyncReadPayload, db: AsyncSession = Depends(get_db)):
-    """
-    Read inputs from Google Sheets and persist them to the database.
-    Updates spend_categories and sets selected status in a JSON-friendly way.
-    (Selection state lives in the DB — use /scenarios for roadmap scenarios.)
-    """
-    from . import sheets as sh
-
-    try:
-        inputs = sh.read_inputs(payload.spreadsheet_id, payload.sheet_name)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Google Sheets error: {exc}")
-
-    rows_updated = 0
-
-    # Update spend categories
-    for category, annual_spend in inputs.spend.items():
-        result = await db.execute(
-            select(SpendCategory).where(SpendCategory.category == category)
-        )
-        sc = result.scalar_one_or_none()
-        if sc:
-            sc.annual_spend = annual_spend
-            rows_updated += 1
-        else:
-            db.add(SpendCategory(category=category, annual_spend=annual_spend))
-            rows_updated += 1
-
-    await db.commit()
-
-    return SyncResult(
-        ok=True,
-        message=(
-            f"Read {len(inputs.spend)} spend categories and "
-            f"{len(inputs.selected_cards)} card flags from sheet."
-        ),
-        rows_updated=rows_updated,
-    )
-
-
-@app.post("/sync/write", response_model=SyncResult, tags=["sync"])
-async def sync_write(payload: SyncWritePayload, db: AsyncSession = Depends(get_db)):
-    """
-    Read inputs from Google Sheets, compute results, and write them back.
-    """
-    from . import sheets as sh
-
-    try:
-        inputs = sh.read_inputs(payload.spreadsheet_id, payload.sheet_name)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Google Sheets read error: {exc}")
-
-    all_cards = await load_card_data(db)
-    # Apply spend from sheet (overrides DB values for this run)
-    spend = await load_spend(db, overrides=inputs.spend)
-
-    # Map card names to IDs for selected_ids
-    name_to_id = {c.name: c.id for c in all_cards}
-    selected_ids = {
-        name_to_id[name]
-        for name, selected in inputs.selected_cards.items()
-        if selected and name in name_to_id
-    }
-
-    wallet = compute_wallet(
-        all_cards=all_cards,
-        selected_ids=selected_ids,
-        spend=spend,
-        years=inputs.years_counted,
-    )
-
-    try:
-        cells_written = sh.write_outputs(
-            spreadsheet_id=payload.spreadsheet_id,
-            wallet_result=wallet,
-            card_col_map=inputs.card_col_map,
-            sheet_name=payload.sheet_name,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Google Sheets write error: {exc}")
-
-    return SyncResult(
-        ok=True,
-        message=f"Computed results for {len(selected_ids)} cards and wrote back to sheet.",
-        rows_updated=cells_written,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -580,3 +492,21 @@ def _wallet_to_schema(wallet) -> WalletResultSchema:
         hilton_pts=wallet.hilton_pts,
         card_results=card_schemas,
     )
+
+
+# ---------------------------------------------------------------------------
+# Serve React SPA (must come last — catches all unmatched routes)
+# ---------------------------------------------------------------------------
+
+_FRONTEND_DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
+
+if _FRONTEND_DIST.exists():
+    app.mount("/assets", StaticFiles(directory=_FRONTEND_DIST / "assets"), name="assets")
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_spa(full_path: str):
+    index = _FRONTEND_DIST / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    raise HTTPException(status_code=404, detail="Frontend not built. Run: cd frontend && npm run build")
