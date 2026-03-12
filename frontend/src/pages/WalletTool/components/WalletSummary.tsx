@@ -1,4 +1,4 @@
-import type { WalletResult } from '../api/client'
+import type { WalletResult } from '../../../api/client'
 
 function money(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })

@@ -7,7 +7,7 @@ A full-stack web application for modeling the expected value (EV) of any combina
 - **Wallet Tool** — single tab to manage wallets tied to a user. Each wallet has cards added at a specific date with optional sign-up bonus (SUB) and minimum-spend overrides. Set a projection time frame (years and months), adjust annual spend, and calculate EV and **expected opportunity cost** of spending toward each card’s SUB (taking away from points earned on other cards in that wallet).
 - **Issuer ecosystem modeling** — cards automatically upgrade from cashback to transferable-point earning when a premium anchor card (e.g. Sapphire Reserve, Citi Strata Elite) is present in the wallet; generalizes across all supported issuers
 - **Opportunity cost in the UI** — per-card SUB opportunity cost (dollar value foregone on the rest of the wallet) is shown in the results
-- **Card library** — browse all cards with their multipliers, credits, and SUB details
+- **Library** — manage cards, issuers, currencies, ecosystems, and spend categories in tabs (add/edit/delete, card multipliers, credits)
 - **REST API** — full CRUD for cards, currencies, spend categories, wallets, and wallet cards; interactive docs at `/docs`
 
 ---
@@ -50,7 +50,7 @@ python3 -m pip install -r backend/requirements.txt
 cd backend && python3 -m app.seed_data && cd ..
 ```
 
-This populates the default user (id=1), issuers, currencies, ecosystem boosts, all cards, multipliers, credits, and default spend categories from the DataFrames in `backend/app/seed_data.py` (edit those or load from CSV/Excel via pandas).
+This populates the default user (id=1), issuers, currencies, ecosystems, all cards, multipliers, credits, and default spend categories from the data in `backend/app/seed_data.py` (edit those or load from CSV/Excel via pandas).
 
 ### 5. Start both servers
 
@@ -177,7 +177,7 @@ Credit Card Tool/
 │   ├── app/
 │   │   ├── main.py                 # FastAPI app, all endpoints, SPA serving
 │   │   ├── calculator.py           # Pure-Python EV engine (no DB dependency)
-│   │   ├── models.py               # SQLAlchemy ORM: Issuer, Currency, EcosystemBoost, Card, …
+│   │   ├── models.py               # SQLAlchemy ORM: User, Issuer, Currency, Ecosystem, Card, …
 │   │   ├── schemas.py              # Pydantic v2 request/response schemas
 │   │   ├── database.py             # Async PostgreSQL session factory + Azure Identity
 │   │   ├── db_helpers.py           # DB → calculator dataclass converters
@@ -187,25 +187,23 @@ Credit Card Tool/
 ├── frontend/                       # React app (Vite + TypeScript + Tailwind)
 │   ├── src/
 │   │   ├── api/client.ts           # Typed API client
-│   │   ├── pages/
-│   │   │   ├── Calculator.tsx      # Wallet calculator
-│   │   │   ├── Scenarios.tsx       # Scenario manager
-│   │   │   └── Cards.tsx           # Card library browser
-│   │   └── components/
-│   │       ├── CardGrid.tsx        # Toggleable card selector
-│   │       ├── SpendTable.tsx      # Editable spend categories
-│   │       └── WalletSummary.tsx   # EV results display
+│   │   ├── App.tsx
+│   │   ├── main.tsx
+│   │   └── pages/
+│   │       ├── Library/            # Library: cards, issuers, currencies, ecosystems, categories
+│   │       │   ├── index.tsx       # Tab container
+│   │       │   ├── types.ts
+│   │       │   ├── components/     # CardFormModal, CardMultipliersDialog, InlineEditField
+│   │       │   └── tabs/           # CardsTab, IssuersTab, CurrenciesTab, EcosystemsTab, CategoriesTab
+│   │       └── WalletTool/         # Wallet Tool: wallets, EV calculation
+│   │           ├── index.tsx
+│   │           ├── constants.ts
+│   │           └── components/     # CreateWalletModal, AddCardModal, MyCppModal, SpendTable, WalletSummary
 │   └── dist/                       # Built output (served by FastAPI in production)
 │
-├── data/                           # Reference data (generated)
-│   └── reference.xlsx              # One tab per seed class; edit and seed loads from it
-│
-├── scripts/
-│   ├── dev.sh                      # Local dev launcher (API + React)
-│   ├── azure_startup.sh            # Azure App Service startup command
-│
-└── docs/
-    └── (optional) CSV/Excel        # Can be loaded in seed_data.py via pd.read_csv etc.
+└── scripts/
+    ├── dev.sh                      # Local dev launcher (API + React)
+    └── azure_startup.sh            # Azure App Service startup command
 ```
 
 ---

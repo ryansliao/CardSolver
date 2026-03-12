@@ -9,7 +9,7 @@ FastAPI + SQLAlchemy async backend. Exposes a REST API for card management, wall
 ```
 backend/
 ├── app/
-│   ├── models.py       ORM table definitions (Issuer, Currency, EcosystemBoost, Card, …)
+│   ├── models.py       ORM table definitions (User, Issuer, Currency, Ecosystem, Card, …)
 │   ├── calculator.py   Pure-Python calculation engine — no DB dependency
 │   ├── db_helpers.py   DB → calculator dataclass converters
 │   ├── schemas.py      Pydantic v2 request/response schemas
@@ -29,15 +29,18 @@ Data flows inward: `main.py` → `db_helpers.py` → `calculator.py` (pure). The
 
 ```
 User ──< Wallet ──< WalletCard >── Card   (Wallet Tool: cards in wallet with added_date, optional SUB overrides)
+  └──< UserCurrencyCpp >── Currency       (per-user cents-per-point overrides)
 
 Issuer ──< Currency
-       ──< EcosystemBoost >── Currency   (boosted_currency_id)
-                        ──< EcosystemBoostAnchor >── Card
+       ──< Card
+
+Ecosystem >── Currency (points_currency_id, optional cashback_currency_id)
+         ──< EcosystemCurrency >── Currency   (additional currencies that convert when key card in wallet)
+         ──< CardEcosystem >── Card          (card membership; key_card = unlocks conversion)
 
 Card >── Issuer
      >── Currency              (default currency, may be cashback)
-     >─o EcosystemBoost        (nullable — boost this card benefits from)
-     ──< EcosystemBoostAnchor  (boosts this card activates as anchor)
+     ──< CardEcosystem         (ecosystem memberships; key_card flags)
      ──< CardCategoryMultiplier
      ──< CardCredit
      ──< WalletCard
@@ -47,7 +50,7 @@ Card >── Issuer
 
 - **User** — minimal model (id, name). Single-tenant: seed one default user (id=1); all wallets belong to that user.
 - **Wallet** — belongs to a user; has name, optional description, optional as_of_date. Replaces ad-hoc “scenario” as the persistent wallet entity for the Wallet Tool.
-- **WalletCard** — links a card to a wallet with required `added_date` and optional SUB overrides (`sub_points`, `sub_min_spend`, `sub_months`, `sub_spend_points`). Null overrides use the Card’s catalog values. `years_counted` is used for SUB amortization (derived from the UI projection years + months).
+- **WalletCard** — links a card to a wallet with required `added_date` and optional SUB overrides (`sub`, `sub_min_spend`, `sub_months`, `sub_spend_amount`). Null overrides use the Card’s catalog values. `years_counted` is used for SUB amortization (derived from the UI projection years + months).
 
 ### Issuer
 
@@ -64,19 +67,18 @@ A reward currency tied to an issuer, with full metadata:
 | `is_cashback` | bool | True for pre-boost cashback variants (e.g. Chase UR Cash) |
 | `is_transferable` | bool | True when points can move to airline/hotel partners |
 
-### EcosystemBoost
+### Ecosystem
 
-Captures the issuer-ecosystem upgrade mechanic: when at least one **anchor** card is in the wallet, every **beneficiary** card switches its effective currency from its default (cashback) currency to `boosted_currency`.
+A points ecosystem (e.g. Chase UR, Amex MR). When a **key card** is in the wallet, cards in that ecosystem whose currency is the ecosystem’s cashback or an additional currency earn the ecosystem’s **points currency**.
 
 | Field | Purpose |
 |---|---|
-| `boosted_currency_id` | The transferable currency cards switch to when active |
-| `anchors` | Cards that activate this boost (e.g. CSR, CSP, CIP for Chase) |
-| `beneficiary_cards` | Cards that benefit (e.g. Freedom Unlimited, Freedom Flex) |
+| `points_currency_id` | The transferable currency cards earn when the ecosystem is active |
+| `cashback_currency_id` | Optional; cards on this cashback currency upgrade when a key card is in wallet |
+| `ecosystem_currencies` | Additional currencies (e.g. Cash) that convert to points when a key card is in wallet |
+| `card_memberships` | CardEcosystem rows: which cards belong to this ecosystem and which are key cards |
 
-**Chase example:** Freedom Unlimited defaults to `Chase UR Cash` (cpp=1.0, is_cashback=True). When a Sapphire Reserve is added, the `Chase UR Upgrade` boost fires and Freedom Unlimited's effective currency becomes `Chase UR` (cpp=1.5, is_transferable=True).
-
-**Citi example:** Custom Cash / Double Cash / Strata Premier default to `Citi TY Cash`. A Strata Elite activates `Citi TY Upgrade`, switching them to `Citi TY` (transferable).
+**CardEcosystem** links a card to an ecosystem; `key_card=True` means this card being in the wallet unlocks conversion for that ecosystem (e.g. Sapphire Reserve for Chase UR).
 
 ### Card
 
@@ -84,9 +86,8 @@ Captures the issuer-ecosystem upgrade mechanic: when at least one **anchor** car
 |---|---|
 | `issuer_id` | FK to Issuer |
 | `currency_id` | Default currency (cashback variant when applicable) |
-| `ecosystem_boost_id` | FK to EcosystemBoost (nullable) — which boost this card benefits from |
-| `annual_fee`, `sub_points`, `sub_min_spend`, `sub_months`, `sub_spend_points`, `annual_bonus_points` | Standard card attributes |
-| `anchor_for_boosts` | EcosystemBoostAnchor rows linking this card as an anchor |
+| `annual_fee`, `first_year_fee`, `sub`, `sub_min_spend`, `sub_months`, `sub_spend_amount`, `annual_bonus` | Standard card attributes |
+| `ecosystem_memberships` | CardEcosystem rows: which ecosystems this card belongs to and whether it is a key card |
 
 ---
 
@@ -99,26 +100,21 @@ The engine is a set of pure functions operating on `CardData` and `CurrencyData`
 ```python
 CurrencyData       # Snapshot of one Currency row for the engine
 CardData           # All static card data including nested CurrencyData;
-                   # holds ecosystem_boost_id and ecosystem_boost_currency
-                   # for the boost switch logic
+                   # holds ecosystem membership and effective currency
+                   # for the key-card upgrade logic
 CardResult         # Per-card outputs (EV, points, opportunity cost, …)
 WalletResult       # Aggregated wallet outputs including dynamic currency_pts dict
 ```
 
-### Boost resolution
+### Ecosystem / key-card resolution
 
-```python
-_active_boost_ids(selected_cards)      # Returns set of boost IDs whose anchor is in wallet
-_effective_currency(card, boost_ids)   # Returns card.ecosystem_boost_currency if boost fires,
-                                       # otherwise card.currency
-_effective_cpp(card, boost_ids)        # Derived from effective currency's cents_per_point
-```
+When a key card for an ecosystem is in the wallet, cards in that ecosystem use the ecosystem’s points currency; otherwise they use their default (e.g. cashback) currency. The engine resolves effective currency and cents-per-point per card from the selected set.
 
 ### Per-card formulas
 
 | Function | What it computes |
 |---|---|
-| `calc_annual_point_earn` | Σ(spend × multiplier) + annual_bonus_points |
+| `calc_annual_point_earn` | Σ(spend × multiplier) + annual_bonus |
 | `calc_credit_valuation` | Σ(credit values) |
 | `calc_2nd_year_ev` | Steady-state annual EV: earn/100 × cpp + credits − fee |
 | `calc_annual_ev` | SUB-amortized EV over `years_counted` |
@@ -132,7 +128,7 @@ _effective_cpp(card, boost_ids)        # Derived from effective currency's cents
 `calc_sub_opportunity_cost` returns a `(gross, net)` pair in **dollars** rather than raw points:
 
 - **gross** — `sub_extra_spend × best_wallet_earn_rate` where the best rate is the spend-weighted maximum earn rate (multiplier × cpp) across all other selected cards, computed per category. Cross-currency aware.
-- **net** — `max(0, gross − sub_spend_points_value)` — the true cost after crediting back what the new card earns on that same extra spend.
+- **net** — `max(0, gross − sub_spend_amount_value)` — the true cost after crediting back what the new card earns on that same extra spend.
 
 Using dollars and best-alternative rates (instead of average multipliers) produces a meaningful cross-currency comparison: redirecting spend from a 4x Amex MR card to a 1x cashback card carries a much higher cost than redirecting from a 1x UR card.
 
@@ -153,34 +149,47 @@ Interactive docs available at `http://localhost:8000/docs` when running locally.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/issuers` | List all issuers |
+| `POST` | `/issuers` | Create an issuer |
+| `PATCH` | `/issuers/{id}` | Update an issuer |
+| `DELETE` | `/issuers/{id}` | Delete an issuer |
 
 ### Currencies
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/currencies` | List all currencies with issuer info |
-| `PATCH` | `/currencies/{id}` | Update CPP, flags |
+| `GET` | `/currencies` | List all currencies (no user). Optional query `user_id` for user CPP overrides in response. |
+| `POST` | `/currencies` | Create a currency |
+| `PATCH` | `/currencies/{id}` | Update name, issuer_id, CPP, flags |
+| `DELETE` | `/currencies/{id}` | Delete a currency |
 
-### Ecosystem boosts
+### Ecosystems
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/ecosystem-boosts` | List all boosts with anchor cards and target currency |
+| `GET` | `/ecosystems` | List all ecosystems with points/cashback currency and memberships |
+| `GET` | `/ecosystems/{id}` | Get one ecosystem |
+| `POST` | `/ecosystems` | Create an ecosystem |
+| `PATCH` | `/ecosystems/{id}` | Update name, points_currency_id, additional currencies |
+| `DELETE` | `/ecosystems/{id}` | Delete an ecosystem |
 
 ### Cards
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/cards` | List all cards (nested issuer, currency, boost) |
+| `GET` | `/cards` | List all cards (nested issuer, currency, ecosystem memberships) |
 | `GET` | `/cards/{id}` | Get a single card |
-| `PATCH` | `/cards/{id}` | Update fee, SUB, currency_id, ecosystem_boost_id, etc. |
+| `POST` | `/cards` | Create a card |
+| `PATCH` | `/cards/{id}` | Update fee, SUB, currency_id, ecosystem_memberships, multipliers, etc. |
+| `DELETE` | `/cards/{id}` | Delete a card |
 
 ### Spend categories
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/spend` | List all spend categories with current annual spend |
+| `POST` | `/spend` | Create a category (body: category, annual_spend) |
 | `PUT` | `/spend/{category}` | Update annual spend for a category |
+| `DELETE` | `/spend/{category}` | Delete a category |
 
 ### Calculation
 
@@ -227,11 +236,11 @@ Interactive docs available at `http://localhost:8000/docs` when running locally.
 
 ## Seeding the database
 
-Seeding is a one-time operation that uses the DataFrames in `seed_data.py` (CARDS_DF, MULTIPLIERS_DF, CREDITS_DF, SPEND_DF) and populates all tables in dependency order:
+Seeding is a one-time operation that uses the DataFrames and static maps in `seed_data.py` and populates all tables in dependency order:
 
 ```
-User (default id=1) → Issuers → Currencies → EcosystemBoosts → SpendCategories
-→ Cards → EcosystemBoostAnchors → CardCategoryMultipliers → CardCredits
+User (default id=1) → Issuers → Currencies → Ecosystems → EcosystemCurrencies → SpendCategories
+→ Cards → CardEcosystems (memberships + key cards) → CardCategoryMultipliers → CardCredits
 ```
 
 ```bash
@@ -241,15 +250,13 @@ python3 -m app.seed_data
 
 Re-running seed is safe — all upserts are idempotent.
 
-### Adding a new issuer ecosystem boost
+### Adding a new issuer ecosystem
 
-1. Add a row to `ISSUERS` (if new issuer) in `seed_data.py`
-2. Add cashback and transferable `Currency` rows to `CURRENCIES`
-3. Add an `EcosystemBoost` row to `ECOSYSTEM_BOOSTS` pointing to the transferable currency
-4. Add anchor card names to `BOOST_ANCHORS`
-5. Set default cashback currency in `CARD_CURRENCY_MAP` for beneficiary cards
-6. Map beneficiary card names to the boost in `CARD_BOOST_MAP`
-7. Re-run `python -m app.seed_data`
+1. Add the issuer to `ISSUERS` (if new) in `seed_data.py`
+2. Add cashback and transferable `Currency` rows
+3. Add an `Ecosystem` with `points_currency_id` (and optional `cashback_currency_id`), then add `EcosystemCurrency` rows for any additional currencies that convert (e.g. Cash)
+4. For each card in the ecosystem, add a `CardEcosystem` row; set `key_card=True` for anchor cards (e.g. Sapphire Reserve)
+5. Re-run `python -m app.seed_data`
 
 ---
 

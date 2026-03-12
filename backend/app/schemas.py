@@ -51,6 +51,8 @@ class CurrencyRead(BaseModel):
     converts_to_points: bool = False
     converts_to_currency_id: Optional[int] = None
     issuer: Optional[IssuerRead] = None
+    # When listing with ?user_id=, effective CPP for that user (override or base)
+    user_cents_per_point: Optional[float] = None
 
 
 class CurrencyCreate(BaseModel):
@@ -71,6 +73,12 @@ class CurrencyUpdate(BaseModel):
     is_transferable: Optional[bool] = None
     converts_to_points: Optional[bool] = None
     converts_to_currency_id: Optional[int] = None
+
+
+class UserCurrencyCppSet(BaseModel):
+    """Set per-user cents-per-point override for a currency."""
+
+    cents_per_point: float = Field(..., gt=0)
 
 
 # ---------------------------------------------------------------------------
@@ -145,11 +153,13 @@ class CardRead(BaseModel):
     issuer_id: int
     currency_id: int
     annual_fee: float
-    sub_points: int
+    first_year_fee: Optional[float] = None
+    business: bool = False
+    sub: int
     sub_min_spend: Optional[int] = None
     sub_months: Optional[int] = None
-    sub_spend_points: int
-    annual_bonus_points: int
+    sub_spend_amount: int
+    annual_bonus: int
 
     issuer: IssuerRead
     currency_obj: CurrencyRead
@@ -166,11 +176,13 @@ class CardCreate(BaseModel):
     issuer_id: int
     currency_id: int
     annual_fee: float = 0.0
-    sub_points: int = 0
+    first_year_fee: Optional[float] = None
+    business: bool = False
+    sub: int = 0
     sub_min_spend: Optional[int] = None
     sub_months: Optional[int] = None
-    sub_spend_points: int = 0
-    annual_bonus_points: int = 0
+    sub_spend_amount: int = 0
+    annual_bonus: int = 0
     ecosystem_memberships: list[CardEcosystemMembershipSchema] = []
     multipliers: list[CardMultiplierSchema] = []
     credits: list[CardCreditSchema] = []
@@ -183,12 +195,15 @@ class CardUpdate(BaseModel):
     issuer_id: Optional[int] = None
     currency_id: Optional[int] = None
     annual_fee: Optional[float] = None
-    sub_points: Optional[int] = None
+    first_year_fee: Optional[float] = None
+    business: Optional[bool] = None
+    sub: Optional[int] = None
     sub_min_spend: Optional[int] = None
     sub_months: Optional[int] = None
-    sub_spend_points: Optional[int] = None
-    annual_bonus_points: Optional[int] = None
+    sub_spend_amount: Optional[int] = None
+    annual_bonus: Optional[int] = None
     ecosystem_memberships: Optional[list[CardEcosystemMembershipSchema]] = None
+    multipliers: Optional[list[CardMultiplierSchema]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +219,11 @@ class SpendCategoryBase(BaseModel):
 class SpendCategoryRead(SpendCategoryBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+
+
+class SpendCategoryCreate(BaseModel):
+    category: str
+    annual_spend: float = 0.0
 
 
 class SpendCategoryUpdate(BaseModel):
@@ -263,10 +283,10 @@ class ScenarioRead(ScenarioBase):
 class WalletCardBase(BaseModel):
     card_id: int
     added_date: date
-    sub_points: Optional[int] = None
+    sub: Optional[int] = None
     sub_min_spend: Optional[int] = None
     sub_months: Optional[int] = None
-    sub_spend_points: Optional[int] = None
+    sub_spend_amount: Optional[int] = None
     years_counted: int = Field(default=2, ge=1, le=20)
 
 
@@ -331,10 +351,11 @@ class CardResultSchema(BaseModel):
     annual_point_earn: float = 0.0
     credit_valuation: float = 0.0
     annual_fee: float = 0.0
-    sub_points: int = 0
-    annual_bonus_points: int = 0
+    first_year_fee: Optional[float] = None
+    sub: int = 0
+    annual_bonus: int = 0
     sub_extra_spend: float = 0.0
-    sub_spend_points: int = 0
+    sub_spend_amount: int = 0
     # Opportunity cost in dollars (net: gross minus value earned on target card)
     sub_opp_cost_dollars: float = 0.0
     # Gross opportunity cost in dollars (what the wallet would have earned)

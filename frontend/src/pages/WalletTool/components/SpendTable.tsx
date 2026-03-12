@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { SpendCategory } from '../api/client'
+import type { SpendCategory } from '../../../api/client'
 
 interface Props {
   categories: SpendCategory[]

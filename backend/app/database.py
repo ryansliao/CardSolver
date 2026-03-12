@@ -237,6 +237,148 @@ def _migrate_to_ecosystems(sync_conn):
     )
 
 
+def _rename_sub_points_to_sub_amount(sync_conn):
+    """Rename sub_points to sub_amount on cards and wallet_cards (SUB can be cash not just points)."""
+    if sync_conn.dialect.name != "postgresql":
+        return
+    sync_conn.execute(
+        text("""
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'cards' AND column_name = 'sub_points'
+          ) THEN
+            ALTER TABLE cards RENAME COLUMN sub_points TO sub_amount;
+          END IF;
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'wallet_cards' AND column_name = 'sub_points'
+          ) THEN
+            ALTER TABLE wallet_cards RENAME COLUMN sub_points TO sub_amount;
+          END IF;
+        END $$;
+        """)
+    )
+
+
+def _rename_sub_spend_and_annual_bonus_to_amount(sync_conn):
+    """Rename sub_spend_points→sub_spend_amount and annual_bonus_points→annual_bonus_amount (can be cash not just points)."""
+    if sync_conn.dialect.name != "postgresql":
+        return
+    sync_conn.execute(
+        text("""
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'cards' AND column_name = 'sub_spend_points'
+          ) THEN
+            ALTER TABLE cards RENAME COLUMN sub_spend_points TO sub_spend_amount;
+          END IF;
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'cards' AND column_name = 'annual_bonus_points'
+          ) THEN
+            ALTER TABLE cards RENAME COLUMN annual_bonus_points TO annual_bonus_amount;
+          END IF;
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'wallet_cards' AND column_name = 'sub_spend_points'
+          ) THEN
+            ALTER TABLE wallet_cards RENAME COLUMN sub_spend_points TO sub_spend_amount;
+          END IF;
+        END $$;
+        """)
+    )
+
+
+def _add_first_year_fee_if_missing(sync_conn):
+    """Add optional first_year_fee to cards if missing (first year can have a different, often lower, fee)."""
+    if sync_conn.dialect.name != "postgresql":
+        return
+    sync_conn.execute(
+        text("""
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'cards' AND column_name = 'first_year_fee'
+          ) THEN
+            ALTER TABLE cards ADD COLUMN first_year_fee DOUBLE PRECISION;
+          END IF;
+        END $$;
+        """)
+    )
+
+
+def _add_cards_business_if_missing(sync_conn):
+    """Add business flag to cards for business vs personal cards."""
+    if sync_conn.dialect.name != "postgresql":
+        return
+    sync_conn.execute(
+        text("""
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'cards' AND column_name = 'business'
+          ) THEN
+            ALTER TABLE cards ADD COLUMN business BOOLEAN DEFAULT FALSE NOT NULL;
+          END IF;
+        END $$;
+        """)
+    )
+
+
+def _add_user_currency_cpp_if_missing(sync_conn):
+    """Create user_currency_cpp table for per-user CPP overrides (PostgreSQL)."""
+    if sync_conn.dialect.name != "postgresql":
+        return
+    sync_conn.execute(
+        text("""
+        CREATE TABLE IF NOT EXISTS user_currency_cpp (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            currency_id INTEGER NOT NULL REFERENCES currencies(id) ON DELETE CASCADE,
+            cents_per_point DOUBLE PRECISION NOT NULL,
+            UNIQUE (user_id, currency_id)
+        )
+        """)
+    )
+
+
+def _rename_card_fields_to_short_names(sync_conn):
+    """Rename sub_amount→sub, annual_bonus_amount→annual_bonus (cards and wallet_cards)."""
+    if sync_conn.dialect.name != "postgresql":
+        return
+    sync_conn.execute(
+        text("""
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'cards' AND column_name = 'sub_amount'
+          ) THEN
+            ALTER TABLE cards RENAME COLUMN sub_amount TO sub;
+          END IF;
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'cards' AND column_name = 'annual_bonus_amount'
+          ) THEN
+            ALTER TABLE cards RENAME COLUMN annual_bonus_amount TO annual_bonus;
+          END IF;
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'wallet_cards' AND column_name = 'sub_amount'
+          ) THEN
+            ALTER TABLE wallet_cards RENAME COLUMN sub_amount TO sub;
+          END IF;
+        END $$;
+        """)
+    )
+
+
 def _restore_cashback_and_additional_currencies(sync_conn):
     """Add cashback_currency_id back if it was dropped; backfill from first ecosystem_currency, leave rest as additional."""
     if sync_conn.dialect.name != "postgresql":
@@ -279,3 +421,9 @@ async def create_tables() -> None:
         await conn.run_sync(_migrate_boost_to_cashback_conversion)
         await conn.run_sync(_restore_cashback_and_additional_currencies)  # before _migrate_to_ecosystems so column exists
         await conn.run_sync(_migrate_to_ecosystems)
+        await conn.run_sync(_rename_sub_points_to_sub_amount)
+        await conn.run_sync(_rename_sub_spend_and_annual_bonus_to_amount)
+        await conn.run_sync(_add_first_year_fee_if_missing)
+        await conn.run_sync(_add_cards_business_if_missing)
+        await conn.run_sync(_rename_card_fields_to_short_names)
+        await conn.run_sync(_add_user_currency_cpp_if_missing)

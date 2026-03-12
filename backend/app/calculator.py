@@ -47,11 +47,12 @@ class CardData:
     currency: CurrencyData
 
     annual_fee: float
-    sub_points: int
+    sub: int
     sub_min_spend: Optional[int]
     sub_months: Optional[int]
-    sub_spend_points: int
-    annual_bonus_points: int
+    sub_spend_amount: int
+    annual_bonus: int
+    first_year_fee: Optional[float] = None
 
     # Ecosystem-based conversion: when a key card for one of these ecosystems is in the wallet,
     # this card earns the given points currency instead of its default.
@@ -80,15 +81,16 @@ class CardResult:
     annual_point_earn: float = 0.0
     credit_valuation: float = 0.0
     annual_fee: float = 0.0
-    sub_points: int = 0
-    annual_bonus_points: int = 0
+    first_year_fee: Optional[float] = None
+    sub: int = 0
+    annual_bonus: int = 0
     sub_extra_spend: float = 0.0
-    sub_spend_points: int = 0
+    sub_spend_amount: int = 0
     # Opportunity cost: net dollar value foregone on the rest of the wallet
-    # to cover the SUB extra spend (gross opp cost minus sub_spend_points value)
+    # to cover the SUB extra spend (gross opp cost minus sub_spend_amount value)
     sub_opp_cost_dollars: float = 0.0
     # Gross dollar opportunity cost (best alternative earn on the extra spend,
-    # before crediting back the sub_spend_points earned on the target card)
+    # before crediting back the sub_spend_amount earned on the target card)
     sub_opp_cost_gross_dollars: float = 0.0
     avg_spend_multiplier: float = 0.0
     cents_per_point: float = 0.0
@@ -153,7 +155,7 @@ def calc_annual_point_earn(
 ) -> float:
     """Total points earned per year from category spend plus any annual bonus."""
     cat_pts = sum(spend.get(cat, 0.0) * mult for cat, mult in card.multipliers.items())
-    return float(card.annual_bonus_points) + cat_pts
+    return float(card.annual_bonus) + cat_pts
 
 
 def calc_credit_valuation(card: CardData) -> float:
@@ -240,7 +242,7 @@ def calc_sub_opportunity_cost(
 
     Returns (gross_opp_cost_dollars, net_opp_cost_dollars):
       gross = extra_spend × best_wallet_earn_rate
-      net   = gross − value_of_sub_spend_points_earned_on_this_card
+      net   = gross − value_of_sub_spend_amount_earned_on_this_card
               (i.e. what you truly lose after accounting for what the new card
                earns on that same spend)
     """
@@ -252,7 +254,7 @@ def calc_sub_opportunity_cost(
     gross = extra_spend * best_rate
 
     currency = _effective_currency(card, ecosystems_with_key)
-    sub_spend_value = card.sub_spend_points * currency.cents_per_point / 100.0
+    sub_spend_value = card.sub_spend_amount * currency.cents_per_point / 100.0
     net = max(0.0, gross - sub_spend_value)
 
     return round(gross, 4), round(net, 4)
@@ -292,8 +294,8 @@ def calc_total_points(
 
     total = (
         annual_earn
-        + card.sub_spend_points
-        + card.sub_points
+        + card.sub_spend_amount
+        + card.sub
         - net_opp_pts
     ) + annual_earn * (years - 1)
     return total
@@ -321,12 +323,14 @@ def calc_annual_ev(
     annual_earn = calc_annual_point_earn(card, spend)
     credits = calc_credit_valuation(card)
 
+    fee_y1 = card.first_year_fee if card.first_year_fee is not None else card.annual_fee
+    total_fees = fee_y1 + (years - 1) * card.annual_fee
     value = (
-        ((annual_earn + card.sub_spend_points) / 100 * cpp) * years
-        + card.sub_points / 100
-        + card.annual_bonus_points * (years - 1)
+        ((annual_earn + card.sub_spend_amount) / 100 * cpp) * years
+        + card.sub / 100
+        + card.annual_bonus * (years - 1)
         + credits
-        - card.annual_fee
+        - total_fees
     ) / years
     return value
 
@@ -361,7 +365,8 @@ def compute_wallet(
                     card_name=card.name,
                     selected=False,
                     annual_fee=card.annual_fee,
-                    sub_points=card.sub_points,
+                    first_year_fee=card.first_year_fee,
+                    sub=card.sub,
                     cents_per_point=card.currency.cents_per_point,
                     effective_currency_name=card.currency.name,
                 )
@@ -389,10 +394,11 @@ def compute_wallet(
                 annual_point_earn=round(annual_point_earn, 2),
                 credit_valuation=round(credit_val, 2),
                 annual_fee=card.annual_fee,
-                sub_points=card.sub_points,
-                annual_bonus_points=card.annual_bonus_points,
+                first_year_fee=card.first_year_fee,
+                sub=card.sub,
+                annual_bonus=card.annual_bonus,
                 sub_extra_spend=round(sub_extra, 2),
-                sub_spend_points=card.sub_spend_points,
+                sub_spend_amount=card.sub_spend_amount,
                 sub_opp_cost_dollars=net_opp,
                 sub_opp_cost_gross_dollars=gross_opp,
                 avg_spend_multiplier=round(avg_mult, 4),

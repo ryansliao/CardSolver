@@ -1,5 +1,5 @@
 """
-Seed the database with all credit cards from pandas DataFrames.
+Seed the database with reference data and cards from in-memory DataFrames (default: empty).
 
 Run directly (from the backend/ directory):
     python -m app.seed_data
@@ -11,7 +11,7 @@ Seeding order (respects FK dependencies):
     1. Issuers
     2. Currencies          (FK -> issuers; converts_to_points / converts_to_currency_id set from card boost data)
     3. Spend categories
-    4. Cards               (FK -> issuers, currencies); anchors_cashback_conversion set from Anchors sheet
+    4. Cards               (FK -> issuers, currencies); anchors set from Anchors data
     5. CardCategoryMultipliers / CardCredits
 """
 
@@ -42,13 +42,9 @@ from app.models import (
 )
 
 # ---------------------------------------------------------------------------
-# Reference data path (data/reference.xlsx at project root)
+# Default DataFrames / structures for seeding (empty; cards/issuers/etc. come from API or other sources)
 # ---------------------------------------------------------------------------
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-REFERENCE_XLSX = _PROJECT_ROOT / "data" / "reference.xlsx"
-
-# Default DataFrames / structures when reference.xlsx is missing or not used
 _CARDS_DF_DEFAULT = pd.DataFrame(
     columns=[
         "name",
@@ -56,11 +52,12 @@ _CARDS_DF_DEFAULT = pd.DataFrame(
         "currency_name",
         "ecosystem_boost_name",
         "annual_fee",
-        "sub_points",
+        "first_year_fee",
+        "sub",
         "sub_min_spend",
         "sub_months",
-        "sub_spend_points",
-        "annual_bonus_points",
+        "sub_spend_amount",
+        "annual_bonus",
     ]
 )
 _MULTIPLIERS_DF_DEFAULT = pd.DataFrame(columns=["card_name", "category", "multiplier"])
@@ -68,8 +65,8 @@ _CREDITS_DF_DEFAULT = pd.DataFrame(columns=["card_name", "credit_type", "label",
 _ANCHORS_DF_DEFAULT = pd.DataFrame(columns=["boost_name", "card_name"])
 
 
-def _load_reference_data() -> tuple[
-    list[str],
+def _default_reference_data() -> tuple[
+    list[tuple[str, Optional[str], Optional[str]]],
     list[tuple[str, str, float, bool, bool]],
     list[tuple[str, str, str, str]],
     pd.DataFrame,
@@ -78,137 +75,21 @@ def _load_reference_data() -> tuple[
     pd.DataFrame,
     pd.DataFrame,
 ]:
-    """
-    Load issuers, currencies, boosts, and DataFrames from data/reference.xlsx.
-    Returns (issuers, currencies, ecosystem_boosts, cards_df, multipliers_df, credits_df, spend_df, anchors_df).
-    If the file is missing or a sheet is invalid, the corresponding tuple entries are None and DataFrames are defaults.
-    """
+    """Return default empty reference data (issuers, currencies, boosts, cards_df, multipliers_df, credits_df, spend_df, anchors_df)."""
     _empty_spend = pd.DataFrame(columns=["category", "annual_spend"])
-    if not REFERENCE_XLSX.exists():
-        return (
-            [],
-            [],
-            [],
-            _CARDS_DF_DEFAULT.copy(),
-            _MULTIPLIERS_DF_DEFAULT.copy(),
-            _CREDITS_DF_DEFAULT.copy(),
-            _empty_spend.copy(),
-            _ANCHORS_DF_DEFAULT.copy(),
-        )
-
-    issuers_list: list[tuple[str, Optional[str], Optional[str]]] = []
-    currencies_list: list[tuple[str, str, float, bool, bool, float]] = []
-    boosts_list: list[tuple[str, str, str, str]] = []
-    cards_df = _CARDS_DF_DEFAULT.copy()
-    multipliers_df = _MULTIPLIERS_DF_DEFAULT.copy()
-    credits_df = _CREDITS_DF_DEFAULT.copy()
-    spend_df = _empty_spend.copy()
-    anchors_df = _ANCHORS_DF_DEFAULT.copy()
-
-    try:
-        # Issuers: (name, co_brand_partner?, network?)
-        df = pd.read_excel(REFERENCE_XLSX, sheet_name="Issuers", engine="openpyxl")
-        if not df.empty and "name" in df.columns:
-            has_extra = "co_brand_partner" in df.columns and "network" in df.columns
-            if has_extra:
-                issuers_list = [
-                    (
-                        str(row["name"]).strip(),
-                        str(row["co_brand_partner"]).strip() if pd.notna(row.get("co_brand_partner")) and str(row.get("co_brand_partner")).strip() else None,
-                        str(row["network"]).strip() if pd.notna(row.get("network")) and str(row.get("network")).strip() else None,
-                    )
-                    for _, row in df.iterrows()
-                    if pd.notna(row.get("name"))
-                ]
-            else:
-                issuers_list = [
-                    (n, None, None)
-                    for n in df["name"].dropna().astype(str).str.strip().tolist()
-                ]
-
-        # Currencies
-        df = pd.read_excel(REFERENCE_XLSX, sheet_name="Currencies", engine="openpyxl")
-        if not df.empty and "issuer_name" in df.columns and "currency_name" in df.columns:
-            rows = []
-            for _, row in df.iterrows():
-                rows.append(
-                    (
-                        str(row["issuer_name"]).strip(),
-                        str(row["currency_name"]).strip(),
-                        float(row.get("cents_per_point", 1.0) or 1.0),
-                        bool(row.get("is_cashback", False)),
-                        bool(row.get("is_transferable", False)),
-                    )
-                )
-            currencies_list = rows
-
-        # EcosystemBoosts
-        df = pd.read_excel(REFERENCE_XLSX, sheet_name="EcosystemBoosts", engine="openpyxl")
-        if not df.empty and "issuer_name" in df.columns and "boost_name" in df.columns:
-            rows = []
-            for _, row in df.iterrows():
-                rows.append(
-                    (
-                        str(row["issuer_name"]).strip(),
-                        str(row["boost_name"]).strip(),
-                        str(row.get("boosted_currency_name", "")).strip(),
-                        str(row.get("description", "") or ""),
-                    )
-                )
-            boosts_list = rows
-
-        # SpendCategories
-        df = pd.read_excel(REFERENCE_XLSX, sheet_name="SpendCategories", engine="openpyxl")
-        if not df.empty and "category" in df.columns:
-            spend_df = df[["category", "annual_spend"]] if "annual_spend" in df.columns else df
-            if "annual_spend" not in spend_df.columns:
-                spend_df["annual_spend"] = 0.0
-
-        # Cards
-        df = pd.read_excel(REFERENCE_XLSX, sheet_name="Cards", engine="openpyxl")
-        if not df.empty:
-            cards_df = df
-
-        # Multipliers
-        df = pd.read_excel(REFERENCE_XLSX, sheet_name="Multipliers", engine="openpyxl")
-        if not df.empty and "card_name" in df.columns and "category" in df.columns:
-            multipliers_df = df
-
-        # Credits
-        df = pd.read_excel(REFERENCE_XLSX, sheet_name="Credits", engine="openpyxl")
-        if not df.empty and "card_name" in df.columns:
-            credits_df = df
-
-        # Anchors
-        df = pd.read_excel(REFERENCE_XLSX, sheet_name="Anchors", engine="openpyxl")
-        if not df.empty and "boost_name" in df.columns and "card_name" in df.columns:
-            anchors_df = df
-    except Exception:
-        # On any read error, fall back to empty data for this run
-        return (
-            [],
-            [],
-            [],
-            _CARDS_DF_DEFAULT.copy(),
-            _MULTIPLIERS_DF_DEFAULT.copy(),
-            _CREDITS_DF_DEFAULT.copy(),
-            pd.DataFrame(columns=["category", "annual_spend"]),
-            _ANCHORS_DF_DEFAULT.copy(),
-        )
-
     return (
-        issuers_list,
-        currencies_list,
-        boosts_list,
-        cards_df,
-        multipliers_df,
-        credits_df,
-        spend_df,
-        anchors_df,
+        [],
+        [],
+        [],
+        _CARDS_DF_DEFAULT.copy(),
+        _MULTIPLIERS_DF_DEFAULT.copy(),
+        _CREDITS_DF_DEFAULT.copy(),
+        _empty_spend.copy(),
+        _ANCHORS_DF_DEFAULT.copy(),
     )
 
 
-# Module-level DataFrames (overwritten at seed() from reference.xlsx when present)
+# Module-level DataFrames (used by seed())
 CARDS_DF = _CARDS_DF_DEFAULT.copy()
 MULTIPLIERS_DF = _MULTIPLIERS_DF_DEFAULT.copy()
 CREDITS_DF = _CREDITS_DF_DEFAULT.copy()
@@ -259,11 +140,12 @@ def _cards_from_dfs(
             "currency_name": str(row["currency_name"]).strip() if pd.notna(row.get("currency_name")) else None,
             "ecosystem_boost_name": str(row["ecosystem_boost_name"]).strip() if pd.notna(row.get("ecosystem_boost_name")) else None,
             "annual_fee": float(row.get("annual_fee", 0) or 0),
-            "sub_points": int(row.get("sub_points", 0) or 0),
+            "first_year_fee": float(row["first_year_fee"]) if pd.notna(row.get("first_year_fee")) else None,
+            "sub": int(row.get("sub", 0) or 0),
             "sub_min_spend": int(row["sub_min_spend"]) if pd.notna(row.get("sub_min_spend")) else None,
             "sub_months": int(row["sub_months"]) if pd.notna(row.get("sub_months")) else None,
-            "sub_spend_points": int(row.get("sub_spend_points", 0) or 0),
-            "annual_bonus_points": int(row.get("annual_bonus_points", 0) or 0),
+            "sub_spend_amount": int(row.get("sub_spend_amount", 0) or 0),
+            "annual_bonus": int(row.get("annual_bonus", 0) or 0),
             "multipliers": multipliers,
             "credits": credits,
         }
@@ -345,22 +227,18 @@ async def _upsert_currency(
 
 
 async def seed(session: AsyncSession) -> None:
-    """Upsert all reference data and cards. Loads from data/reference.xlsx when present."""
+    """Upsert reference data and cards from default empty DataFrames (add cards/issuers/currencies via API or other tools)."""
 
     (
-        issuers_from_file,
-        currencies_from_file,
-        boosts_from_file,
+        issuers_list,
+        currencies_list,
+        boosts_list,
         cards_df,
         multipliers_df,
         credits_df,
         spend_df,
         anchors_df,
-    ) = _load_reference_data()
-
-    issuers_list = issuers_from_file or []
-    currencies_list = currencies_from_file or []
-    boosts_list = boosts_from_file or []
+    ) = _default_reference_data()
 
     # 0. Default user (for single-tenant Wallet Tool)
     default_user = await session.execute(select(User).where(User.id == 1))
@@ -434,8 +312,7 @@ async def seed(session: AsyncSession) -> None:
         currency = currency_objs.get(currency_name)
         if currency is None:
             raise ValueError(
-                f"Currency '{currency_name}' not found for card '{card_name}'. "
-                "Add it to the Currencies sheet in data/reference.xlsx."
+                f"Currency '{currency_name}' not found for card '{card_name}'. Add the currency first (e.g. via API)."
             )
 
         # If this card had an ecosystem boost, mark its (cashback) currency as converts_to_points

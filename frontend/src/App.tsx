@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import Library from './pages/Library'
-import WalletTool from './pages/WalletTool'
+import Library from './pages/Library/index'
+import WalletTool from './pages/WalletTool/index'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000 } },

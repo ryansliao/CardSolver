@@ -27,6 +27,9 @@ class User(Base):
     wallets: Mapped[list["Wallet"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    currency_cpp_overrides: Mapped[list["UserCurrencyCpp"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<User id={self.id} name={self.name!r}>"
@@ -87,9 +90,38 @@ class Currency(Base):
         foreign_keys=[converts_to_currency_id],
         remote_side=[id],
     )
+    user_cpp_overrides: Mapped[list["UserCurrencyCpp"]] = relationship(
+        back_populates="currency", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Currency id={self.id} name={self.name!r}>"
+
+
+class UserCurrencyCpp(Base):
+    """
+    Per-user override of cents-per-point for a currency.
+    When set, wallet calculations and currency listing use this value for that user
+    instead of Currency.cents_per_point.
+    """
+
+    __tablename__ = "user_currency_cpp"
+    __table_args__ = (UniqueConstraint("user_id", "currency_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    currency_id: Mapped[int] = mapped_column(
+        ForeignKey("currencies.id", ondelete="CASCADE"), nullable=False
+    )
+    cents_per_point: Mapped[float] = mapped_column(Float, nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="currency_cpp_overrides")
+    currency: Mapped["Currency"] = relationship(back_populates="user_cpp_overrides")
+
+    def __repr__(self) -> str:
+        return f"<UserCurrencyCpp user={self.user_id} currency={self.currency_id} cpp={self.cents_per_point}>"
 
 
 class Ecosystem(Base):
@@ -189,16 +221,19 @@ class Card(Base):
     )
 
     annual_fee: Mapped[float] = mapped_column(Float, default=0)
+    # First year annual fee (optional; if set, often lower than annual_fee, e.g. waived or reduced)
+    first_year_fee: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    business: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Sign-up bonus
-    sub_points: Mapped[int] = mapped_column(Integer, default=0)
+    sub: Mapped[int] = mapped_column(Integer, default=0)
     sub_min_spend: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     sub_months: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # Points earned just from hitting the SUB spend (e.g. BBP 2x on that spend)
-    sub_spend_points: Mapped[int] = mapped_column(Integer, default=0)
+    # Amount earned just from hitting the SUB spend (e.g. BBP 2x on that spend; can be points or cash)
+    sub_spend_amount: Mapped[int] = mapped_column(Integer, default=0)
 
-    # Recurring annual bonus points (e.g. Chase Ink Preferred 10k points/year)
-    annual_bonus_points: Mapped[int] = mapped_column(Integer, default=0)
+    # Recurring annual bonus (e.g. Chase Ink Preferred 10k points/year; can be points or cash)
+    annual_bonus: Mapped[int] = mapped_column(Integer, default=0)
 
     issuer: Mapped["Issuer"] = relationship(
         back_populates="cards", foreign_keys=[issuer_id]
@@ -343,7 +378,7 @@ class Wallet(Base):
 class WalletCard(Base):
     """
     A card in a wallet with added_date and optional SUB overrides.
-    If sub_points/sub_min_spend/sub_months/sub_spend_points are null, use Card's values.
+    If sub/sub_min_spend/sub_months/sub_spend_amount are null, use Card's values.
     """
 
     __tablename__ = "wallet_cards"
@@ -357,10 +392,10 @@ class WalletCard(Base):
     added_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     # Optional SUB overrides (null = use Card's value)
-    sub_points: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    sub: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     sub_min_spend: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     sub_months: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    sub_spend_points: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    sub_spend_amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     years_counted: Mapped[int] = mapped_column(Integer, default=2)
 
     wallet: Mapped["Wallet"] = relationship(back_populates="wallet_cards")

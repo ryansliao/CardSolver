@@ -45,6 +45,8 @@ export interface CurrencyRead {
   converts_to_points?: boolean
   converts_to_currency_id?: number | null
   issuer?: IssuerRead | null
+  /** When listing with user_id, effective CPP for that user (override or base). */
+  user_cents_per_point?: number | null
 }
 
 export interface EcosystemCurrencyRead {
@@ -76,11 +78,13 @@ export interface Card {
   issuer_id: number
   currency_id: number
   annual_fee: number
-  sub_points: number
+  first_year_fee: number | null
+  business: boolean
+  sub: number
   sub_min_spend: number | null
   sub_months: number | null
-  sub_spend_points: number
-  annual_bonus_points: number
+  sub_spend_amount: number
+  annual_bonus: number
   ecosystem_memberships: CardEcosystemMembership[]
   multipliers: CardMultiplier[]
   credits: CardCredit[]
@@ -102,10 +106,11 @@ export interface CardResult {
   annual_point_earn: number
   credit_valuation: number
   annual_fee: number
-  sub_points: number
-  annual_bonus_points: number
+  first_year_fee: number | null
+  sub: number
+  annual_bonus: number
   sub_extra_spend: number
-  sub_spend_points: number
+  sub_spend_amount: number
   sub_opp_cost_dollars: number
   sub_opp_cost_gross_dollars: number
   avg_spend_multiplier: number
@@ -155,10 +160,10 @@ export interface WalletCard {
   card_id: number
   card_name: string | null
   added_date: string
-  sub_points: number | null
+  sub: number | null
   sub_min_spend: number | null
   sub_months: number | null
-  sub_spend_points: number | null
+  sub_spend_amount: number | null
   years_counted: number
 }
 
@@ -191,10 +196,10 @@ export interface CreateWalletPayload {
 export interface AddCardToWalletPayload {
   card_id: number
   added_date: string
-  sub_points?: number | null
+  sub?: number | null
   sub_min_spend?: number | null
   sub_months?: number | null
-  sub_spend_points?: number | null
+  sub_spend_amount?: number | null
   years_counted?: number
 }
 
@@ -279,12 +284,22 @@ export interface CurrencyUpdatePayload {
 }
 
 export const currenciesApi = {
-  list: () => request<CurrencyRead[]>('/currencies'),
+  list: (userId?: number) =>
+    request<CurrencyRead[]>(
+      typeof userId === 'number' ? `/currencies?user_id=${userId}` : '/currencies'
+    ),
   create: (payload: CurrencyCreatePayload) =>
     request<CurrencyRead>('/currencies', { method: 'POST', body: JSON.stringify(payload) }),
   update: (id: number, payload: CurrencyUpdatePayload) =>
     request<CurrencyRead>(`/currencies/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   delete: (id: number) => request<void>(`/currencies/${id}`, { method: 'DELETE' }),
+  setUserCpp: (userId: number, currencyId: number, centsPerPoint: number) =>
+    request<void>(`/users/${userId}/currencies/${currencyId}/cpp`, {
+      method: 'PUT',
+      body: JSON.stringify({ cents_per_point: centsPerPoint }),
+    }),
+  deleteUserCpp: (userId: number, currencyId: number) =>
+    request<void>(`/users/${userId}/currencies/${currencyId}/cpp`, { method: 'DELETE' }),
 }
 
 // ─── Ecosystems ────────────────────────────────────────────────────────────────
@@ -325,11 +340,13 @@ export interface CardCreatePayload {
   issuer_id: number
   currency_id: number
   annual_fee?: number
-  sub_points?: number
+  first_year_fee?: number | null
+  business?: boolean
+  sub?: number
   sub_min_spend?: number | null
   sub_months?: number | null
-  sub_spend_points?: number
-  annual_bonus_points?: number
+  sub_spend_amount?: number
+  annual_bonus?: number
   ecosystem_memberships?: CardEcosystemMembershipPayload[]
   multipliers?: CardMultiplier[]
   credits?: CardCredit[]
@@ -347,13 +364,25 @@ export const cardsApi = {
 
 // ─── Spend categories ─────────────────────────────────────────────────────────
 
+export interface CreateSpendCategoryPayload {
+  category: string
+  annual_spend?: number
+}
+
 export const spendApi = {
   list: () => request<SpendCategory[]>('/spend'),
+  create: (payload: CreateSpendCategoryPayload) =>
+    request<SpendCategory>('/spend', {
+      method: 'POST',
+      body: JSON.stringify({ category: payload.category, annual_spend: payload.annual_spend ?? 0 }),
+    }),
   update: (category: string, annual_spend: number) =>
     request<SpendCategory>(`/spend/${encodeURIComponent(category)}`, {
       method: 'PUT',
       body: JSON.stringify({ annual_spend }),
     }),
+  delete: (category: string) =>
+    request<void>(`/spend/${encodeURIComponent(category)}`, { method: 'DELETE' }),
 }
 
 // ─── Calculation ──────────────────────────────────────────────────────────────

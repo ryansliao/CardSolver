@@ -9,8 +9,10 @@ GET  /cards                         List all cards
 GET  /cards/{id}                    Get one card
 PATCH /cards/{id}                   Update card static data
 
-GET  /spend                         Get spend categories
-PUT  /spend/{category}              Update a spend category
+GET    /spend                       Get spend categories
+POST   /spend                       Create a spend category
+PUT    /spend/{category}            Update a spend category
+DELETE /spend/{category}            Delete a spend category
 
 POST /calculate                     Run wallet calculation directly
 
@@ -53,7 +55,7 @@ from sqlalchemy.orm import selectinload
 
 from .calculator import compute_wallet
 from .database import create_tables, get_db
-from .db_helpers import load_card_data, load_spend
+from .db_helpers import load_card_data, load_spend, load_user_cpp_overrides
 from .models import (
     Card,
     CardCategoryMultiplier,
@@ -67,6 +69,7 @@ from .models import (
     ScenarioCard,
     SpendCategory,
     User,
+    UserCurrencyCpp,
     Wallet,
     WalletCard,
 )
@@ -92,6 +95,7 @@ from .schemas import (
     ScenarioRead,
     ScenarioResultSchema,
     ScenarioUpdate,
+    SpendCategoryCreate,
     SpendCategoryRead,
     SpendCategoryUpdate,
     WalletCardCreate,
@@ -101,6 +105,7 @@ from .schemas import (
     WalletResultResponseSchema,
     WalletResultSchema,
     WalletUpdate,
+    UserCurrencyCppSet,
 )
 
 
@@ -273,13 +278,29 @@ async def delete_issuer(issuer_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/currencies", response_model=list[CurrencyRead], tags=["currencies"])
-async def list_currencies(db: AsyncSession = Depends(get_db)):
+async def list_currencies(
+    user_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all currencies. If user_id is provided, each currency includes
+    user_cents_per_point (the user's override or the default).
+    """
     result = await db.execute(
         select(Currency)
         .options(selectinload(Currency.issuer))
         .order_by(Currency.name)
     )
-    return result.scalars().all()
+    currencies = result.scalars().all()
+    if user_id is None:
+        return currencies
+    overrides = await load_user_cpp_overrides(db, user_id)
+    return [
+        CurrencyRead.model_validate(c).model_copy(
+            update={"user_cents_per_point": overrides.get(c.id, c.cents_per_point)}
+        )
+        for c in currencies
+    ]
 
 
 @app.post(
@@ -384,6 +405,71 @@ async def delete_currency(currency_id: int, db: AsyncSession = Depends(get_db)):
         )
 
 
+@app.put(
+    "/users/{user_id}/currencies/{currency_id}/cpp",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["currencies"],
+)
+async def set_user_currency_cpp(
+    user_id: int,
+    currency_id: int,
+    payload: UserCurrencyCppSet,
+    db: AsyncSession = Depends(get_db),
+):
+    """Set this user's cents-per-point override for a currency."""
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    if not user_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail=f"User id={user_id} not found")
+    currency_result = await db.execute(select(Currency).where(Currency.id == currency_id))
+    if not currency_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail=f"Currency id={currency_id} not found")
+    existing = await db.execute(
+        select(UserCurrencyCpp).where(
+            UserCurrencyCpp.user_id == user_id,
+            UserCurrencyCpp.currency_id == currency_id,
+        )
+    )
+    row = existing.scalar_one_or_none()
+    if row:
+        row.cents_per_point = payload.cents_per_point
+    else:
+        db.add(
+            UserCurrencyCpp(
+                user_id=user_id,
+                currency_id=currency_id,
+                cents_per_point=payload.cents_per_point,
+            )
+        )
+    await db.commit()
+
+
+@app.delete(
+    "/users/{user_id}/currencies/{currency_id}/cpp",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["currencies"],
+)
+async def delete_user_currency_cpp(
+    user_id: int,
+    currency_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove this user's CPP override for a currency (revert to default)."""
+    result = await db.execute(
+        select(UserCurrencyCpp).where(
+            UserCurrencyCpp.user_id == user_id,
+            UserCurrencyCpp.currency_id == currency_id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail="No CPP override found for this user and currency",
+        )
+    await db.delete(row)
+    await db.commit()
+
+
 # ---------------------------------------------------------------------------
 # Ecosystems
 # ---------------------------------------------------------------------------
@@ -453,6 +539,8 @@ async def create_ecosystem(
     await db.commit()
     await db.refresh(eco)
     for cid in payload.additional_currency_ids or []:
+        if cid == eco.points_currency_id:
+            continue  # primary currency must not be in additional
         c = await db.get(Currency, cid)
         if c:
             db.add(EcosystemCurrency(ecosystem_id=eco.id, currency_id=cid))
@@ -485,6 +573,8 @@ async def update_ecosystem(
         for ec in list(eco.ecosystem_currencies):
             await db.delete(ec)
         for cid in additional_ids:
+            if cid == eco.points_currency_id:
+                continue  # primary currency must not be in additional
             c = await db.get(Currency, cid)
             if c:
                 db.add(EcosystemCurrency(ecosystem_id=eco.id, currency_id=cid))
@@ -571,6 +661,7 @@ async def update_card(
             )
 
     ecosystem_memberships = updates.pop("ecosystem_memberships", None)
+    multipliers = updates.pop("multipliers", None)
     for field, value in updates.items():
         setattr(card, field, value)
 
@@ -591,6 +682,20 @@ async def update_card(
                     card_id=card.id,
                     ecosystem_id=eco.id,
                     key_card=m["key_card"],
+                )
+            )
+
+    if multipliers is not None:
+        # Replace card's category multipliers
+        for cm in list(card.multipliers):
+            await db.delete(cm)
+        await db.flush()
+        for m in multipliers:
+            db.add(
+                CardCategoryMultiplier(
+                    card_id=card.id,
+                    category=m["category"],
+                    multiplier=m["multiplier"],
                 )
             )
 
@@ -643,11 +748,13 @@ async def create_card(
         issuer_id=payload.issuer_id,
         currency_id=payload.currency_id,
         annual_fee=payload.annual_fee,
-        sub_points=payload.sub_points,
+        first_year_fee=payload.first_year_fee,
+        business=payload.business,
+        sub=payload.sub,
         sub_min_spend=payload.sub_min_spend,
         sub_months=payload.sub_months,
-        sub_spend_points=payload.sub_spend_points,
-        annual_bonus_points=payload.annual_bonus_points,
+        sub_spend_amount=payload.sub_spend_amount,
+        annual_bonus=payload.annual_bonus,
     )
     db.add(card)
     await db.flush()
@@ -709,8 +816,32 @@ async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
 
 @app.get("/spend", response_model=list[SpendCategoryRead], tags=["spend"])
 async def list_spend(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(SpendCategory))
+    result = await db.execute(select(SpendCategory).order_by(SpendCategory.category))
     return result.scalars().all()
+
+
+@app.post(
+    "/spend",
+    response_model=SpendCategoryRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["spend"],
+)
+async def create_spend(
+    payload: SpendCategoryCreate, db: AsyncSession = Depends(get_db)
+):
+    existing = await db.execute(
+        select(SpendCategory).where(SpendCategory.category == payload.category)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail=f"Category {payload.category!r} already exists",
+        )
+    sc = SpendCategory(category=payload.category, annual_spend=payload.annual_spend)
+    db.add(sc)
+    await db.commit()
+    await db.refresh(sc)
+    return sc
 
 
 @app.put("/spend/{category}", response_model=SpendCategoryRead, tags=["spend"])
@@ -727,6 +858,22 @@ async def update_spend(
     await db.commit()
     await db.refresh(sc)
     return sc
+
+
+@app.delete(
+    "/spend/{category}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["spend"],
+)
+async def delete_spend(category: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SpendCategory).where(SpendCategory.category == category)
+    )
+    sc = result.scalar_one_or_none()
+    if not sc:
+        raise HTTPException(status_code=404, detail=f"Category '{category}' not found")
+    await db.delete(sc)
+    await db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -1023,10 +1170,10 @@ async def list_wallets(
                 card_id=wc.card_id,
                 card_name=wc.card.name,
                 added_date=wc.added_date,
-                sub_points=wc.sub_points,
+                sub=wc.sub,
                 sub_min_spend=wc.sub_min_spend,
                 sub_months=wc.sub_months,
-                sub_spend_points=wc.sub_spend_points,
+                sub_spend_amount=wc.sub_spend_amount,
                 years_counted=wc.years_counted,
             )
             for wc in w.wallet_cards
@@ -1091,10 +1238,10 @@ async def get_wallet(wallet_id: int, db: AsyncSession = Depends(get_db)):
             card_id=wc.card_id,
             card_name=wc.card.name,
             added_date=wc.added_date,
-            sub_points=wc.sub_points,
+            sub=wc.sub,
             sub_min_spend=wc.sub_min_spend,
             sub_months=wc.sub_months,
-            sub_spend_points=wc.sub_spend_points,
+            sub_spend_amount=wc.sub_spend_amount,
             years_counted=wc.years_counted,
         )
         for wc in wallet.wallet_cards
@@ -1130,10 +1277,10 @@ async def update_wallet(
             card_id=wc.card_id,
             card_name=wc.card.name,
             added_date=wc.added_date,
-            sub_points=wc.sub_points,
+            sub=wc.sub,
             sub_min_spend=wc.sub_min_spend,
             sub_months=wc.sub_months,
-            sub_spend_points=wc.sub_spend_points,
+            sub_spend_amount=wc.sub_spend_amount,
             years_counted=wc.years_counted,
         )
         for wc in wallet.wallet_cards
@@ -1177,10 +1324,10 @@ async def add_card_to_wallet(
         wallet_id=wallet_id,
         card_id=payload.card_id,
         added_date=payload.added_date,
-        sub_points=payload.sub_points,
+        sub=payload.sub,
         sub_min_spend=payload.sub_min_spend,
         sub_months=payload.sub_months,
-        sub_spend_points=payload.sub_spend_points,
+        sub_spend_amount=payload.sub_spend_amount,
         years_counted=payload.years_counted,
     )
     db.add(wc)
@@ -1192,10 +1339,10 @@ async def add_card_to_wallet(
         card_id=wc.card_id,
         card_name=card.name,
         added_date=wc.added_date,
-        sub_points=wc.sub_points,
+        sub=wc.sub,
         sub_min_spend=wc.sub_min_spend,
         sub_months=wc.sub_months,
-        sub_spend_points=wc.sub_spend_points,
+        sub_spend_amount=wc.sub_spend_amount,
         years_counted=wc.years_counted,
     )
 
@@ -1280,7 +1427,7 @@ async def wallet_results(
             ),
         )
 
-    all_cards = await load_card_data(db)
+    all_cards = await load_card_data(db, user_id=wallet.user_id)
     modified_cards = apply_wallet_card_overrides(all_cards, active_wallet_cards)
     selected_ids = {wc.card_id for wc in active_wallet_cards}
     spend = await load_spend(db, overrides=overrides)
@@ -1320,10 +1467,11 @@ def _wallet_to_schema(wallet) -> WalletResultSchema:
             annual_point_earn=cr.annual_point_earn,
             credit_valuation=cr.credit_valuation,
             annual_fee=cr.annual_fee,
-            sub_points=cr.sub_points,
-            annual_bonus_points=cr.annual_bonus_points,
+            first_year_fee=cr.first_year_fee,
+            sub=cr.sub,
+            annual_bonus=cr.annual_bonus,
             sub_extra_spend=cr.sub_extra_spend,
-            sub_spend_points=cr.sub_spend_points,
+            sub_spend_amount=cr.sub_spend_amount,
             sub_opp_cost_dollars=cr.sub_opp_cost_dollars,
             sub_opp_cost_gross_dollars=cr.sub_opp_cost_gross_dollars,
             avg_spend_multiplier=cr.avg_spend_multiplier,
