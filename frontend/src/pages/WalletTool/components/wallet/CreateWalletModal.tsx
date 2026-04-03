@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ModalBackdrop } from '../../../../components/ModalBackdrop'
 
 interface CreateWalletModalProps {
   onClose: () => void
@@ -15,7 +16,7 @@ export function CreateWalletModal({
   const [description, setDescription] = useState('')
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <ModalBackdrop onClose={onClose} zIndex="z-50">
       <div className="bg-slate-800 border border-slate-600 rounded-xl p-6 w-96 shadow-xl">
         <h2 className="text-lg font-semibold text-white mb-4">New Wallet</h2>
         <div className="space-y-3">
@@ -55,6 +56,6 @@ export function CreateWalletModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   )
 }

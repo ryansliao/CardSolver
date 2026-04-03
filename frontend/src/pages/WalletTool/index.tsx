@@ -1,38 +1,59 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  spendApi,
   walletsApi,
   type AddCardToWalletPayload,
+  type RoadmapResponse,
+  type RoadmapRuleStatus,
+  type UpdateWalletCardPayload,
+  type WalletCard,
   type WalletResultResponse,
 } from '../../api/client'
-import SpendTable from './components/SpendTable'
-import WalletSummary from './components/WalletSummary'
-import { AddCardModal } from './components/AddCardModal'
-import { CreateWalletModal } from './components/CreateWalletModal'
-import { MyCppModal } from './components/MyCppModal'
+import { today } from '../../utils/format'
+import { AnnualSpendPanel } from './components/spend/AnnualSpendPanel'
+import { WalletCardModal } from './components/cards/WalletCardModal'
+import { CreateWalletModal } from './components/wallet/CreateWalletModal'
+import { WalletResultsAndCurrenciesPanel } from './components/summary/WalletResultsAndCurrenciesPanel'
+import { CardsListPanel } from './components/cards/CardsListPanel'
+import { ApplicationRuleWarningModal } from './components/roadmap/ApplicationRuleWarningModal'
 import { DEFAULT_USER_ID } from './constants'
+import { queryKeys } from './lib/queryKeys'
+
+/** Earliest `added_date` among wallet cards (YYYY-MM-DD), or null if none. */
+function earliestCardOpeningIso(cards: WalletCard[] | undefined): string | null {
+  if (!cards?.length) return null
+  return cards.reduce<string>((min, wc) => {
+    const d = wc.added_date.slice(0, 10)
+    return d < min ? d : min
+  }, cards[0].added_date.slice(0, 10))
+}
+
+type WalletCardModalOpen =
+  | { mode: 'add' }
+  | { mode: 'edit'; walletCard: WalletCard }
 
 export default function WalletToolPage() {
   const queryClient = useQueryClient()
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showAddCardModal, setShowAddCardModal] = useState(false)
-  const [projectionYears, setProjectionYears] = useState(2)
-  const [projectionMonths, setProjectionMonths] = useState(0)
-  const [referenceDate, setReferenceDate] = useState('')
-  const [spendOverrides, setSpendOverrides] = useState<Record<string, number>>({})
+  const [walletCardModal, setWalletCardModal] = useState<WalletCardModalOpen | null>(null)
+  const [startDate, setStartDate] = useState('')
+  const [windowLengthMode, setWindowLengthMode] = useState<'duration' | 'end'>('duration')
+  const [endDate, setEndDate] = useState('')
+  const [durationYears, setDurationYears] = useState(2)
+  const [durationMonths, setDurationMonths] = useState(0)
   const [result, setResult] = useState<WalletResultResponse | null>(null)
-  const [showMyCppModal, setShowMyCppModal] = useState(false)
+  const [markEarnedCardId, setMarkEarnedCardId] = useState<number | null>(null)
+  const [earnedDateInput, setEarnedDateInput] = useState('')
+  const [closeCardId, setCloseCardId] = useState<number | null>(null)
+  const [closeDateInput, setCloseDateInput] = useState('')
+  const [applicationRuleWarnings, setApplicationRuleWarnings] = useState<RoadmapRuleStatus[] | null>(
+    null
+  )
 
   const { data: wallets, isLoading: walletsLoading } = useQuery({
-    queryKey: ['wallets', DEFAULT_USER_ID],
+    queryKey: queryKeys.wallets(),
     queryFn: () => walletsApi.list(DEFAULT_USER_ID),
-  })
-
-  const { data: spend, isLoading: spendLoading } = useQuery({
-    queryKey: ['spend'],
-    queryFn: spendApi.list,
   })
 
   const createWalletMutation = useMutation({
@@ -43,7 +64,7 @@ export default function WalletToolPage() {
         description: payload.description || null,
       }),
     onSuccess: (wallet) => {
-      queryClient.invalidateQueries({ queryKey: ['wallets'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.wallets() })
       setSelectedWalletId(wallet.id)
       setShowCreateModal(false)
     },
@@ -52,39 +73,148 @@ export default function WalletToolPage() {
   const addCardMutation = useMutation({
     mutationFn: ({ walletId, payload }: { walletId: number; payload: AddCardToWalletPayload }) =>
       walletsApi.addCard(walletId, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['wallets'] })
-      setShowAddCardModal(false)
+    onSuccess: async (_data, { walletId }) => {
+      const prev = queryClient.getQueryData<RoadmapResponse>(queryKeys.roadmap(walletId))
+      const prevViolatedIds = new Set(
+        (prev?.rule_statuses ?? []).filter((r) => r.is_violated).map((r) => r.rule_id)
+      )
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.wallets() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.walletCurrencyBalances(walletId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.walletSettingsCurrencyIds(walletId) })
+      setWalletCardModal(null)
+
+      try {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.roadmap(walletId) })
+        const fresh = await queryClient.fetchQuery({
+          queryKey: queryKeys.roadmap(walletId),
+          queryFn: () => walletsApi.roadmap(walletId),
+        })
+        const newlyViolated = fresh.rule_statuses.filter(
+          (r) => r.is_violated && !prevViolatedIds.has(r.rule_id)
+        )
+        if (newlyViolated.length > 0) {
+          setApplicationRuleWarnings(newlyViolated)
+        }
+      } catch {
+        /* roadmap optional for add flow */
+      }
     },
   })
 
   const removeCardMutation = useMutation({
     mutationFn: ({ walletId, cardId }: { walletId: number; cardId: number }) =>
       walletsApi.removeCard(walletId, cardId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['wallets'] })
+    onSuccess: (_data, { walletId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.wallets() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.walletCurrencyBalances(walletId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.walletSettingsCurrencyIds(walletId) })
     },
   })
 
   const resultsMutation = useMutation({
-    mutationFn: (walletId: number) =>
-      walletsApi.results(walletId, {
-        reference_date: referenceDate || undefined,
-        projection_years: projectionYears,
-        projection_months: projectionMonths,
-        spend_overrides: Object.keys(spendOverrides).length > 0 ? spendOverrides : undefined,
-      }),
-    onSuccess: setResult,
+    mutationFn: ({
+      walletId,
+      params,
+    }: {
+      walletId: number
+      params: {
+        start_date: string
+        end_date?: string
+        duration_years?: number
+        duration_months?: number
+      }
+    }) => walletsApi.results(walletId, params),
+    onSuccess: (data) => {
+      setResult(data)
+      queryClient.invalidateQueries({ queryKey: queryKeys.walletCurrencyBalances(data.wallet_id) })
+    },
+  })
+
+  // Single mutation for all wallet card updates (quick actions + edit modal).
+  // Call sites handle their own UI side effects (clearing state / closing modals).
+  const updateWalletCardMutation = useMutation({
+    mutationFn: ({
+      walletId,
+      cardId,
+      payload,
+    }: {
+      walletId: number
+      cardId: number
+      payload: UpdateWalletCardPayload
+    }) => walletsApi.updateCard(walletId, cardId, payload),
+    onSuccess: (_data, { walletId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.wallets() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.roadmap(walletId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.walletCurrencyBalances(walletId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.walletSettingsCurrencyIds(walletId) })
+    },
+  })
+
+  const { data: roadmap } = useQuery({
+    queryKey: queryKeys.roadmap(selectedWalletId!),
+    queryFn: () => walletsApi.roadmap(selectedWalletId!),
+    enabled: selectedWalletId != null,
   })
 
   const selectedWallet = wallets?.find((w) => w.id === selectedWalletId)
 
-  function handleSpendChange(category: string, value: number) {
-    setSpendOverrides((prev) => ({ ...prev, [category]: value }))
+  useEffect(() => {
+    if (selectedWalletId == null || !selectedWallet) return
+
+    if (selectedWallet.calc_start_date) {
+      // Restore the last-used calculation configuration
+      setStartDate(selectedWallet.calc_start_date.slice(0, 10))
+      setWindowLengthMode(selectedWallet.calc_window_mode)
+      setDurationYears(selectedWallet.calc_duration_years)
+      setDurationMonths(selectedWallet.calc_duration_months)
+      setEndDate(selectedWallet.calc_end_date ? selectedWallet.calc_end_date.slice(0, 10) : '')
+
+      // Auto-run the last calculation
+      const savedParams =
+        selectedWallet.calc_window_mode === 'end'
+          ? {
+              start_date: selectedWallet.calc_start_date.slice(0, 10),
+              end_date: selectedWallet.calc_end_date?.slice(0, 10),
+            }
+          : {
+              start_date: selectedWallet.calc_start_date.slice(0, 10),
+              duration_years: selectedWallet.calc_duration_years,
+              duration_months: selectedWallet.calc_duration_months,
+            }
+      resultsMutation.mutate({ walletId: selectedWalletId, params: savedParams })
+    } else {
+      // No saved config — use earliest card date or today as default start
+      const earliest = earliestCardOpeningIso(selectedWallet.wallet_cards)
+      const fromWalletAsOf = selectedWallet.as_of_date ? selectedWallet.as_of_date.slice(0, 10) : ''
+      setStartDate(earliest ?? (fromWalletAsOf || today()))
+    }
+  }, [selectedWalletId])
+
+  function buildResultsParams(): {
+    start_date: string
+    end_date?: string
+    duration_years?: number
+    duration_months?: number
+  } {
+    if (windowLengthMode === 'end') {
+      return { start_date: startDate, end_date: endDate }
+    }
+    return {
+      start_date: startDate,
+      duration_years: durationYears,
+      duration_months: durationMonths,
+    }
   }
 
+  const durationTotalMonths = durationYears * 12 + durationMonths
+  const windowParamsValid =
+    Boolean(startDate) &&
+    (windowLengthMode === 'end' ? Boolean(endDate) : durationTotalMonths > 0)
+
   function calculate() {
-    if (selectedWalletId != null) resultsMutation.mutate(selectedWalletId)
+    if (selectedWalletId == null || !windowParamsValid) return
+    resultsMutation.mutate({ walletId: selectedWalletId, params: buildResultsParams() })
   }
 
   if (walletsLoading) {
@@ -97,204 +227,202 @@ export default function WalletToolPage() {
 
   return (
     <div className="max-w-screen-xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white">Wallet Tool</h1>
-        <p className="text-slate-400 text-sm mt-1">
-          Manage wallets, add cards with sign-up bonus and min spend, and calculate EV and
-          opportunity cost over your chosen time frame.
-        </p>
-      </div>
-
-      <div className="flex gap-6">
-        {/* Left: Wallet list */}
-        <div className="w-56 shrink-0 bg-slate-900 border border-slate-700 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-slate-200">Wallets</h2>
-            <button
-              className="text-indigo-400 hover:text-indigo-300 text-sm"
-              onClick={() => setShowCreateModal(true)}
-            >
-              + New
-            </button>
-          </div>
+      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-white">Wallet Tool</h1>
+          <p className="text-slate-400 text-sm mt-1">
+            Manage wallets, add cards with sign-up bonus and min spend, and run calculations
+            (fees, points, opportunity cost) over your chosen time frame.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => setShowMyCppModal(true)}
-            className="w-full text-left text-slate-400 hover:text-white text-sm py-2 px-3 rounded-lg hover:bg-slate-800 transition-colors mb-3"
+            className="text-indigo-400 hover:text-indigo-300 text-sm font-medium px-2 py-2"
+            onClick={() => setShowCreateModal(true)}
           >
-            My CPP
+            + New wallet
           </button>
-          <ul className="space-y-1">
+          <label htmlFor="wallet-select" className="sr-only">
+            Wallet
+          </label>
+          <select
+            id="wallet-select"
+            className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-2 min-w-[10rem] max-w-[16rem]"
+            value={selectedWalletId ?? ''}
+            onChange={(e) => {
+              const v = e.target.value
+              setSelectedWalletId(v === '' ? null : Number(v))
+              setResult(null)
+            }}
+          >
+            <option value="">
+              {wallets?.length === 0 ? 'No wallets — create one' : 'Select wallet…'}
+            </option>
             {wallets?.map((w) => (
-              <li key={w.id}>
-                <button
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                    selectedWalletId === w.id
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-slate-300 hover:bg-slate-800'
-                  }`}
-                  onClick={() => {
-                    setSelectedWalletId(w.id)
-                    setResult(null)
-                  }}
-                >
-                  {w.name}
-                </button>
-              </li>
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
             ))}
-            {wallets?.length === 0 && (
-              <li className="text-slate-500 text-sm py-2">No wallets yet. Create one.</li>
-            )}
-          </ul>
+          </select>
         </div>
+      </header>
 
-        {/* Main: Selected wallet detail or empty state */}
-        <div className="flex-1 min-w-0">
-          {!selectedWallet ? (
-            <div className="bg-slate-900 border border-slate-700 rounded-xl p-8 text-center text-slate-500">
-              Select a wallet or create one to get started.
-            </div>
-          ) : (
-            <>
-              {/* Time frame & Calculate */}
-              <div className="mb-4 flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <label className="text-sm text-slate-400">Projection</label>
-                  <select
-                    className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5"
-                    value={projectionYears}
-                    onChange={(e) => setProjectionYears(Number(e.target.value))}
-                  >
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <option key={n} value={n}>
-                        {n} yr
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5"
-                    value={projectionMonths}
-                    onChange={(e) => setProjectionMonths(Number(e.target.value))}
-                  >
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <option key={i} value={i}>
-                        {i} mo
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="text-sm text-slate-400">As of</label>
-                  <input
-                    type="date"
-                    className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5"
-                    value={referenceDate}
-                    onChange={(e) => setReferenceDate(e.target.value)}
-                  />
-                </div>
-                <button
-                  onClick={calculate}
-                  disabled={
-                    resultsMutation.isPending || (selectedWallet?.wallet_cards?.length ?? 0) === 0
-                  }
-                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-sm px-5 py-2 rounded-lg transition-colors"
-                >
-                  {resultsMutation.isPending ? 'Calculating…' : 'Calculate'}
-                </button>
+      <div className="min-w-0">
+        {!selectedWallet ? (
+          <div className="bg-slate-900 border border-slate-700 rounded-xl p-8 text-center text-slate-500">
+            Select a wallet or create one to get started.
+          </div>
+        ) : (
+          <>
+            {/* Time frame & Calculate */}
+            <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-slate-400">Start</label>
+                <input
+                  type="date"
+                  className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
               </div>
-
-              <div className="grid grid-cols-[280px_1fr_320px] gap-6">
-                {/* Spend */}
-                <div className="bg-slate-900 border border-slate-700 rounded-xl p-4">
-                  <h2 className="text-sm font-semibold text-slate-200 mb-3">Annual Spend</h2>
-                  <p className="text-xs text-slate-500 mb-3">Click a value to edit.</p>
-                  {spend && (
-                    <SpendTable
-                      categories={spend}
-                      overrides={spendOverrides}
-                      onChange={handleSpendChange}
-                    />
-                  )}
-                  {spendLoading && (
-                    <div className="text-slate-500 text-sm">Loading…</div>
-                  )}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-slate-400">Window</span>
+                <div className="inline-flex rounded-lg border border-slate-600 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWindowLengthMode('duration')
+                      setEndDate('')
+                    }}
+                    className={`text-sm px-3 py-1.5 transition-colors ${
+                      windowLengthMode === 'duration'
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    Duration
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWindowLengthMode('end')}
+                    className={`text-sm px-3 py-1.5 border-l border-slate-600 transition-colors ${
+                      windowLengthMode === 'end'
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    End date
+                  </button>
                 </div>
-
-                {/* Cards in wallet */}
-                <div className="bg-slate-900 border border-slate-700 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-semibold text-slate-200">Cards in wallet</h2>
-                    <button
-                      className="text-indigo-400 hover:text-indigo-300 text-sm"
-                      onClick={() => setShowAddCardModal(true)}
+                {windowLengthMode === 'duration' ? (
+                  <>
+                    <select
+                      className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5"
+                      value={durationYears}
+                      onChange={(e) => setDurationYears(Number(e.target.value))}
+                      aria-label="Duration years"
                     >
-                      + Add card
-                    </button>
+                      {[0, 1, 2, 3, 4, 5].map((n) => (
+                        <option key={n} value={n}>
+                          {n} yr
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5"
+                      value={durationMonths}
+                      onChange={(e) => setDurationMonths(Number(e.target.value))}
+                      aria-label="Duration months"
+                    >
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i} value={i}>
+                          {i} mo
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="calc-end-date" className="sr-only">
+                      End date
+                    </label>
+                    <input
+                      id="calc-end-date"
+                      type="date"
+                      className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                    />
                   </div>
-                  <ul className="space-y-2">
-                    {selectedWallet.wallet_cards?.map((wc) => (
-                      <li
-                        key={wc.id}
-                        className="flex items-center justify-between bg-slate-800 rounded-lg px-3 py-2"
-                      >
-                        <div>
-                          <p className="text-sm font-medium text-white">
-                            {wc.card_name ?? `Card #${wc.card_id}`}
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            Added {wc.added_date}
-                            {(wc.sub != null || wc.sub_min_spend != null) && (
-                              <span className="ml-1">
-                                · SUB:{' '}
-                                {wc.sub != null ? `${(wc.sub / 1000).toFixed(0)}k` : '—'} value
-                                {wc.sub_min_spend != null && ` / $${wc.sub_min_spend.toLocaleString()}`}
-                                {wc.sub_months != null && ` in ${wc.sub_months} mo`}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                        <button
-                          className="text-slate-500 hover:text-red-400 text-sm"
-                          onClick={() =>
-                            removeCardMutation.mutate({
-                              walletId: selectedWallet.id,
-                              cardId: wc.card_id,
-                            })
-                          }
-                          disabled={removeCardMutation.isPending}
-                        >
-                          Remove
-                        </button>
-                      </li>
-                    ))}
-                    {!selectedWallet.wallet_cards?.length && (
-                      <li className="text-slate-500 text-sm py-4 text-center">
-                        No cards. Add cards to calculate EV.
-                      </li>
-                    )}
-                  </ul>
-                </div>
-
-                {/* Results */}
-                <div className="bg-slate-900 border border-slate-700 rounded-xl p-4">
-                  <h2 className="text-sm font-semibold text-slate-200 mb-3">Results</h2>
-                  {resultsMutation.isError && (
-                    <div className="text-red-400 text-sm bg-red-950 border border-red-700 rounded-lg p-3 mb-3">
-                      {resultsMutation.error?.message}
-                    </div>
-                  )}
-                  {result ? (
-                    <WalletSummary result={result.wallet} />
-                  ) : (
-                    <div className="text-slate-500 text-sm text-center py-12">
-                      Set projection and click Calculate to see EV and opportunity cost.
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
-            </>
-          )}
-        </div>
+              <button
+                type="button"
+                onClick={calculate}
+                disabled={
+                  resultsMutation.isPending ||
+                  (selectedWallet?.wallet_cards?.length ?? 0) === 0 ||
+                  !windowParamsValid
+                }
+                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-sm px-5 py-2 rounded-lg transition-colors"
+              >
+                {resultsMutation.isPending ? 'Calculating…' : 'Calculate'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)_minmax(0,1fr)] gap-6">
+              <AnnualSpendPanel walletId={selectedWalletId} />
+
+              <CardsListPanel
+                wallet={selectedWallet}
+                roadmap={roadmap}
+                markEarnedCardId={markEarnedCardId}
+                earnedDateInput={earnedDateInput}
+                closeCardId={closeCardId}
+                closeDateInput={closeDateInput}
+                isUpdating={updateWalletCardMutation.isPending}
+                isRemoving={removeCardMutation.isPending}
+                onSetMarkEarned={setMarkEarnedCardId}
+                onSetEarnedDateInput={setEarnedDateInput}
+                onSetCloseCard={setCloseCardId}
+                onSetCloseDateInput={setCloseDateInput}
+                onUpdateCard={(cardId, payload) => {
+                  updateWalletCardMutation.mutate(
+                    { walletId: selectedWallet.id, cardId, payload },
+                    {
+                      onSuccess: () => {
+                        setMarkEarnedCardId(null)
+                        setEarnedDateInput('')
+                        setCloseCardId(null)
+                        setCloseDateInput('')
+                      },
+                    }
+                  )
+                }}
+                onRemoveCard={(cardId) =>
+                  removeCardMutation.mutate({ walletId: selectedWallet.id, cardId })
+                }
+                onEditCard={(wc) => setWalletCardModal({ mode: 'edit', walletCard: wc })}
+                onAddCard={() => setWalletCardModal({ mode: 'add' })}
+              />
+
+              <WalletResultsAndCurrenciesPanel
+                walletId={selectedWalletId}
+                result={result?.wallet ?? null}
+                resultsError={
+                  resultsMutation.isError
+                    ? resultsMutation.error instanceof Error
+                      ? resultsMutation.error
+                      : new Error(String(resultsMutation.error))
+                    : null
+                }
+                onCppChangeClearResult={() => setResult(null)}
+              />
+            </div>
+
+          </>
+        )}
       </div>
 
       {showCreateModal && (
@@ -307,20 +435,42 @@ export default function WalletToolPage() {
         />
       )}
 
-      {showAddCardModal && selectedWallet && (
-        <AddCardModal
-          onClose={() => setShowAddCardModal(false)}
-          onAdd={(payload) =>
-            addCardMutation.mutate({ walletId: selectedWallet.id, payload })
-          }
-          isLoading={addCardMutation.isPending}
+      {applicationRuleWarnings && applicationRuleWarnings.length > 0 && (
+        <ApplicationRuleWarningModal
+          violations={applicationRuleWarnings}
+          onClose={() => setApplicationRuleWarnings(null)}
         />
       )}
 
-      {showMyCppModal && (
-        <MyCppModal
-          onClose={() => setShowMyCppModal(false)}
-          onCppChange={() => setResult(null)}
+      {walletCardModal && selectedWallet && (
+        <WalletCardModal
+          key={walletCardModal.mode === 'add' ? 'add' : walletCardModal.walletCard.id}
+          mode={walletCardModal.mode}
+          walletCard={
+            walletCardModal.mode === 'edit' ? walletCardModal.walletCard : undefined
+          }
+          existingCardIds={selectedWallet.wallet_cards.map((wc) => wc.card_id)}
+          onClose={() => setWalletCardModal(null)}
+          onAdd={(payload) =>
+            addCardMutation.mutate({ walletId: selectedWallet.id, payload })
+          }
+          onSaveEdit={(payload) => {
+            if (walletCardModal.mode !== 'edit') return
+            updateWalletCardMutation.mutate(
+              {
+                walletId: selectedWallet.id,
+                cardId: walletCardModal.walletCard.card_id,
+                payload,
+              },
+              {
+                onSuccess: () => {
+                  setWalletCardModal(null)
+                  setResult(null)
+                },
+              }
+            )
+          }}
+          isLoading={addCardMutation.isPending || updateWalletCardMutation.isPending}
         />
       )}
     </div>

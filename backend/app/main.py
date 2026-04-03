@@ -3,36 +3,61 @@ FastAPI application entry point.
 
 Endpoints
 ---------
-GET  /issuers                       List all issuers
-GET  /currencies                    List all currencies
-GET  /cards                         List all cards
-GET  /cards/{id}                    Get one card
-PATCH /cards/{id}                   Update card static data
+GET  /issuers                                               List all issuers
+GET  /issuers/application-rules                             List all issuer velocity/eligibility rules
+GET  /currencies                                            List all currencies
+GET  /cards                                                 List all cards
+PATCH /cards/{id}                                           Update card library fields (SUB, fees)
+PATCH /cards/{id}/credits/{credit_id}                       Update a card statement credit (value, name, one-time flag)
 
-GET    /spend                       Get spend categories
-POST   /spend                       Create a spend category
-PUT    /spend/{category}            Update a spend category
-DELETE /spend/{category}            Delete a spend category
+GET  /spend                                                 Get card-level spend categories (reference)
+GET  /app-spend-categories                                  Get app-level spend category hierarchy (user-facing)
 
-POST /calculate                     Run wallet calculation directly
+GET  /wallets                                               List wallets (by user_id, default 1)
+POST /wallets                                               Create a wallet
+GET  /wallets/{id}                                          Get one wallet
+PATCH /wallets/{id}                                         Update wallet metadata
+DELETE /wallets/{id}                                        Delete wallet
+POST /wallets/{id}/cards                                    Add a card to a wallet
+PATCH /wallets/{id}/cards/{card_id}                         Update a wallet card (SUB earned, closed, overrides)
+DELETE /wallets/{id}/cards/{cid}                            Remove a card from a wallet
+GET  /wallets/{id}/results                                  Wallet results and opportunity cost
+GET  /wallets/{id}/roadmap                                  Compute roadmap: 5/24, SUB status, eligibility
+GET  /wallets/{id}/currency-balances                       List tracked / earned currency rows for this wallet
+POST /wallets/{id}/currency-balances                       Track a currency (optional initial balance)
+PUT    /wallets/{id}/currencies/{currency_id}/balance       Set initial balance (total = initial + projection earn)
+DELETE /wallets/{id}/currencies/{currency_id}/balance      Remove tracking row
+GET    /wallets/{id}/currencies                             List currencies with wallet CPP overrides
+PUT    /wallets/{id}/currencies/{currency_id}/cpp           Set wallet CPP override
+DELETE /wallets/{id}/currencies/{currency_id}/cpp           Remove wallet CPP override
 
-GET  /wallets                       List wallets (by user_id, default 1)
-POST /wallets                       Create a wallet
-GET  /wallets/{id}                   Get one wallet
-PATCH /wallets/{id}                 Update wallet metadata
-DELETE /wallets/{id}                Delete wallet
-POST /wallets/{id}/cards            Add a card to a wallet
-DELETE /wallets/{id}/cards/{cid}    Remove a card from a wallet
-GET  /wallets/{id}/results          Compute EV and opportunity cost (projection_years/months, reference_date, spend_overrides)
+GET    /wallets/{id}/spend-items                            List wallet spend items (new hierarchy system)
+POST   /wallets/{id}/spend-items                            Add a wallet spend item
+PUT    /wallets/{id}/spend-items/{item_id}                  Update wallet spend item amount
+DELETE /wallets/{id}/spend-items/{item_id}                  Remove a wallet spend item
 
-GET  /scenarios                     List scenarios
-POST /scenarios                     Create a scenario
-GET  /scenarios/{id}                Get one scenario
-PATCH /scenarios/{id}               Update scenario metadata
-DELETE /scenarios/{id}              Delete scenario
-POST /scenarios/{id}/cards         Add a card to a scenario
-DELETE /scenarios/{id}/cards/{cid}  Remove a card from a scenario
-GET  /scenarios/{id}/results        Compute wallet for a scenario
+GET    /wallets/{id}/spend-categories                       List wallet spend categories (legacy)
+POST   /wallets/{id}/spend-categories                       Create wallet spend category (legacy)
+PUT    /wallets/{id}/spend-categories/{usc_id}              Update wallet spend category (legacy)
+DELETE /wallets/{id}/spend-categories/{usc_id}              Delete wallet spend category (legacy)
+
+GET    /wallets/{id}/cards/{card_id}/credits                List wallet card credit overrides
+PUT    /wallets/{id}/cards/{card_id}/credits/{lib_id}       Upsert a credit override
+DELETE /wallets/{id}/cards/{card_id}/credits/{lib_id}       Remove a credit override
+
+GET    /wallets/{id}/card-multipliers                       List all wallet-level multiplier overrides
+PUT    /wallets/{id}/cards/{card_id}/multipliers/{cat_id}   Upsert a multiplier override
+DELETE /wallets/{id}/cards/{card_id}/multipliers/{cat_id}   Remove a multiplier override
+
+POST /admin/issuers                                         Create an issuer
+POST /admin/currencies                                      Create a currency
+POST /admin/spend-categories                                Create a spend category
+POST /admin/cards                                           Create a card
+DELETE /admin/cards/{id}                                    Delete a card
+POST /admin/cards/{id}/multipliers                          Add a card category multiplier
+DELETE /admin/cards/{id}/multipliers/{category_id}          Remove a card category multiplier
+POST /admin/cards/{id}/credits                              Add a card statement credit
+DELETE /admin/cards/{id}/credits/{credit_id}                Remove a card statement credit
 """
 
 from __future__ import annotations
@@ -40,72 +65,98 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-from datetime import date
+from calendar import monthrange
+from datetime import date, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional, cast
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from .calculator import compute_wallet
-from .database import create_tables, get_db
-from .db_helpers import load_card_data, load_spend, load_user_cpp_overrides
+from .constants import ALLOCATION_SUM_TOLERANCE, ALL_OTHER_CATEGORY as ALL_OTHER_SPEND_NAME, DEFAULT_USER_ID
+from .database import AsyncSessionLocal, create_tables, get_db
+from .db_helpers import (
+    apply_wallet_card_multiplier_overrides,
+    apply_wallet_card_overrides,
+    ensure_all_other_wallet_spend_category,
+    ensure_all_other_wallet_spend_item,
+    load_card_data,
+    load_wallet_card_credits,
+    load_wallet_card_multipliers,
+    load_wallet_cpp_overrides,
+    load_wallet_spend,
+    load_wallet_spend_items,
+)
 from .models import (
     Card,
     CardCategoryMultiplier,
     CardCredit,
-    CardEcosystem,
+    CardMultiplierGroup,
+    CoBrand,
     Currency,
-    Ecosystem,
-    EcosystemCurrency,
     Issuer,
-    Scenario,
-    ScenarioCard,
+    IssuerApplicationRule,
+    NetworkTier,
     SpendCategory,
     User,
-    UserCurrencyCpp,
     Wallet,
     WalletCard,
+    WalletCardCredit,
+    WalletCardMultiplier,
+    WalletCurrencyBalance,
+    WalletCurrencyCpp,
+    WalletSpendCategory,
+    WalletSpendCategoryMapping,
+    WalletSpendItem,
 )
-from .db_helpers import apply_wallet_card_overrides
 from .schemas import (
-    CalculateRequest,
-    CardCreate,
+    AdminAddCardCreditPayload,
+    AdminAddCardMultiplierPayload,
+    AdminCreateCardPayload,
+    AdminCreateCurrencyPayload,
+    AdminCreateIssuerPayload,
+    AdminCreateSpendCategoryPayload,
+    CardCreditRead,
     CardRead,
     CardResultSchema,
-    CardUpdate,
-    CurrencyCreate,
     CurrencyRead,
-    CurrencyUpdate,
-    EcosystemCreate,
-    EcosystemRead,
-    EcosystemUpdate,
-    IssuerCreate,
+    IssuerApplicationRuleRead,
     IssuerRead,
-    IssuerUpdate,
-    ScenarioCardCreate,
-    ScenarioCardRead,
-    ScenarioCreate,
-    ScenarioRead,
-    ScenarioResultSchema,
-    ScenarioUpdate,
-    SpendCategoryCreate,
+    RoadmapCardStatus,
+    RoadmapResponse,
+    RoadmapRuleStatus,
     SpendCategoryRead,
-    SpendCategoryUpdate,
+    UpdateCardCreditPayload,
+    UpdateCardLibraryPayload,
+    WalletCardCreditRead,
+    WalletCardCreditUpsert,
     WalletCardCreate,
+    WalletCardMultiplierRead,
+    WalletCardMultiplierUpsert,
     WalletCardRead,
+    WalletCardUpdate,
     WalletCreate,
+    WalletCurrencyCppSet,
     WalletRead,
     WalletResultResponseSchema,
     WalletResultSchema,
+    WalletSettingsCurrencyIds,
+    WalletSpendCategoryCreate,
+    WalletSpendCategoryRead,
+    WalletSpendCategoryUpdate,
+    WalletSpendItemCreate,
+    WalletSpendItemRead,
+    WalletSpendItemUpdate,
     WalletUpdate,
-    UserCurrencyCppSet,
+    WalletCurrencyBalanceRead,
+    WalletCurrencyInitialSet,
+    WalletCurrencyTrackCreate,
 )
 
 
@@ -114,15 +165,239 @@ from .schemas import (
 # ---------------------------------------------------------------------------
 
 
+def _add_months(d: date, months: int) -> date:
+    """Add N months to a date, clamping to end of month as needed."""
+    month = d.month + months
+    year = d.year + (month - 1) // 12
+    month = (month - 1) % 12 + 1
+    day = min(d.day, monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def _months_in_half_open_interval(start: date, end: date) -> int:
+    """
+    Number of calendar months spanned by [start, end) for day-level start/end.
+    Same month and day-of-month alignment as relativedelta-style month deltas.
+    """
+    if end <= start:
+        raise ValueError("end must be after start")
+    total = (end.year - start.year) * 12 + (end.month - start.month)
+    if end.day < start.day:
+        total -= 1
+    return max(1, total)
+
+
+def _years_counted_from_total_months(total_months: int) -> int:
+    full = total_months // 12
+    rem = total_months % 12
+    return max(1, full + (1 if rem >= 6 else 0))
+
+
+async def _seed_issuer_application_rules(session: AsyncSession) -> None:
+    """Seed common well-known issuer velocity/eligibility rules if none exist yet."""
+    existing = await session.execute(select(IssuerApplicationRule))
+    if existing.scalars().first():
+        return
+
+    issuers_result = await session.execute(select(Issuer))
+    issuer_by_name: dict[str, int] = {i.name: i.id for i in issuers_result.scalars().all()}
+
+    rules: list[IssuerApplicationRule] = []
+
+    chase_id = issuer_by_name.get("Chase")
+    amex_id = issuer_by_name.get("American Express")
+    citi_id = issuer_by_name.get("Citi")
+    bilt_id = None  # No known hard velocity rules
+
+    if chase_id:
+        rules += [
+            IssuerApplicationRule(
+                issuer_id=chase_id,
+                rule_name="5/24",
+                description=(
+                    "Chase denies most card applications if you have opened 5 or more personal "
+                    "credit cards (from any issuer) in the last 24 months. Business cards from most "
+                    "issuers do NOT count toward this limit."
+                ),
+                max_count=5,
+                period_days=730,
+                personal_only=True,
+                scope_all_issuers=True,
+            ),
+            IssuerApplicationRule(
+                issuer_id=chase_id,
+                rule_name="2/30",
+                description=(
+                    "Chase typically limits applicants to 2 Chase credit card approvals within "
+                    "any 30-day rolling window."
+                ),
+                max_count=2,
+                period_days=30,
+                personal_only=False,
+                scope_all_issuers=False,
+            ),
+        ]
+
+    if amex_id:
+        rules += [
+            IssuerApplicationRule(
+                issuer_id=amex_id,
+                rule_name="1/90 Personal",
+                description=(
+                    "American Express typically approves only one new personal credit card "
+                    "application per 90-day rolling window."
+                ),
+                max_count=1,
+                period_days=90,
+                personal_only=True,
+                scope_all_issuers=False,
+            ),
+            IssuerApplicationRule(
+                issuer_id=amex_id,
+                rule_name="1/90 Business",
+                description=(
+                    "American Express typically approves only one new business credit card "
+                    "application per 90-day rolling window."
+                ),
+                max_count=1,
+                period_days=90,
+                personal_only=False,
+                scope_all_issuers=False,
+            ),
+            IssuerApplicationRule(
+                issuer_id=amex_id,
+                rule_name="5 Card Max",
+                description=(
+                    "American Express generally caps cardholders at 5 open credit cards (charge "
+                    "cards not counted). Having 5+ open Amex credit cards usually results in denial."
+                ),
+                max_count=5,
+                period_days=36500,
+                personal_only=False,
+                scope_all_issuers=False,
+            ),
+        ]
+
+    if citi_id:
+        rules += [
+            IssuerApplicationRule(
+                issuer_id=citi_id,
+                rule_name="1/8",
+                description=(
+                    "Citi limits approvals to 1 new card per 8-day rolling window."
+                ),
+                max_count=1,
+                period_days=8,
+                personal_only=False,
+                scope_all_issuers=False,
+            ),
+            IssuerApplicationRule(
+                issuer_id=citi_id,
+                rule_name="2/65",
+                description=(
+                    "Citi limits approvals to 2 new cards per 65-day rolling window."
+                ),
+                max_count=2,
+                period_days=65,
+                personal_only=False,
+                scope_all_issuers=False,
+            ),
+        ]
+
+    for rule in rules:
+        session.add(rule)
+    if rules:
+        await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Spend category seed data (hierarchy added to unified SpendCategory table)
+# ---------------------------------------------------------------------------
+
+# (category_name, parent_name, is_system, explicit_id)
+# parent_name=None means top-level. is_system=True for "All Other".
+# explicit_id is set only for the two anchor categories (All Other=1, Travel=2).
+_SPEND_CATEGORY_SEED: list[tuple[str, Optional[str], bool, Optional[int]]] = [
+    # System catch-all — always present, locked (ID 1)
+    (ALL_OTHER_SPEND_NAME,   None,        True,  1),
+    # Travel (ID 2)
+    ("Travel",               None,        False, 2),
+    ("Hotels",               "Travel",    False, None),
+    ("Car Rentals",          "Travel",    False, None),
+    ("Cruises",              "Travel",    False, None),
+    ("Rideshare",            "Travel",    False, None),
+    ("Transit",              "Travel",    False, None),
+    # Dining
+    ("Dining",               None,        False, None),
+    ("Restaurants",          "Dining",    False, None),
+    ("Fast Food",            "Dining",    False, None),
+    ("Coffee & Bars",        "Dining",    False, None),
+    # Groceries
+    ("Groceries",            None,        False, None),
+    ("Online Groceries",     "Groceries", False, None),
+    # Gas
+    ("Gas",                  None,        False, None),
+    ("Gas Stations",         "Gas",       False, None),
+    ("EV Charging",          "Gas",       False, None),
+    # Shopping (independent top-level categories)
+    ("Online Shopping",      None,        False, None),
+    ("Wholesale Clubs",      None,        False, None),
+    ("Home Improvement",     None,        False, None),
+    # Entertainment & Lifestyle
+    ("Entertainment",        None,        False, None),
+    ("Streaming",            None,        False, None),
+    ("Phone",                None,        False, None),
+]
+
+
+async def _seed_spend_category_hierarchy(session: AsyncSession) -> None:
+    """
+    Ensure all spend categories exist and have correct parent_id / is_system.
+    Creates missing categories; updates metadata on existing ones if they have default values.
+    "All Other" is pinned to ID 1, "Travel" to ID 2 on fresh installs.
+    Safe to re-run on every startup. Obsolete category cleanup is handled in database.py migrations.
+    """
+    sc_result = await session.execute(select(SpendCategory))
+    by_name: dict[str, SpendCategory] = {sc.category: sc for sc in sc_result.scalars().all()}
+
+    # Pass 1: create missing categories (all with parent_id=None for now)
+    for name, _parent, is_sys, explicit_id in _SPEND_CATEGORY_SEED:
+        if name not in by_name:
+            kwargs: dict = {"category": name, "is_system": is_sys}
+            if explicit_id is not None:
+                kwargs["id"] = explicit_id
+            sc = SpendCategory(**kwargs)
+            session.add(sc)
+            by_name[name] = sc
+    await session.flush()
+
+    # Pass 2: set parent_id and is_system on any row that needs it
+    for name, parent_name, is_sys, _explicit_id in _SPEND_CATEGORY_SEED:
+        sc = by_name.get(name)
+        if sc is None:
+            continue
+        parent = by_name.get(parent_name) if parent_name else None
+        desired_parent_id = parent.id if parent else None
+        if sc.parent_id != desired_parent_id:
+            sc.parent_id = desired_parent_id
+        if not sc.is_system and is_sys:
+            sc.is_system = is_sys
+    await session.flush()
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     await create_tables()
+    async with AsyncSessionLocal() as session:
+        await _seed_issuer_application_rules(session)
+        await _seed_spend_category_hierarchy(session)
+        await session.commit()
     yield
 
 
 app = FastAPI(
     title="Credit Card Optimizer API",
-    description="Credit card wallet optimizer — calculates EV for any combination of cards.",
+    description="Credit card wallet optimizer — fees, points, credits, and SUB opportunity cost.",
     version="3.0.0",
     lifespan=lifespan,
 )
@@ -137,9 +412,19 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next) -> Response:
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -151,12 +436,38 @@ def _card_404(card_id: int) -> HTTPException:
     return HTTPException(status_code=404, detail=f"Card {card_id} not found")
 
 
-def _scenario_404(scenario_id: int) -> HTTPException:
-    return HTTPException(status_code=404, detail=f"Scenario {scenario_id} not found")
-
-
 def _wallet_404(wallet_id: int) -> HTTPException:
     return HTTPException(status_code=404, detail=f"Wallet {wallet_id} not found")
+
+
+def _wc_read(wc: WalletCard, card: Card) -> WalletCardRead:
+    """
+    Build a WalletCardRead for API responses.
+
+    SUB and fee fields fall back to the library Card when the wallet row stores
+    null (inherit defaults). The database row is unchanged; only the read model
+    exposes effective values for clients.
+    """
+    def _inh(wv, cv):
+        return wv if wv is not None else cv
+
+    return WalletCardRead(
+        id=wc.id,
+        wallet_id=wc.wallet_id,
+        card_id=wc.card_id,
+        card_name=card.name,
+        added_date=wc.added_date,
+        sub=_inh(wc.sub, card.sub),
+        sub_min_spend=_inh(wc.sub_min_spend, card.sub_min_spend),
+        sub_months=_inh(wc.sub_months, card.sub_months),
+        sub_spend_earn=_inh(wc.sub_spend_earn, card.sub_spend_earn),
+        years_counted=wc.years_counted,
+        annual_fee=_inh(wc.annual_fee, card.annual_fee),
+        first_year_fee=_inh(wc.first_year_fee, card.first_year_fee),
+        sub_earned_date=wc.sub_earned_date,
+        closed_date=wc.closed_date,
+        acquisition_type=cast(Literal["opened", "product_change"], wc.acquisition_type),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -167,20 +478,19 @@ def _wallet_404(wallet_id: int) -> HTTPException:
 def _card_load_opts():
     return [
         selectinload(Card.issuer),
+        selectinload(Card.co_brand),
         selectinload(Card.currency_obj).selectinload(Currency.issuer),
-        selectinload(Card.multipliers),
+        selectinload(Card.currency_obj).selectinload(Currency.converts_to_currency).selectinload(Currency.issuer),
+        selectinload(Card.network_tier),
+        selectinload(Card.multipliers).selectinload(CardCategoryMultiplier.spend_category),
+        selectinload(Card.multiplier_groups).selectinload(CardMultiplierGroup.categories).selectinload(CardCategoryMultiplier.spend_category),
         selectinload(Card.credits),
-        selectinload(Card.ecosystem_memberships)
-        .selectinload(CardEcosystem.ecosystem)
-        .selectinload(Ecosystem.points_currency)
-        .selectinload(Currency.issuer),
-        selectinload(Card.ecosystem_memberships)
-        .selectinload(CardEcosystem.ecosystem)
-        .selectinload(Ecosystem.cashback_currency),
-        selectinload(Card.ecosystem_memberships)
-        .selectinload(CardEcosystem.ecosystem)
-        .selectinload(Ecosystem.ecosystem_currencies)
-        .selectinload(EcosystemCurrency.currency),
+    ]
+
+
+def _wallet_load_opts():
+    return [
+        selectinload(Wallet.wallet_cards).selectinload(WalletCard.card),
     ]
 
 
@@ -195,81 +505,15 @@ async def list_issuers(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-@app.post(
-    "/issuers",
-    response_model=IssuerRead,
-    status_code=status.HTTP_201_CREATED,
-    tags=["issuers"],
-)
-async def create_issuer(payload: IssuerCreate, db: AsyncSession = Depends(get_db)):
-    existing = await db.execute(select(Issuer).where(Issuer.name == payload.name))
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=409,
-            detail=f"Issuer with name {payload.name!r} already exists",
-        )
-    issuer = Issuer(
-        name=payload.name,
-        co_brand_partner=payload.co_brand_partner,
-        network=payload.network,
+@app.get("/issuers/application-rules", response_model=list[IssuerApplicationRuleRead], tags=["issuers"])
+async def list_issuer_application_rules(db: AsyncSession = Depends(get_db)):
+    """List all known issuer velocity/eligibility rules (e.g. Chase 5/24, Amex 1/90)."""
+    result = await db.execute(
+        select(IssuerApplicationRule)
+        .options(selectinload(IssuerApplicationRule.issuer))
+        .order_by(IssuerApplicationRule.issuer_id, IssuerApplicationRule.rule_name)
     )
-    db.add(issuer)
-    await db.commit()
-    await db.refresh(issuer)
-    return issuer
-
-
-@app.patch("/issuers/{issuer_id}", response_model=IssuerRead, tags=["issuers"])
-async def update_issuer(
-    issuer_id: int, payload: IssuerUpdate, db: AsyncSession = Depends(get_db)
-):
-    result = await db.execute(select(Issuer).where(Issuer.id == issuer_id))
-    issuer = result.scalar_one_or_none()
-    if not issuer:
-        raise HTTPException(status_code=404, detail=f"Issuer {issuer_id} not found")
-    updates = payload.model_dump(exclude_none=True)
-    if "name" in updates and updates["name"] != issuer.name:
-        existing = await db.execute(
-            select(Issuer).where(Issuer.name == updates["name"])
-        )
-        if existing.scalar_one_or_none():
-            raise HTTPException(
-                status_code=409,
-                detail=f"Issuer with name {updates['name']!r} already exists",
-            )
-    for field, value in updates.items():
-        setattr(issuer, field, value)
-    try:
-        await db.commit()
-        await db.refresh(issuer)
-        return issuer
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Issuer name already in use by another issuer",
-        )
-
-
-@app.delete(
-    "/issuers/{issuer_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    tags=["issuers"],
-)
-async def delete_issuer(issuer_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Issuer).where(Issuer.id == issuer_id))
-    issuer = result.scalar_one_or_none()
-    if not issuer:
-        raise HTTPException(status_code=404, detail=f"Issuer {issuer_id} not found")
-    try:
-        await db.delete(issuer)
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Cannot delete issuer that has cards",
-        )
+    return result.scalars().all()
 
 
 # ---------------------------------------------------------------------------
@@ -278,325 +522,18 @@ async def delete_issuer(issuer_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/currencies", response_model=list[CurrencyRead], tags=["currencies"])
-async def list_currencies(
-    user_id: Optional[int] = None,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    List all currencies. If user_id is provided, each currency includes
-    user_cents_per_point (the user's override or the default).
-    """
+async def list_currencies(db: AsyncSession = Depends(get_db)):
+    """List all currencies."""
     result = await db.execute(
         select(Currency)
-        .options(selectinload(Currency.issuer))
+        .options(
+            selectinload(Currency.issuer),
+            selectinload(Currency.converts_to_currency).selectinload(Currency.issuer),
+        )
         .order_by(Currency.name)
-    )
-    currencies = result.scalars().all()
-    if user_id is None:
-        return currencies
-    overrides = await load_user_cpp_overrides(db, user_id)
-    return [
-        CurrencyRead.model_validate(c).model_copy(
-            update={"user_cents_per_point": overrides.get(c.id, c.cents_per_point)}
-        )
-        for c in currencies
-    ]
-
-
-@app.post(
-    "/currencies",
-    response_model=CurrencyRead,
-    status_code=status.HTTP_201_CREATED,
-    tags=["currencies"],
-)
-async def create_currency(
-    payload: CurrencyCreate, db: AsyncSession = Depends(get_db)
-):
-    if payload.issuer_id is not None:
-        issuer_result = await db.execute(select(Issuer).where(Issuer.id == payload.issuer_id))
-        if not issuer_result.scalar_one_or_none():
-            raise HTTPException(
-                status_code=422, detail=f"Issuer {payload.issuer_id} not found"
-            )
-    existing = await db.execute(select(Currency).where(Currency.name == payload.name))
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=409,
-            detail=f"Currency with name {payload.name!r} already exists",
-        )
-    currency = Currency(
-        issuer_id=payload.issuer_id,
-        name=payload.name,
-        cents_per_point=payload.cents_per_point,
-        is_cashback=payload.is_cashback,
-        is_transferable=payload.is_transferable,
-    )
-    db.add(currency)
-    await db.commit()
-    await db.refresh(currency)
-    result = await db.execute(
-        select(Currency)
-        .options(selectinload(Currency.issuer))
-        .where(Currency.id == currency.id)
-    )
-    return result.scalar_one()
-
-
-@app.patch("/currencies/{currency_id}", response_model=CurrencyRead, tags=["currencies"])
-async def update_currency(
-    currency_id: int, payload: CurrencyUpdate, db: AsyncSession = Depends(get_db)
-):
-    result = await db.execute(
-        select(Currency)
-        .options(selectinload(Currency.issuer))
-        .where(Currency.id == currency_id)
-    )
-    currency = result.scalar_one_or_none()
-    if not currency:
-        raise HTTPException(status_code=404, detail=f"Currency {currency_id} not found")
-    updates = payload.model_dump(exclude_none=True)
-    if "name" in updates and updates["name"] != currency.name:
-        existing = await db.execute(
-            select(Currency).where(Currency.name == updates["name"])
-        )
-        if existing.scalar_one_or_none():
-            raise HTTPException(
-                status_code=409,
-                detail=f"Currency with name {updates['name']!r} already exists",
-            )
-    if "issuer_id" in updates and updates["issuer_id"] is not None:
-        issuer_result = await db.execute(
-            select(Issuer).where(Issuer.id == updates["issuer_id"])
-        )
-        if not issuer_result.scalar_one_or_none():
-            raise HTTPException(
-                status_code=422, detail=f"Issuer {updates['issuer_id']} not found"
-            )
-    for field, value in updates.items():
-        setattr(currency, field, value)
-    await db.commit()
-    await db.refresh(currency)
-    result = await db.execute(
-        select(Currency)
-        .options(selectinload(Currency.issuer))
-        .where(Currency.id == currency_id)
-    )
-    return result.scalar_one()
-
-
-@app.delete(
-    "/currencies/{currency_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    tags=["currencies"],
-)
-async def delete_currency(currency_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Currency).where(Currency.id == currency_id))
-    currency = result.scalar_one_or_none()
-    if not currency:
-        raise HTTPException(status_code=404, detail=f"Currency {currency_id} not found")
-    try:
-        await db.delete(currency)
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Cannot delete currency that is referenced by a card",
-        )
-
-
-@app.put(
-    "/users/{user_id}/currencies/{currency_id}/cpp",
-    status_code=status.HTTP_204_NO_CONTENT,
-    tags=["currencies"],
-)
-async def set_user_currency_cpp(
-    user_id: int,
-    currency_id: int,
-    payload: UserCurrencyCppSet,
-    db: AsyncSession = Depends(get_db),
-):
-    """Set this user's cents-per-point override for a currency."""
-    user_result = await db.execute(select(User).where(User.id == user_id))
-    if not user_result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail=f"User id={user_id} not found")
-    currency_result = await db.execute(select(Currency).where(Currency.id == currency_id))
-    if not currency_result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail=f"Currency id={currency_id} not found")
-    existing = await db.execute(
-        select(UserCurrencyCpp).where(
-            UserCurrencyCpp.user_id == user_id,
-            UserCurrencyCpp.currency_id == currency_id,
-        )
-    )
-    row = existing.scalar_one_or_none()
-    if row:
-        row.cents_per_point = payload.cents_per_point
-    else:
-        db.add(
-            UserCurrencyCpp(
-                user_id=user_id,
-                currency_id=currency_id,
-                cents_per_point=payload.cents_per_point,
-            )
-        )
-    await db.commit()
-
-
-@app.delete(
-    "/users/{user_id}/currencies/{currency_id}/cpp",
-    status_code=status.HTTP_204_NO_CONTENT,
-    tags=["currencies"],
-)
-async def delete_user_currency_cpp(
-    user_id: int,
-    currency_id: int,
-    db: AsyncSession = Depends(get_db),
-):
-    """Remove this user's CPP override for a currency (revert to default)."""
-    result = await db.execute(
-        select(UserCurrencyCpp).where(
-            UserCurrencyCpp.user_id == user_id,
-            UserCurrencyCpp.currency_id == currency_id,
-        )
-    )
-    row = result.scalar_one_or_none()
-    if not row:
-        raise HTTPException(
-            status_code=404,
-            detail="No CPP override found for this user and currency",
-        )
-    await db.delete(row)
-    await db.commit()
-
-
-# ---------------------------------------------------------------------------
-# Ecosystems
-# ---------------------------------------------------------------------------
-
-
-def _ecosystem_load_opts():
-    return [
-        selectinload(Ecosystem.points_currency).selectinload(Currency.issuer),
-        selectinload(Ecosystem.cashback_currency),
-        selectinload(Ecosystem.ecosystem_currencies).selectinload(EcosystemCurrency.currency),
-    ]
-
-
-@app.get("/ecosystems", response_model=list[EcosystemRead], tags=["ecosystems"])
-async def list_ecosystems(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Ecosystem).options(*_ecosystem_load_opts()).order_by(Ecosystem.name)
     )
     return result.scalars().all()
 
-
-@app.get("/ecosystems/{ecosystem_id}", response_model=EcosystemRead, tags=["ecosystems"])
-async def get_ecosystem(ecosystem_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Ecosystem).options(*_ecosystem_load_opts()).where(Ecosystem.id == ecosystem_id)
-    )
-    eco = result.scalar_one_or_none()
-    if not eco:
-        raise HTTPException(status_code=404, detail=f"Ecosystem {ecosystem_id} not found")
-    return eco
-
-
-async def _cash_currency_id(db: AsyncSession) -> Optional[int]:
-    """Return the id of the currency named 'Cash', or None if not found."""
-    r = await db.execute(select(Currency.id).where(Currency.name == "Cash").limit(1))
-    return r.scalar_one_or_none()
-
-
-@app.post(
-    "/ecosystems",
-    response_model=EcosystemRead,
-    status_code=status.HTTP_201_CREATED,
-    tags=["ecosystems"],
-)
-async def create_ecosystem(
-    payload: EcosystemCreate, db: AsyncSession = Depends(get_db)
-):
-    cur = await db.get(Currency, payload.points_currency_id)
-    if not cur:
-        raise HTTPException(
-            status_code=422, detail="Points currency not found"
-        )
-    existing = await db.execute(
-        select(Ecosystem).where(Ecosystem.name == payload.name)
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=409,
-            detail=f"Ecosystem with name {payload.name!r} already exists",
-        )
-    eco = Ecosystem(
-        name=payload.name,
-        points_currency_id=payload.points_currency_id,
-        cashback_currency_id=payload.cashback_currency_id,
-    )
-    db.add(eco)
-    await db.commit()
-    await db.refresh(eco)
-    for cid in payload.additional_currency_ids or []:
-        if cid == eco.points_currency_id:
-            continue  # primary currency must not be in additional
-        c = await db.get(Currency, cid)
-        if c:
-            db.add(EcosystemCurrency(ecosystem_id=eco.id, currency_id=cid))
-    await db.commit()
-    result = await db.execute(
-        select(Ecosystem).options(*_ecosystem_load_opts()).where(Ecosystem.id == eco.id)
-    )
-    return result.scalar_one()
-
-
-@app.patch("/ecosystems/{ecosystem_id}", response_model=EcosystemRead, tags=["ecosystems"])
-async def update_ecosystem(
-    ecosystem_id: int, payload: EcosystemUpdate, db: AsyncSession = Depends(get_db)
-):
-    result = await db.execute(
-        select(Ecosystem).options(selectinload(Ecosystem.ecosystem_currencies)).where(Ecosystem.id == ecosystem_id)
-    )
-    eco = result.scalar_one_or_none()
-    if not eco:
-        raise HTTPException(status_code=404, detail=f"Ecosystem {ecosystem_id} not found")
-    updates = payload.model_dump(exclude_unset=True)
-    additional_ids = updates.pop("additional_currency_ids", None)
-    if "points_currency_id" in updates:
-        cur = await db.get(Currency, updates["points_currency_id"])
-        if not cur:
-            raise HTTPException(status_code=422, detail="Points currency not found")
-    for field, value in updates.items():
-        setattr(eco, field, value)
-    if additional_ids is not None:
-        for ec in list(eco.ecosystem_currencies):
-            await db.delete(ec)
-        for cid in additional_ids:
-            if cid == eco.points_currency_id:
-                continue  # primary currency must not be in additional
-            c = await db.get(Currency, cid)
-            if c:
-                db.add(EcosystemCurrency(ecosystem_id=eco.id, currency_id=cid))
-    await db.commit()
-    result = await db.execute(
-        select(Ecosystem).options(*_ecosystem_load_opts()).where(Ecosystem.id == ecosystem_id)
-    )
-    return result.scalar_one()
-
-
-@app.delete(
-    "/ecosystems/{ecosystem_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    tags=["ecosystems"],
-)
-async def delete_ecosystem(ecosystem_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Ecosystem).where(Ecosystem.id == ecosystem_id))
-    eco = result.scalar_one_or_none()
-    if not eco:
-        raise HTTPException(status_code=404, detail=f"Ecosystem {ecosystem_id} not found")
-    await db.delete(eco)
-    await db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -610,203 +547,91 @@ async def list_cards(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-@app.get("/cards/{card_id}", response_model=CardRead, tags=["cards"])
-async def get_card(card_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Card).options(*_card_load_opts()).where(Card.id == card_id)
-    )
-    card = result.scalar_one_or_none()
-    if not card:
-        raise _card_404(card_id)
-    return card
+_CARD_LIBRARY_PATCH_FIELDS = frozenset(
+    {"sub", "sub_min_spend", "sub_months", "annual_fee", "first_year_fee"}
+)
 
 
 @app.patch("/cards/{card_id}", response_model=CardRead, tags=["cards"])
-async def update_card(
-    card_id: int, payload: CardUpdate, db: AsyncSession = Depends(get_db)
+async def update_card_library(
+    card_id: int,
+    payload: UpdateCardLibraryPayload,
+    db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Card).options(*_card_load_opts()).where(Card.id == card_id)
-    )
-    card = result.scalar_one_or_none()
-    if not card:
-        raise _card_404(card_id)
-
-    updates = payload.model_dump(exclude_none=True)
-
-    # Validate FK targets if being updated
-    new_issuer_id = updates.get("issuer_id") or card.issuer_id
-    if "issuer_id" in updates:
-        issuer = await db.get(Issuer, updates["issuer_id"])
-        if not issuer:
-            raise HTTPException(
-                status_code=422, detail=f"Issuer {updates['issuer_id']} not found"
-            )
-    if "currency_id" in updates:
-        cur = await db.get(Currency, updates["currency_id"])
-        if not cur:
-            raise HTTPException(status_code=422, detail=f"Currency {updates['currency_id']} not found")
-        if cur.issuer_id is not None and cur.issuer_id != new_issuer_id:
-            raise HTTPException(
-                status_code=422,
-                detail="Currency does not belong to the selected issuer",
-            )
-    elif "issuer_id" in updates:
-        # Changing issuer only: current currency must belong to the new issuer (or have no issuer)
-        cur = await db.get(Currency, card.currency_id)
-        if cur and cur.issuer_id is not None and cur.issuer_id != new_issuer_id:
-            raise HTTPException(
-                status_code=422,
-                detail="Current currency does not belong to the new issuer. Please also select a currency for the new issuer.",
-            )
-
-    ecosystem_memberships = updates.pop("ecosystem_memberships", None)
-    multipliers = updates.pop("multipliers", None)
-    for field, value in updates.items():
-        setattr(card, field, value)
-
-    if ecosystem_memberships is not None:
-        # Replace card's ecosystem memberships
-        for ce in list(card.ecosystem_memberships):
-            await db.delete(ce)
-        await db.flush()
-        for m in ecosystem_memberships:
-            eco = await db.get(Ecosystem, m["ecosystem_id"])
-            if not eco:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Ecosystem {m['ecosystem_id']} not found",
-                )
-            db.add(
-                CardEcosystem(
-                    card_id=card.id,
-                    ecosystem_id=eco.id,
-                    key_card=m["key_card"],
-                )
-            )
-
-    if multipliers is not None:
-        # Replace card's category multipliers
-        for cm in list(card.multipliers):
-            await db.delete(cm)
-        await db.flush()
-        for m in multipliers:
-            db.add(
-                CardCategoryMultiplier(
-                    card_id=card.id,
-                    category=m["category"],
-                    multiplier=m["multiplier"],
-                )
-            )
-
-    await db.commit()
-    # Reload with full opts to get updated nested objects
-    result = await db.execute(
-        select(Card).options(*_card_load_opts()).where(Card.id == card_id)
-    )
-    return result.scalar_one()
-
-
-@app.post(
-    "/cards",
-    response_model=CardRead,
-    status_code=status.HTTP_201_CREATED,
-    tags=["cards"],
-)
-async def create_card(
-    payload: CardCreate, db: AsyncSession = Depends(get_db)
-):
-    issuer_result = await db.execute(select(Issuer).where(Issuer.id == payload.issuer_id))
-    issuer = issuer_result.scalar_one_or_none()
-    if not issuer:
-        raise HTTPException(
-            status_code=422, detail=f"Issuer {payload.issuer_id} not found"
-        )
-    currency_result = await db.execute(
-        select(Currency)
-        .options(selectinload(Currency.issuer))
-        .where(Currency.id == payload.currency_id)
-    )
-    currency = currency_result.scalar_one_or_none()
-    if not currency:
-        raise HTTPException(
-            status_code=422, detail=f"Currency {payload.currency_id} not found"
-        )
-    if currency.issuer_id is not None and currency.issuer_id != payload.issuer_id:
-        raise HTTPException(
-            status_code=422,
-            detail="Currency does not belong to the selected issuer",
-        )
-    existing = await db.execute(select(Card).where(Card.name == payload.name))
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=409,
-            detail=f"Card with name {payload.name!r} already exists",
-        )
-    card = Card(
-        name=payload.name,
-        issuer_id=payload.issuer_id,
-        currency_id=payload.currency_id,
-        annual_fee=payload.annual_fee,
-        first_year_fee=payload.first_year_fee,
-        business=payload.business,
-        sub=payload.sub,
-        sub_min_spend=payload.sub_min_spend,
-        sub_months=payload.sub_months,
-        sub_spend_amount=payload.sub_spend_amount,
-        annual_bonus=payload.annual_bonus,
-    )
-    db.add(card)
-    await db.flush()
-    for m in payload.ecosystem_memberships:
-        eco = await db.get(Ecosystem, m.ecosystem_id)
-        if not eco:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Ecosystem {m.ecosystem_id} not found",
-            )
-        db.add(
-            CardEcosystem(
-                card_id=card.id,
-                ecosystem_id=eco.id,
-                key_card=m.key_card,
-            )
-        )
-    for m in payload.multipliers:
-        db.add(
-            CardCategoryMultiplier(
-                card_id=card.id,
-                category=m.category,
-                multiplier=m.multiplier,
-            )
-        )
-    for c in payload.credits:
-        db.add(
-            CardCredit(
-                card_id=card.id,
-                credit_name=c.credit_name,
-                credit_value=c.credit_value,
-            )
-        )
-    await db.commit()
-    result = await db.execute(
-        select(Card).options(*_card_load_opts()).where(Card.id == card.id)
-    )
-    return result.scalar_one()
-
-
-@app.delete(
-    "/cards/{card_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    tags=["cards"],
-)
-async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
+    """Update editable card library fields (SUB, min spend, months, fees)."""
     result = await db.execute(select(Card).where(Card.id == card_id))
     card = result.scalar_one_or_none()
     if not card:
         raise _card_404(card_id)
-    await db.delete(card)
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No fields to update",
+        )
+    for key, value in data.items():
+        if key not in _CARD_LIBRARY_PATCH_FIELDS:
+            continue
+        setattr(card, key, value)
     await db.commit()
+    refreshed = await db.execute(
+        select(Card).where(Card.id == card_id).options(*_card_load_opts())
+    )
+    return refreshed.scalar_one()
+
+
+@app.patch(
+    "/cards/{card_id}/credits/{credit_id}",
+    response_model=CardCreditRead,
+    tags=["cards"],
+)
+async def update_card_credit(
+    card_id: int,
+    credit_id: int,
+    payload: UpdateCardCreditPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update statement credit value, label, and/or one-time vs annual flag (library-wide)."""
+    result = await db.execute(
+        select(CardCredit).where(
+            CardCredit.id == credit_id,
+            CardCredit.card_id == card_id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Credit not found for this card",
+        )
+    if payload.credit_value is not None:
+        row.credit_value = payload.credit_value
+    if payload.is_one_time is not None:
+        row.is_one_time = payload.is_one_time
+    if payload.credit_name is not None:
+        new_name = payload.credit_name.strip()
+        if not new_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="credit_name cannot be empty",
+            )
+        if new_name != row.credit_name:
+            clash = await db.execute(
+                select(CardCredit).where(
+                    CardCredit.card_id == card_id,
+                    CardCredit.credit_name == new_name,
+                    CardCredit.id != credit_id,
+                )
+            )
+            if clash.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Credit name {new_name!r} already exists on this card",
+                )
+        row.credit_name = new_name
+    await db.commit()
+    await db.refresh(row)
+    return row
 
 
 # ---------------------------------------------------------------------------
@@ -820,329 +645,368 @@ async def list_spend(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-@app.post(
-    "/spend",
-    response_model=SpendCategoryRead,
-    status_code=status.HTTP_201_CREATED,
+@app.get(
+    "/app-spend-categories",
+    response_model=list[SpendCategoryRead],
     tags=["spend"],
 )
-async def create_spend(
-    payload: SpendCategoryCreate, db: AsyncSession = Depends(get_db)
-):
-    existing = await db.execute(
-        select(SpendCategory).where(SpendCategory.category == payload.category)
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=409,
-            detail=f"Category {payload.category!r} already exists",
+async def list_app_spend_categories(db: AsyncSession = Depends(get_db)):
+    """Return top-level spend categories with their children nested (excludes system catch-all)."""
+    result = await db.execute(
+        select(SpendCategory)
+        .options(
+            selectinload(SpendCategory.children).selectinload(SpendCategory.children),
         )
-    sc = SpendCategory(category=payload.category, annual_spend=payload.annual_spend)
-    db.add(sc)
-    await db.commit()
-    await db.refresh(sc)
-    return sc
-
-
-@app.put("/spend/{category}", response_model=SpendCategoryRead, tags=["spend"])
-async def update_spend(
-    category: str, payload: SpendCategoryUpdate, db: AsyncSession = Depends(get_db)
-):
-    result = await db.execute(
-        select(SpendCategory).where(SpendCategory.category == category)
+        .where(SpendCategory.parent_id == None, SpendCategory.is_system == False)  # noqa: E711,E712
+        .order_by(SpendCategory.category)
     )
-    sc = result.scalar_one_or_none()
-    if not sc:
-        raise HTTPException(status_code=404, detail=f"Category '{category}' not found")
-    sc.annual_spend = payload.annual_spend
-    await db.commit()
-    await db.refresh(sc)
-    return sc
+    return result.scalars().all()
 
 
-@app.delete(
-    "/spend/{category}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    tags=["spend"],
+# ---------------------------------------------------------------------------
+# Wallet spend categories (wallet-scoped, replaces user-scoped)
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/wallets/{wallet_id}/spend-categories",
+    response_model=list[WalletSpendCategoryRead],
+    tags=["wallet-spend"],
 )
-async def delete_spend(category: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(SpendCategory).where(SpendCategory.category == category)
-    )
-    sc = result.scalar_one_or_none()
-    if not sc:
-        raise HTTPException(status_code=404, detail=f"Category '{category}' not found")
-    await db.delete(sc)
-    await db.commit()
-
-
-# ---------------------------------------------------------------------------
-# Direct calculation (no spreadsheet)
-# ---------------------------------------------------------------------------
-
-
-@app.post("/calculate", response_model=WalletResultSchema, tags=["calculate"])
-async def calculate(
-    payload: CalculateRequest, db: AsyncSession = Depends(get_db)
+async def list_wallet_spend_categories(
+    wallet_id: int,
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Run the wallet calculation engine directly.
-    Pass selected_card_ids, years_counted, and optional spend_overrides.
-    """
-    all_cards = await load_card_data(db)
-    spend = await load_spend(db, overrides=payload.spend_overrides)
-    wallet = compute_wallet(
-        all_cards=all_cards,
-        selected_ids=set(payload.selected_card_ids),
-        spend=spend,
-        years=payload.years_counted,
-    )
-    return _wallet_to_schema(wallet)
-
-
-# ---------------------------------------------------------------------------
-# Scenarios
-# ---------------------------------------------------------------------------
-
-
-@app.get("/scenarios", response_model=list[ScenarioRead], tags=["scenarios"])
-async def list_scenarios(db: AsyncSession = Depends(get_db)):
+    """List all wallet spend categories with their card category mappings."""
+    wallet_result = await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+    if not wallet_result.scalar_one_or_none():
+        raise _wallet_404(wallet_id)
+    await ensure_all_other_wallet_spend_category(db, wallet_id)
+    await db.commit()
     result = await db.execute(
-        select(Scenario).options(selectinload(Scenario.scenario_cards))
+        select(WalletSpendCategory)
+        .options(
+            selectinload(WalletSpendCategory.mappings).selectinload(WalletSpendCategoryMapping.spend_category)
+        )
+        .where(WalletSpendCategory.wallet_id == wallet_id)
+        .order_by(WalletSpendCategory.name)
     )
     return result.scalars().all()
 
 
 @app.post(
-    "/scenarios",
-    response_model=ScenarioRead,
+    "/wallets/{wallet_id}/spend-categories",
+    response_model=WalletSpendCategoryRead,
     status_code=status.HTTP_201_CREATED,
-    tags=["scenarios"],
+    tags=["wallet-spend"],
 )
-async def create_scenario(payload: ScenarioCreate, db: AsyncSession = Depends(get_db)):
-    scenario = Scenario(
-        name=payload.name,
-        description=payload.description,
-        as_of_date=payload.as_of_date,
+async def create_wallet_spend_category(
+    wallet_id: int,
+    payload: WalletSpendCategoryCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a wallet spend category with optional card category mappings."""
+    wallet_result = await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+    if not wallet_result.scalar_one_or_none():
+        raise _wallet_404(wallet_id)
+
+    existing = await db.execute(
+        select(WalletSpendCategory).where(
+            WalletSpendCategory.wallet_id == wallet_id,
+            WalletSpendCategory.name == payload.name.strip(),
+        )
     )
-    db.add(scenario)
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Spend category '{payload.name}' already exists")
+
+    if payload.name.strip() == ALL_OTHER_SPEND_NAME:
+        raise HTTPException(
+            status_code=403,
+            detail=f"'{ALL_OTHER_SPEND_NAME}' is a reserved system category",
+        )
+
+    wsc = WalletSpendCategory(wallet_id=wallet_id, name=payload.name.strip(), amount=payload.amount)
+    db.add(wsc)
     await db.flush()
 
-    for sc in payload.cards:
-        card_result = await db.execute(select(Card).where(Card.id == sc.card_id))
-        if not card_result.scalar_one_or_none():
-            raise HTTPException(
-                status_code=422, detail=f"Card id={sc.card_id} not found"
-            )
-        db.add(
-            ScenarioCard(
-                scenario_id=scenario.id,
-                card_id=sc.card_id,
-                start_date=sc.start_date,
-                end_date=sc.end_date,
-                years_counted=sc.years_counted,
-            )
-        )
+    for m in payload.mappings:
+        sc_result = await db.execute(select(SpendCategory).where(SpendCategory.id == m.spend_category_id))
+        if not sc_result.scalar_one_or_none():
+            raise HTTPException(status_code=422, detail=f"SpendCategory id={m.spend_category_id} not found")
+        db.add(WalletSpendCategoryMapping(
+            wallet_spend_category_id=wsc.id,
+            spend_category_id=m.spend_category_id,
+            allocation=m.allocation,
+        ))
 
     await db.commit()
     result = await db.execute(
-        select(Scenario)
-        .options(selectinload(Scenario.scenario_cards))
-        .where(Scenario.id == scenario.id)
+        select(WalletSpendCategory)
+        .options(selectinload(WalletSpendCategory.mappings).selectinload(WalletSpendCategoryMapping.spend_category))
+        .where(WalletSpendCategory.id == wsc.id)
     )
     return result.scalar_one()
 
 
-@app.get("/scenarios/{scenario_id}", response_model=ScenarioRead, tags=["scenarios"])
-async def get_scenario(scenario_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Scenario)
-        .options(selectinload(Scenario.scenario_cards))
-        .where(Scenario.id == scenario_id)
-    )
-    scenario = result.scalar_one_or_none()
-    if not scenario:
-        raise _scenario_404(scenario_id)
-    return scenario
-
-
-@app.patch(
-    "/scenarios/{scenario_id}", response_model=ScenarioRead, tags=["scenarios"]
+@app.put(
+    "/wallets/{wallet_id}/spend-categories/{wsc_id}",
+    response_model=WalletSpendCategoryRead,
+    tags=["wallet-spend"],
 )
-async def update_scenario(
-    scenario_id: int, payload: ScenarioUpdate, db: AsyncSession = Depends(get_db)
-):
-    result = await db.execute(
-        select(Scenario)
-        .options(selectinload(Scenario.scenario_cards))
-        .where(Scenario.id == scenario_id)
-    )
-    scenario = result.scalar_one_or_none()
-    if not scenario:
-        raise _scenario_404(scenario_id)
-
-    for field, value in payload.model_dump(exclude_none=True).items():
-        setattr(scenario, field, value)
-
-    await db.commit()
-    await db.refresh(scenario)
-    return scenario
-
-
-@app.delete(
-    "/scenarios/{scenario_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    tags=["scenarios"],
-)
-async def delete_scenario(scenario_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Scenario).where(Scenario.id == scenario_id)
-    )
-    scenario = result.scalar_one_or_none()
-    if not scenario:
-        raise _scenario_404(scenario_id)
-    await db.delete(scenario)
-    await db.commit()
-
-
-@app.post(
-    "/scenarios/{scenario_id}/cards",
-    response_model=ScenarioCardRead,
-    status_code=status.HTTP_201_CREATED,
-    tags=["scenarios"],
-)
-async def add_card_to_scenario(
-    scenario_id: int,
-    payload: ScenarioCardCreate,
+async def update_wallet_spend_category(
+    wallet_id: int,
+    wsc_id: int,
+    payload: WalletSpendCategoryUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    sc_result = await db.execute(
-        select(Scenario).where(Scenario.id == scenario_id)
+    """Update a wallet spend category's name, amount, or card category mappings."""
+    result = await db.execute(
+        select(WalletSpendCategory)
+        .options(selectinload(WalletSpendCategory.mappings))
+        .where(WalletSpendCategory.id == wsc_id, WalletSpendCategory.wallet_id == wallet_id)
     )
-    if not sc_result.scalar_one_or_none():
-        raise _scenario_404(scenario_id)
+    wsc = result.scalar_one_or_none()
+    if not wsc:
+        raise HTTPException(status_code=404, detail=f"Wallet spend category {wsc_id} not found")
 
-    card_result = await db.execute(select(Card).where(Card.id == payload.card_id))
-    card = card_result.scalar_one_or_none()
-    if not card:
-        raise _card_404(payload.card_id)
+    locked = wsc.name == ALL_OTHER_SPEND_NAME
+    if locked:
+        if payload.name is not None and payload.name.strip() != ALL_OTHER_SPEND_NAME:
+            raise HTTPException(
+                status_code=403,
+                detail=f"The '{ALL_OTHER_SPEND_NAME}' category cannot be renamed",
+            )
+        if payload.mappings is not None:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Mappings for '{ALL_OTHER_SPEND_NAME}' cannot be changed",
+            )
 
-    sc = ScenarioCard(
-        scenario_id=scenario_id,
-        card_id=payload.card_id,
-        start_date=payload.start_date,
-        end_date=payload.end_date,
-        years_counted=payload.years_counted,
-    )
-    db.add(sc)
+    if payload.name is not None:
+        new_name = payload.name.strip()
+        if new_name != wsc.name:
+            dup = await db.execute(
+                select(WalletSpendCategory).where(
+                    WalletSpendCategory.wallet_id == wallet_id,
+                    WalletSpendCategory.name == new_name,
+                    WalletSpendCategory.id != wsc_id,
+                )
+            )
+            if dup.scalar_one_or_none():
+                raise HTTPException(status_code=409, detail=f"Spend category '{new_name}' already exists")
+        wsc.name = new_name
+
+    if payload.amount is not None:
+        wsc.amount = payload.amount
+
+    if payload.mappings is not None:
+        effective_amount = wsc.amount
+        total_alloc = sum(m.allocation for m in payload.mappings)
+        if payload.mappings and abs(total_alloc - effective_amount) > ALLOCATION_SUM_TOLERANCE:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Mapping allocations must sum to annual amount ${effective_amount:.2f} "
+                    f"(got ${total_alloc:.2f})"
+                ),
+            )
+        for m in list(wsc.mappings):
+            await db.delete(m)
+        await db.flush()
+        for m in payload.mappings:
+            sc_result = await db.execute(select(SpendCategory).where(SpendCategory.id == m.spend_category_id))
+            if not sc_result.scalar_one_or_none():
+                raise HTTPException(status_code=422, detail=f"SpendCategory id={m.spend_category_id} not found")
+            db.add(WalletSpendCategoryMapping(
+                wallet_spend_category_id=wsc.id,
+                spend_category_id=m.spend_category_id,
+                allocation=m.allocation,
+            ))
+
     await db.commit()
-    await db.refresh(sc)
-
-    read = ScenarioCardRead.model_validate(sc)
-    read.card_name = card.name
-    return read
+    result = await db.execute(
+        select(WalletSpendCategory)
+        .options(selectinload(WalletSpendCategory.mappings).selectinload(WalletSpendCategoryMapping.spend_category))
+        .where(WalletSpendCategory.id == wsc_id)
+    )
+    return result.scalar_one()
 
 
 @app.delete(
-    "/scenarios/{scenario_id}/cards/{card_id}",
+    "/wallets/{wallet_id}/spend-categories/{wsc_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    tags=["scenarios"],
+    tags=["wallet-spend"],
 )
-async def remove_card_from_scenario(
-    scenario_id: int, card_id: int, db: AsyncSession = Depends(get_db)
+async def delete_wallet_spend_category(
+    wallet_id: int,
+    wsc_id: int,
+    db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(ScenarioCard).where(
-            ScenarioCard.scenario_id == scenario_id,
-            ScenarioCard.card_id == card_id,
+        select(WalletSpendCategory).where(
+            WalletSpendCategory.id == wsc_id,
+            WalletSpendCategory.wallet_id == wallet_id,
         )
     )
-    sc = result.scalar_one_or_none()
-    if not sc:
+    wsc = result.scalar_one_or_none()
+    if not wsc:
+        raise HTTPException(status_code=404, detail=f"Wallet spend category {wsc_id} not found")
+    if wsc.name == ALL_OTHER_SPEND_NAME:
         raise HTTPException(
-            status_code=404,
-            detail=f"Card {card_id} not in scenario {scenario_id}",
+            status_code=403,
+            detail=f"The '{ALL_OTHER_SPEND_NAME}' category cannot be deleted",
         )
-    await db.delete(sc)
+    await db.delete(wsc)
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Wallet spend items (new app-level hierarchy system)
+# ---------------------------------------------------------------------------
+
+
+def _load_spend_item_opts():
+    return [
+        selectinload(WalletSpendItem.spend_category).selectinload(SpendCategory.children).selectinload(SpendCategory.children),
+    ]
 
 
 @app.get(
-    "/scenarios/{scenario_id}/results",
-    response_model=ScenarioResultSchema,
-    tags=["scenarios"],
+    "/wallets/{wallet_id}/spend-items",
+    response_model=list[WalletSpendItemRead],
+    tags=["wallet-spend"],
 )
-async def scenario_results(
-    scenario_id: int,
-    reference_date: Optional[date] = None,
+async def list_wallet_spend_items(
+    wallet_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Compute wallet EV for a scenario.
-
-    Cards are considered active if:
-      - start_date is None OR start_date <= reference_date
-      - end_date is None OR end_date > reference_date
-
-    reference_date defaults to scenario.as_of_date, then today.
-    """
+    """List wallet spend items. Auto-creates the 'All Other' item if missing."""
+    wallet_result = await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+    if not wallet_result.scalar_one_or_none():
+        raise _wallet_404(wallet_id)
+    await ensure_all_other_wallet_spend_item(db, wallet_id)
+    await db.commit()
     result = await db.execute(
-        select(Scenario)
-        .options(selectinload(Scenario.scenario_cards))
-        .where(Scenario.id == scenario_id)
+        select(WalletSpendItem)
+        .options(*_load_spend_item_opts())
+        .where(WalletSpendItem.wallet_id == wallet_id)
+        .join(WalletSpendItem.spend_category)
+        .order_by(WalletSpendItem.amount.desc(), SpendCategory.category)
     )
-    scenario = result.scalar_one_or_none()
-    if not scenario:
-        raise _scenario_404(scenario_id)
+    return result.scalars().all()
 
-    ref_date = reference_date or scenario.as_of_date or date.today()
 
-    active_years: dict[int, int] = {}
-    for sc in scenario.scenario_cards:
-        start_ok = sc.start_date is None or sc.start_date <= ref_date
-        end_ok = sc.end_date is None or sc.end_date > ref_date
-        if start_ok and end_ok:
-            active_years[sc.card_id] = sc.years_counted
+@app.post(
+    "/wallets/{wallet_id}/spend-items",
+    response_model=WalletSpendItemRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["wallet-spend"],
+)
+async def create_wallet_spend_item(
+    wallet_id: int,
+    payload: WalletSpendItemCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a spend item to a wallet for a given app spend category."""
+    wallet_result = await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+    if not wallet_result.scalar_one_or_none():
+        raise _wallet_404(wallet_id)
 
-    if not active_years:
-        return ScenarioResultSchema(
-            scenario_id=scenario_id,
-            scenario_name=scenario.name,
-            as_of_date=ref_date,
-            wallet=WalletResultSchema(
-                years_counted=2,
-                total_annual_ev=0,
-                total_points_earned=0,
-                total_annual_pts=0,
-            ),
+    sc_result = await db.execute(
+        select(SpendCategory).where(SpendCategory.id == payload.spend_category_id)
+    )
+    sc = sc_result.scalar_one_or_none()
+    if not sc:
+        raise HTTPException(status_code=422, detail=f"SpendCategory id={payload.spend_category_id} not found")
+    if sc.is_system:
+        raise HTTPException(status_code=403, detail=f"'{sc.category}' is a system category; update its amount via PUT instead")
+
+    existing = await db.execute(
+        select(WalletSpendItem).where(
+            WalletSpendItem.wallet_id == wallet_id,
+            WalletSpendItem.spend_category_id == payload.spend_category_id,
         )
-
-    years_counted = max(set(active_years.values()), key=list(active_years.values()).count)
-
-    all_cards = await load_card_data(db)
-    spend = await load_spend(db)
-
-    wallet = compute_wallet(
-        all_cards=all_cards,
-        selected_ids=set(active_years.keys()),
-        spend=spend,
-        years=years_counted,
     )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"A spend item for '{sc.category}' already exists in this wallet")
 
-    return ScenarioResultSchema(
-        scenario_id=scenario_id,
-        scenario_name=scenario.name,
-        as_of_date=ref_date,
-        wallet=_wallet_to_schema(wallet),
+    item = WalletSpendItem(
+        wallet_id=wallet_id,
+        spend_category_id=payload.spend_category_id,
+        amount=payload.amount,
     )
+    db.add(item)
+    await db.commit()
+    result = await db.execute(
+        select(WalletSpendItem)
+        .options(*_load_spend_item_opts())
+        .where(WalletSpendItem.id == item.id)
+    )
+    return result.scalar_one()
+
+
+@app.put(
+    "/wallets/{wallet_id}/spend-items/{item_id}",
+    response_model=WalletSpendItemRead,
+    tags=["wallet-spend"],
+)
+async def update_wallet_spend_item(
+    wallet_id: int,
+    item_id: int,
+    payload: WalletSpendItemUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the annual spend amount for a wallet spend item."""
+    result = await db.execute(
+        select(WalletSpendItem).where(
+            WalletSpendItem.id == item_id,
+            WalletSpendItem.wallet_id == wallet_id,
+        )
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail=f"Spend item {item_id} not found")
+    item.amount = payload.amount
+    await db.commit()
+    result = await db.execute(
+        select(WalletSpendItem)
+        .options(*_load_spend_item_opts())
+        .where(WalletSpendItem.id == item_id)
+    )
+    return result.scalar_one()
+
+
+@app.delete(
+    "/wallets/{wallet_id}/spend-items/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["wallet-spend"],
+)
+async def delete_wallet_spend_item(
+    wallet_id: int,
+    item_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a spend item from a wallet. The 'All Other' item cannot be deleted."""
+    result = await db.execute(
+        select(WalletSpendItem)
+        .options(selectinload(WalletSpendItem.spend_category))
+        .where(WalletSpendItem.id == item_id, WalletSpendItem.wallet_id == wallet_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail=f"Spend item {item_id} not found")
+    if item.spend_category and item.spend_category.is_system:
+        raise HTTPException(
+            status_code=403,
+            detail=f"The '{item.spend_category.category}' item cannot be deleted",
+        )
+    await db.delete(item)
+    await db.commit()
 
 
 # ---------------------------------------------------------------------------
 # Wallets (Wallet Tool)
 # ---------------------------------------------------------------------------
-
-DEFAULT_USER_ID = 1
-
 
 @app.get("/wallets", response_model=list[WalletRead], tags=["wallets"])
 async def list_wallets(
@@ -1152,9 +1016,7 @@ async def list_wallets(
     """List wallets for the given user (default user_id=1 for single-tenant)."""
     result = await db.execute(
         select(Wallet)
-        .options(
-            selectinload(Wallet.wallet_cards).selectinload(WalletCard.card),
-        )
+        .options(*_wallet_load_opts())
         .where(Wallet.user_id == user_id)
         .order_by(Wallet.id)
     )
@@ -1163,21 +1025,7 @@ async def list_wallets(
     out = []
     for w in wallets:
         read = WalletRead.model_validate(w)
-        read.wallet_cards = [
-            WalletCardRead(
-                id=wc.id,
-                wallet_id=wc.wallet_id,
-                card_id=wc.card_id,
-                card_name=wc.card.name,
-                added_date=wc.added_date,
-                sub=wc.sub,
-                sub_min_spend=wc.sub_min_spend,
-                sub_months=wc.sub_months,
-                sub_spend_amount=wc.sub_spend_amount,
-                years_counted=wc.years_counted,
-            )
-            for wc in w.wallet_cards
-        ]
+        read.wallet_cards = [_wc_read(wc, wc.card) for wc in w.wallet_cards]
         out.append(read)
     return out
 
@@ -1206,6 +1054,8 @@ async def create_wallet(payload: WalletCreate, db: AsyncSession = Depends(get_db
         as_of_date=payload.as_of_date,
     )
     db.add(wallet)
+    await db.flush()
+    await ensure_all_other_wallet_spend_category(db, wallet.id)
     await db.commit()
     await db.refresh(wallet)
     return WalletRead(
@@ -1222,30 +1072,14 @@ async def create_wallet(payload: WalletCreate, db: AsyncSession = Depends(get_db
 async def get_wallet(wallet_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Wallet)
-        .options(
-            selectinload(Wallet.wallet_cards).selectinload(WalletCard.card),
-        )
+        .options(*_wallet_load_opts())
         .where(Wallet.id == wallet_id)
     )
     wallet = result.scalar_one_or_none()
     if not wallet:
         raise _wallet_404(wallet_id)
     read = WalletRead.model_validate(wallet)
-    read.wallet_cards = [
-        WalletCardRead(
-            id=wc.id,
-            wallet_id=wc.wallet_id,
-            card_id=wc.card_id,
-            card_name=wc.card.name,
-            added_date=wc.added_date,
-            sub=wc.sub,
-            sub_min_spend=wc.sub_min_spend,
-            sub_months=wc.sub_months,
-            sub_spend_amount=wc.sub_spend_amount,
-            years_counted=wc.years_counted,
-        )
-        for wc in wallet.wallet_cards
-    ]
+    read.wallet_cards = [_wc_read(wc, wc.card) for wc in wallet.wallet_cards]
     return read
 
 
@@ -1257,9 +1091,7 @@ async def update_wallet(
 ):
     result = await db.execute(
         select(Wallet)
-        .options(
-            selectinload(Wallet.wallet_cards).selectinload(WalletCard.card),
-        )
+        .options(*_wallet_load_opts())
         .where(Wallet.id == wallet_id)
     )
     wallet = result.scalar_one_or_none()
@@ -1270,21 +1102,7 @@ async def update_wallet(
     await db.commit()
     await db.refresh(wallet)
     read = WalletRead.model_validate(wallet)
-    read.wallet_cards = [
-        WalletCardRead(
-            id=wc.id,
-            wallet_id=wc.wallet_id,
-            card_id=wc.card_id,
-            card_name=wc.card.name,
-            added_date=wc.added_date,
-            sub=wc.sub,
-            sub_min_spend=wc.sub_min_spend,
-            sub_months=wc.sub_months,
-            sub_spend_amount=wc.sub_spend_amount,
-            years_counted=wc.years_counted,
-        )
-        for wc in wallet.wallet_cards
-    ]
+    read.wallet_cards = [_wc_read(wc, wc.card) for wc in wallet.wallet_cards]
     return read
 
 
@@ -1327,24 +1145,56 @@ async def add_card_to_wallet(
         sub=payload.sub,
         sub_min_spend=payload.sub_min_spend,
         sub_months=payload.sub_months,
-        sub_spend_amount=payload.sub_spend_amount,
+        sub_spend_earn=payload.sub_spend_earn,
         years_counted=payload.years_counted,
+        annual_fee=payload.annual_fee,
+        first_year_fee=payload.first_year_fee,
+        sub_earned_date=payload.sub_earned_date,
+        closed_date=payload.closed_date,
+        acquisition_type=payload.acquisition_type,
     )
     db.add(wc)
+    await db.flush()
+    await _ensure_wallet_currency_rows_for_earning_currencies(db, wallet_id)
     await db.commit()
     await db.refresh(wc)
-    return WalletCardRead(
-        id=wc.id,
-        wallet_id=wc.wallet_id,
-        card_id=wc.card_id,
-        card_name=card.name,
-        added_date=wc.added_date,
-        sub=wc.sub,
-        sub_min_spend=wc.sub_min_spend,
-        sub_months=wc.sub_months,
-        sub_spend_amount=wc.sub_spend_amount,
-        years_counted=wc.years_counted,
+    return _wc_read(wc, card)
+
+
+@app.patch(
+    "/wallets/{wallet_id}/cards/{card_id}",
+    response_model=WalletCardRead,
+    tags=["wallets"],
+)
+async def update_wallet_card(
+    wallet_id: int,
+    card_id: int,
+    payload: WalletCardUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Partially update a wallet card. Supports updating SUB overrides, years_counted,
+    sub_earned_date (mark when the SUB was earned), and closed_date (mark card as closed).
+    Use sub_earned_date=null in the JSON body to clear the earned date.
+    """
+    result = await db.execute(
+        select(WalletCard).where(
+            WalletCard.wallet_id == wallet_id,
+            WalletCard.card_id == card_id,
+        )
     )
+    wc = result.scalar_one_or_none()
+    if not wc:
+        raise HTTPException(
+            status_code=404, detail=f"Card {card_id} not in wallet {wallet_id}"
+        )
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(wc, field, value)
+    await db.commit()
+    await db.refresh(wc)
+    card_result = await db.execute(select(Card).where(Card.id == wc.card_id))
+    card = card_result.scalar_one()
+    return _wc_read(wc, card)
 
 
 @app.delete(
@@ -1371,6 +1221,121 @@ async def remove_card_from_wallet(
     await db.commit()
 
 
+async def _effective_earn_currency_ids_for_wallet(
+    db: AsyncSession,
+    wallet_id: int,
+) -> set[int]:
+    """
+    Currency IDs this wallet's cards effectively earn (upgrade rule matches calculator:
+    e.g. UR Cash → UR when a UR card is also in the wallet).
+    """
+    result = await db.execute(
+        select(WalletCard)
+        .options(
+            selectinload(WalletCard.card)
+            .selectinload(Card.currency_obj)
+            .selectinload(Currency.converts_to_currency),
+        )
+        .where(WalletCard.wallet_id == wallet_id)
+    )
+    wcs = list(result.scalars().all())
+    if not wcs:
+        return set()
+
+    wallet_currency_ids = {wc.card.currency_id for wc in wcs}
+    effective_ids: set[int] = set()
+    for wc in wcs:
+        cur = wc.card.currency_obj
+        conv = cur.converts_to_currency
+        if conv is not None and conv.id in wallet_currency_ids:
+            effective_ids.add(conv.id)
+        else:
+            effective_ids.add(cur.id)
+    return effective_ids
+
+
+async def _ensure_wallet_currency_rows_for_earning_currencies(
+    db: AsyncSession,
+    wallet_id: int,
+) -> None:
+    """
+    Create WalletCurrencyBalance rows (if missing) for each effective earn currency
+    for cards in this wallet — same upgrade rule as the calculator (e.g. UR Cash → UR
+    when a UR card is also in the wallet).
+    """
+    effective_ids = await _effective_earn_currency_ids_for_wallet(db, wallet_id)
+    if not effective_ids:
+        return
+
+    today = date.today()
+    for cid in effective_ids:
+        ex = await db.execute(
+            select(WalletCurrencyBalance).where(
+                WalletCurrencyBalance.wallet_id == wallet_id,
+                WalletCurrencyBalance.currency_id == cid,
+            )
+        )
+        if ex.scalar_one_or_none():
+            continue
+        db.add(
+            WalletCurrencyBalance(
+                wallet_id=wallet_id,
+                currency_id=cid,
+                initial_balance=0.0,
+                projection_earn=0.0,
+                balance=0.0,
+                user_tracked=False,
+                updated_date=today,
+            )
+        )
+
+
+async def _sync_wallet_balances_from_currency_pts(
+    db: AsyncSession,
+    wallet_id: int,
+    currency_pts_by_id: dict[int, float],
+) -> None:
+    """
+    Persist projection-period earn per currency and set balance = initial + earn.
+    Keys are currency ids (same as calculator effective earn). Existing rows get
+    projection_earn updated from the latest calculate; new rows are created for
+    positive earn not yet present.
+    """
+    today = date.today()
+    valid_ids = set((await db.execute(select(Currency.id))).scalars().all())
+
+    res = await db.execute(
+        select(WalletCurrencyBalance)
+        .options(selectinload(WalletCurrencyBalance.currency))
+        .where(WalletCurrencyBalance.wallet_id == wallet_id)
+    )
+    rows = list(res.scalars().all())
+    by_cid = {r.currency_id: r for r in rows}
+
+    for row in rows:
+        earn = float(currency_pts_by_id.get(row.currency_id, 0.0))
+        row.projection_earn = earn
+        row.balance = round(row.initial_balance + earn, 4)
+        row.updated_date = today
+
+    for cid, earn in currency_pts_by_id.items():
+        if earn <= 0 or cid not in valid_ids:
+            continue
+        if cid in by_cid:
+            continue
+        new_row = WalletCurrencyBalance(
+            wallet_id=wallet_id,
+            currency_id=cid,
+            initial_balance=0.0,
+            projection_earn=float(earn),
+            balance=float(earn),
+            user_tracked=False,
+            updated_date=today,
+        )
+        db.add(new_row)
+        by_cid[cid] = new_row
+
+
 @app.get(
     "/wallets/{wallet_id}/results",
     response_model=WalletResultResponseSchema,
@@ -1378,16 +1343,30 @@ async def remove_card_from_wallet(
 )
 async def wallet_results(
     wallet_id: int,
+    start_date: Optional[date] = None,
     reference_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    duration_years: int = Query(0, ge=0),
+    duration_months: int = Query(0, ge=0),
     projection_years: int = 2,
     projection_months: int = 0,
     spend_overrides: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Compute wallet EV and opportunity cost for the wallet over the given time frame.
-    Cards with added_date <= reference_date are active. SUB amortization uses
-    years_counted derived from projection_years + projection_months.
+    Compute wallet results (effective fees, points, credits) and SUB opportunity cost.
+
+    Start: optional ``start_date`` (preferred) or legacy ``reference_date`` — must not both
+    disagree. Default start is wallet ``as_of_date`` or today.
+
+    Window length (exactly one mode):
+    - ``end_date`` (after start): months in [start, end_date) map to ``years_counted``.
+    - ``duration_years`` + ``duration_months`` (total months > 0): same mapping.
+    - Otherwise legacy ``projection_years`` / ``projection_months`` with the original
+      ``years_counted = projection_years + (1 if projection_months >= 6 else 0)``.
+
+    Do not send ``end_date`` together with a non-zero duration.
+
     spend_overrides: optional JSON object of category name -> annual spend.
     """
     overrides: dict[str, float] = {}
@@ -1395,7 +1374,10 @@ async def wallet_results(
         try:
             overrides = json.loads(spend_overrides)
         except (json.JSONDecodeError, TypeError):
-            pass
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="spend_overrides must be valid JSON (e.g. '{\"Dining\": 5000}')",
+            )
     result = await db.execute(
         select(Wallet)
         .options(selectinload(Wallet.wallet_cards))
@@ -1405,32 +1387,103 @@ async def wallet_results(
     if not wallet:
         raise _wallet_404(wallet_id)
 
-    ref_date = reference_date or wallet.as_of_date or date.today()
-    # Cards active as of reference date (already in the wallet by then)
-    active_wallet_cards = [wc for wc in wallet.wallet_cards if wc.added_date <= ref_date]
-    # Integer years for SUB amortization: projection_years + round(projection_months/12) or simple
-    years_counted = max(1, projection_years + (1 if projection_months >= 6 else 0))
+    if start_date is not None and reference_date is not None and start_date != reference_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="start_date and reference_date disagree; send only one.",
+        )
+    ref_date = start_date if start_date is not None else reference_date
+    ref_date = ref_date or wallet.as_of_date or date.today()
+
+    duration_span = duration_years * 12 + duration_months
+    if end_date is not None and duration_span > 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Do not send end_date together with duration_years/duration_months.",
+        )
+
+    resp_end: Optional[date] = None
+    resp_dur_y, resp_dur_m = 0, 0
+    total_months: int
+
+    if end_date is not None:
+        try:
+            total_months = _months_in_half_open_interval(ref_date, end_date)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="end_date must be after start_date.",
+            ) from None
+        years_counted = _years_counted_from_total_months(total_months)
+        resp_end = end_date
+    elif duration_span > 0:
+        total_months = duration_span
+        years_counted = _years_counted_from_total_months(total_months)
+        resp_dur_y, resp_dur_m = duration_years, duration_months
+    else:
+        total_months = projection_years * 12 + projection_months
+        years_counted = max(1, projection_years + (1 if projection_months >= 6 else 0))
+
+    # Include cards that overlap the selected calculation window.
+    # The calculator still models the chosen window at wallet level, but cards opened
+    # later in that window must not be excluded entirely or only the earliest card(s)
+    # contribute to projected balances and value.
+    window_end = resp_end if resp_end is not None else _add_months(ref_date, total_months)
+    active_wallet_cards = [
+        wc
+        for wc in wallet.wallet_cards
+        if wc.added_date < window_end and (wc.closed_date is None or wc.closed_date >= ref_date)
+    ]
+
+    _save_calc_window = "end" if end_date is not None else "duration"
+    wallet.calc_start_date = ref_date
+    wallet.calc_end_date = resp_end
+    wallet.calc_duration_years = resp_dur_y
+    wallet.calc_duration_months = resp_dur_m
+    wallet.calc_window_mode = _save_calc_window
 
     if not active_wallet_cards:
+        await _sync_wallet_balances_from_currency_pts(db, wallet_id, {})
+        await db.commit()
         return WalletResultResponseSchema(
             wallet_id=wallet_id,
             wallet_name=wallet.name,
+            start_date=ref_date,
+            end_date=resp_end,
+            duration_years=resp_dur_y,
+            duration_months=resp_dur_m,
+            total_months=total_months,
             as_of_date=ref_date,
             projection_years=projection_years,
             projection_months=projection_months,
             years_counted=years_counted,
             wallet=WalletResultSchema(
                 years_counted=years_counted,
-                total_annual_ev=0,
+                total_effective_annual_fee=0,
                 total_points_earned=0,
                 total_annual_pts=0,
+                total_cash_reward_dollars=0,
+                total_reward_value_usd=0,
             ),
         )
 
-    all_cards = await load_card_data(db, user_id=wallet.user_id)
-    modified_cards = apply_wallet_card_overrides(all_cards, active_wallet_cards)
-    selected_ids = {wc.card_id for wc in active_wallet_cards}
-    spend = await load_spend(db, overrides=overrides)
+    cpp_overrides = await load_wallet_cpp_overrides(db, wallet_id)
+    all_cards = await load_card_data(db, cpp_overrides=cpp_overrides)
+    card_ids_sel = {wc.card_id for wc in active_wallet_cards}
+    lib_for_overrides = await db.execute(
+        select(Card).options(selectinload(Card.credits)).where(Card.id.in_(card_ids_sel))
+    )
+    library_cards_by_id = {c.id: c for c in lib_for_overrides.scalars().all()}
+    wallet_credit_rows = await load_wallet_card_credits(db, wallet_id)
+    modified_cards = apply_wallet_card_overrides(
+        all_cards, active_wallet_cards, library_cards_by_id, wallet_credit_rows
+    )
+    wallet_multiplier_rows = await load_wallet_card_multipliers(db, wallet_id)
+    modified_cards = apply_wallet_card_multiplier_overrides(modified_cards, wallet_multiplier_rows)
+    selected_ids = card_ids_sel
+    spend = await load_wallet_spend_items(db, wallet_id)
+    if overrides:
+        spend.update(overrides)
 
     wallet_result = compute_wallet(
         all_cards=modified_cards,
@@ -1439,15 +1492,986 @@ async def wallet_results(
         years=years_counted,
     )
 
+    await _sync_wallet_balances_from_currency_pts(
+        db, wallet_id, wallet_result.currency_pts_by_id
+    )
+    await db.commit()
+
     return WalletResultResponseSchema(
         wallet_id=wallet_id,
         wallet_name=wallet.name,
+        start_date=ref_date,
+        end_date=resp_end,
+        duration_years=resp_dur_y,
+        duration_months=resp_dur_m,
+        total_months=total_months,
         as_of_date=ref_date,
         projection_years=projection_years,
         projection_months=projection_months,
         years_counted=wallet_result.years_counted,
         wallet=_wallet_to_schema(wallet_result),
     )
+
+
+@app.get(
+    "/wallets/{wallet_id}/roadmap",
+    response_model=RoadmapResponse,
+    tags=["wallets"],
+)
+async def wallet_roadmap(
+    wallet_id: int,
+    as_of_date: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Compute roadmap status for the wallet: 5/24 count, per-card SUB status and
+    next eligibility dates, and any issuer velocity rule violations.
+    """
+    result = await db.execute(
+        select(Wallet)
+        .options(
+            selectinload(Wallet.wallet_cards).selectinload(WalletCard.card).selectinload(Card.issuer),
+        )
+        .where(Wallet.id == wallet_id)
+    )
+    wallet = result.scalar_one_or_none()
+    if not wallet:
+        raise _wallet_404(wallet_id)
+
+    today = as_of_date or date.today()
+
+    # Load all application rules
+    rules_result = await db.execute(
+        select(IssuerApplicationRule)
+        .options(selectinload(IssuerApplicationRule.issuer))
+    )
+    rules = rules_result.scalars().all()
+
+    # ── Per-card status ──────────────────────────────────────────────────────
+    card_statuses: list[RoadmapCardStatus] = []
+    personal_cards_24mo: list[str] = []
+    cutoff_24mo = today - timedelta(days=730)
+
+    for wc in wallet.wallet_cards:
+        card = wc.card
+        is_active = wc.closed_date is None
+
+        # 5/24: count non-business cards opened (not product-changed) in last 24 months
+        if not card.business and wc.added_date >= cutoff_24mo and wc.acquisition_type == "opened":
+            personal_cards_24mo.append(card.name)
+
+        # Effective SUB value and months (wallet override takes precedence)
+        eff_sub = wc.sub if wc.sub is not None else (card.sub or 0)
+        eff_sub_months = wc.sub_months if wc.sub_months is not None else card.sub_months
+
+        # Determine SUB status
+        if not eff_sub:
+            sub_status = "no_sub"
+            sub_window_end = None
+            sub_days_remaining = None
+        elif wc.sub_earned_date:
+            sub_status = "earned"
+            sub_window_end = None
+            sub_days_remaining = None
+        elif eff_sub_months:
+            sub_window_end = _add_months(wc.added_date, eff_sub_months)
+            remaining = (sub_window_end - today).days
+            if remaining < 0:
+                sub_status = "expired"
+                sub_days_remaining = None
+            else:
+                sub_status = "pending"
+                sub_days_remaining = remaining
+        else:
+            sub_status = "pending"
+            sub_window_end = None
+            sub_days_remaining = None
+
+        # Next eligible date for this card's SUB
+        recurrence = card.sub_recurrence_months
+        next_eligible: Optional[date] = None
+        if recurrence:
+            if wc.sub_earned_date:
+                next_eligible = _add_months(wc.sub_earned_date, recurrence)
+            else:
+                # No earned date: next eligible is opening date + recurrence (conservative)
+                next_eligible = _add_months(wc.added_date, recurrence)
+
+        card_statuses.append(
+            RoadmapCardStatus(
+                wallet_card_id=wc.id,
+                card_id=card.id,
+                card_name=card.name,
+                issuer_name=card.issuer.name,
+                is_business=card.business,
+                added_date=wc.added_date,
+                closed_date=wc.closed_date,
+                is_active=is_active,
+                sub_earned_date=wc.sub_earned_date,
+                sub_status=sub_status,
+                sub_window_end=sub_window_end,
+                next_sub_eligible_date=next_eligible,
+                sub_days_remaining=sub_days_remaining,
+            )
+        )
+
+    # ── Issuer rule violation checks ─────────────────────────────────────────
+    rule_statuses: list[RoadmapRuleStatus] = []
+    for rule in rules:
+        cutoff = today - timedelta(days=rule.period_days)
+        counted: list[str] = []
+        for wc in wallet.wallet_cards:
+            card = wc.card
+            if wc.added_date < cutoff:
+                continue
+            # Scope: all issuers OR only this rule's issuer
+            if not rule.scope_all_issuers and card.issuer_id != rule.issuer_id:
+                continue
+            # personal_only: skip business cards
+            if rule.personal_only and card.business:
+                continue
+            # product changes are not new applications; skip them for velocity rules
+            if wc.acquisition_type == "product_change":
+                continue
+            counted.append(card.name)
+
+        rule_statuses.append(
+            RoadmapRuleStatus(
+                rule_id=rule.id,
+                rule_name=rule.rule_name,
+                issuer_name=rule.issuer.name if rule.issuer else None,
+                description=rule.description,
+                max_count=rule.max_count,
+                period_days=rule.period_days,
+                current_count=len(counted),
+                is_violated=len(counted) >= rule.max_count,
+                personal_only=rule.personal_only,
+                scope_all_issuers=rule.scope_all_issuers,
+                counted_cards=counted,
+            )
+        )
+
+    five_twenty_four_count = len(personal_cards_24mo)
+
+    return RoadmapResponse(
+        wallet_id=wallet_id,
+        wallet_name=wallet.name,
+        as_of_date=today,
+        five_twenty_four_count=five_twenty_four_count,
+        five_twenty_four_eligible=five_twenty_four_count < 5,
+        personal_cards_24mo=personal_cards_24mo,
+        rule_statuses=rule_statuses,
+        cards=card_statuses,
+    )
+
+
+@app.get(
+    "/wallets/{wallet_id}/currency-balances",
+    response_model=list[WalletCurrencyBalanceRead],
+    tags=["wallets"],
+)
+async def list_wallet_currency_balances(
+    wallet_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Currencies you track or that have projection earn from the last calculate."""
+    w_result = await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+    if not w_result.scalar_one_or_none():
+        raise _wallet_404(wallet_id)
+    await _ensure_wallet_currency_rows_for_earning_currencies(db, wallet_id)
+    await db.commit()
+    result = await db.execute(
+        select(WalletCurrencyBalance)
+        .options(selectinload(WalletCurrencyBalance.currency))
+        .where(WalletCurrencyBalance.wallet_id == wallet_id)
+        .order_by(WalletCurrencyBalance.currency_id)
+    )
+    return list(result.scalars().all())
+
+
+@app.get(
+    "/wallets/{wallet_id}/settings-currency-ids",
+    response_model=WalletSettingsCurrencyIds,
+    tags=["wallets"],
+)
+async def wallet_settings_currency_ids(wallet_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    IDs for currencies shown in wallet settings: earned by cards in this wallet,
+    or explicitly user-tracked (added manually).
+    """
+    w_result = await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+    if not w_result.scalar_one_or_none():
+        raise _wallet_404(wallet_id)
+    earn = await _effective_earn_currency_ids_for_wallet(db, wallet_id)
+    tr = await db.execute(
+        select(WalletCurrencyBalance.currency_id).where(
+            WalletCurrencyBalance.wallet_id == wallet_id,
+            WalletCurrencyBalance.user_tracked.is_(True),
+        )
+    )
+    tracked = set(tr.scalars().all())
+    merged = earn | tracked
+    return WalletSettingsCurrencyIds(currency_ids=sorted(merged))
+
+
+@app.post(
+    "/wallets/{wallet_id}/currency-balances",
+    response_model=WalletCurrencyBalanceRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["wallets"],
+)
+async def track_wallet_currency_balance(
+    wallet_id: int,
+    payload: WalletCurrencyTrackCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Start tracking a currency for this wallet (optional starting balance)."""
+    w_result = await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+    if not w_result.scalar_one_or_none():
+        raise _wallet_404(wallet_id)
+    currency_result = await db.execute(
+        select(Currency).where(Currency.id == payload.currency_id)
+    )
+    if not currency_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail=f"Currency id={payload.currency_id} not found")
+
+    existing = await db.execute(
+        select(WalletCurrencyBalance).where(
+            WalletCurrencyBalance.wallet_id == wallet_id,
+            WalletCurrencyBalance.currency_id == payload.currency_id,
+        )
+    )
+    row = existing.scalar_one_or_none()
+    today = date.today()
+    if row:
+        row.user_tracked = True
+        row.initial_balance = payload.initial_balance
+        row.balance = round(row.initial_balance + row.projection_earn, 4)
+        row.updated_date = today
+    else:
+        row = WalletCurrencyBalance(
+            wallet_id=wallet_id,
+            currency_id=payload.currency_id,
+            initial_balance=payload.initial_balance,
+            projection_earn=0.0,
+            balance=payload.initial_balance,
+            user_tracked=True,
+            updated_date=today,
+        )
+        db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    res = await db.execute(
+        select(WalletCurrencyBalance)
+        .options(selectinload(WalletCurrencyBalance.currency))
+        .where(WalletCurrencyBalance.id == row.id)
+    )
+    return res.scalar_one()
+
+
+@app.put(
+    "/wallets/{wallet_id}/currencies/{currency_id}/balance",
+    response_model=WalletCurrencyBalanceRead,
+    tags=["wallets"],
+)
+async def set_wallet_currency_initial_balance(
+    wallet_id: int,
+    currency_id: int,
+    payload: WalletCurrencyInitialSet,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update starting balance; total = initial + last projection earn from Calculate."""
+    w_result = await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+    if not w_result.scalar_one_or_none():
+        raise _wallet_404(wallet_id)
+    currency_result = await db.execute(select(Currency).where(Currency.id == currency_id))
+    if not currency_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail=f"Currency id={currency_id} not found")
+
+    existing = await db.execute(
+        select(WalletCurrencyBalance).where(
+            WalletCurrencyBalance.wallet_id == wallet_id,
+            WalletCurrencyBalance.currency_id == currency_id,
+        )
+    )
+    row = existing.scalar_one_or_none()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail="Track this currency first (POST /currency-balances) before editing initial balance",
+        )
+    row.initial_balance = payload.initial_balance
+    row.balance = round(row.initial_balance + row.projection_earn, 4)
+    row.updated_date = date.today()
+    await db.commit()
+    res = await db.execute(
+        select(WalletCurrencyBalance)
+        .options(selectinload(WalletCurrencyBalance.currency))
+        .where(WalletCurrencyBalance.id == row.id)
+    )
+    return res.scalar_one()
+
+
+@app.delete(
+    "/wallets/{wallet_id}/currencies/{currency_id}/balance",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["wallets"],
+)
+async def delete_wallet_currency_balance(
+    wallet_id: int,
+    currency_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove the wallet's balance record for a currency."""
+    result = await db.execute(
+        select(WalletCurrencyBalance).where(
+            WalletCurrencyBalance.wallet_id == wallet_id,
+            WalletCurrencyBalance.currency_id == currency_id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail="No balance record found for this wallet and currency",
+        )
+    await db.delete(row)
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Wallet CPP overrides
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/wallets/{wallet_id}/currencies",
+    response_model=list[CurrencyRead],
+    tags=["wallet-cpp"],
+)
+async def list_wallet_currencies_with_cpp(
+    wallet_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all currencies with wallet-scoped CPP overrides applied."""
+    w_result = await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+    if not w_result.scalar_one_or_none():
+        raise _wallet_404(wallet_id)
+
+    cpp_result = await db.execute(
+        select(WalletCurrencyCpp).where(WalletCurrencyCpp.wallet_id == wallet_id)
+    )
+    overrides = {row.currency_id: row.cents_per_point for row in cpp_result.scalars().all()}
+
+    cur_result = await db.execute(
+        select(Currency)
+        .options(selectinload(Currency.issuer))
+        .order_by(Currency.name)
+    )
+    currencies = cur_result.scalars().all()
+    out = []
+    for c in currencies:
+        schema = CurrencyRead.model_validate(c)
+        if c.id in overrides:
+            schema.user_cents_per_point = overrides[c.id]
+        else:
+            schema.user_cents_per_point = c.cents_per_point
+        out.append(schema)
+    return out
+
+
+@app.put(
+    "/wallets/{wallet_id}/currencies/{currency_id}/cpp",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["wallet-cpp"],
+)
+async def set_wallet_cpp(
+    wallet_id: int,
+    currency_id: int,
+    payload: WalletCurrencyCppSet,
+    db: AsyncSession = Depends(get_db),
+):
+    """Set or update wallet-scoped cents-per-point for a currency."""
+    w_result = await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+    if not w_result.scalar_one_or_none():
+        raise _wallet_404(wallet_id)
+    cur_result = await db.execute(select(Currency).where(Currency.id == currency_id))
+    if not cur_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail=f"Currency id={currency_id} not found")
+
+    existing = await db.execute(
+        select(WalletCurrencyCpp).where(
+            WalletCurrencyCpp.wallet_id == wallet_id,
+            WalletCurrencyCpp.currency_id == currency_id,
+        )
+    )
+    row = existing.scalar_one_or_none()
+    if row:
+        row.cents_per_point = payload.cents_per_point
+    else:
+        db.add(WalletCurrencyCpp(
+            wallet_id=wallet_id,
+            currency_id=currency_id,
+            cents_per_point=payload.cents_per_point,
+        ))
+    await db.commit()
+
+
+@app.delete(
+    "/wallets/{wallet_id}/currencies/{currency_id}/cpp",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["wallet-cpp"],
+)
+async def delete_wallet_cpp(
+    wallet_id: int,
+    currency_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove wallet-scoped CPP override (reverts to currency default)."""
+    result = await db.execute(
+        select(WalletCurrencyCpp).where(
+            WalletCurrencyCpp.wallet_id == wallet_id,
+            WalletCurrencyCpp.currency_id == currency_id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="No CPP override for this wallet/currency")
+    await db.delete(row)
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Wallet card credit overrides
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/wallets/{wallet_id}/cards/{card_id}/credits",
+    response_model=list[WalletCardCreditRead],
+    tags=["wallet-credits"],
+)
+async def list_wallet_card_credits(
+    wallet_id: int,
+    card_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """List credit overrides for a card in this wallet."""
+    wc_result = await db.execute(
+        select(WalletCard).where(
+            WalletCard.wallet_id == wallet_id,
+            WalletCard.card_id == card_id,
+        )
+    )
+    wc = wc_result.scalar_one_or_none()
+    if not wc:
+        raise HTTPException(status_code=404, detail="Wallet card not found")
+
+    result = await db.execute(
+        select(WalletCardCredit)
+        .options(selectinload(WalletCardCredit.library_credit))
+        .where(WalletCardCredit.wallet_card_id == wc.id)
+        .order_by(WalletCardCredit.library_credit_id)
+    )
+    return list(result.scalars().all())
+
+
+@app.put(
+    "/wallets/{wallet_id}/cards/{card_id}/credits/{library_credit_id}",
+    response_model=WalletCardCreditRead,
+    tags=["wallet-credits"],
+)
+async def upsert_wallet_card_credit(
+    wallet_id: int,
+    card_id: int,
+    library_credit_id: int,
+    payload: WalletCardCreditUpsert,
+    db: AsyncSession = Depends(get_db),
+):
+    """Set or update a credit override for a card in this wallet."""
+    wc_result = await db.execute(
+        select(WalletCard).where(
+            WalletCard.wallet_id == wallet_id,
+            WalletCard.card_id == card_id,
+        )
+    )
+    wc = wc_result.scalar_one_or_none()
+    if not wc:
+        raise HTTPException(status_code=404, detail="Wallet card not found")
+
+    lib_result = await db.execute(
+        select(CardCredit).where(
+            CardCredit.id == library_credit_id,
+            CardCredit.card_id == card_id,
+        )
+    )
+    lib_credit = lib_result.scalar_one_or_none()
+    if not lib_credit:
+        raise HTTPException(status_code=404, detail=f"CardCredit id={library_credit_id} not found for card {card_id}")
+
+    existing = await db.execute(
+        select(WalletCardCredit).where(
+            WalletCardCredit.wallet_card_id == wc.id,
+            WalletCardCredit.library_credit_id == library_credit_id,
+        )
+    )
+    row = existing.scalar_one_or_none()
+    is_one_time = payload.is_one_time if payload.is_one_time is not None else lib_credit.is_one_time
+    if row:
+        row.value = payload.value
+        row.is_one_time = is_one_time
+    else:
+        row = WalletCardCredit(
+            wallet_card_id=wc.id,
+            library_credit_id=library_credit_id,
+            value=payload.value,
+            is_one_time=is_one_time,
+        )
+        db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    res = await db.execute(
+        select(WalletCardCredit)
+        .options(selectinload(WalletCardCredit.library_credit))
+        .where(WalletCardCredit.id == row.id)
+    )
+    return res.scalar_one()
+
+
+@app.delete(
+    "/wallets/{wallet_id}/cards/{card_id}/credits/{library_credit_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["wallet-credits"],
+)
+async def delete_wallet_card_credit(
+    wallet_id: int,
+    card_id: int,
+    library_credit_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a credit override (reverts to library value)."""
+    wc_result = await db.execute(
+        select(WalletCard).where(
+            WalletCard.wallet_id == wallet_id,
+            WalletCard.card_id == card_id,
+        )
+    )
+    wc = wc_result.scalar_one_or_none()
+    if not wc:
+        raise HTTPException(status_code=404, detail="Wallet card not found")
+
+    result = await db.execute(
+        select(WalletCardCredit).where(
+            WalletCardCredit.wallet_card_id == wc.id,
+            WalletCardCredit.library_credit_id == library_credit_id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="No credit override found")
+    await db.delete(row)
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Wallet card multiplier overrides
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/wallets/{wallet_id}/card-multipliers",
+    response_model=list[WalletCardMultiplierRead],
+    tags=["wallet-multipliers"],
+)
+async def list_wallet_card_multipliers(
+    wallet_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all wallet-level multiplier overrides."""
+    w_result = await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+    if not w_result.scalar_one_or_none():
+        raise _wallet_404(wallet_id)
+
+    result = await db.execute(
+        select(WalletCardMultiplier)
+        .options(selectinload(WalletCardMultiplier.spend_category))
+        .where(WalletCardMultiplier.wallet_id == wallet_id)
+        .order_by(WalletCardMultiplier.card_id, WalletCardMultiplier.category_id)
+    )
+    return list(result.scalars().all())
+
+
+@app.put(
+    "/wallets/{wallet_id}/cards/{card_id}/multipliers/{category_id}",
+    response_model=WalletCardMultiplierRead,
+    tags=["wallet-multipliers"],
+)
+async def upsert_wallet_card_multiplier(
+    wallet_id: int,
+    card_id: int,
+    category_id: int,
+    payload: WalletCardMultiplierUpsert,
+    db: AsyncSession = Depends(get_db),
+):
+    """Set or update a multiplier override for a card/category in this wallet."""
+    w_result = await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+    if not w_result.scalar_one_or_none():
+        raise _wallet_404(wallet_id)
+    card_result = await db.execute(select(Card).where(Card.id == card_id))
+    if not card_result.scalar_one_or_none():
+        raise _card_404(card_id)
+    sc_result = await db.execute(select(SpendCategory).where(SpendCategory.id == category_id))
+    if not sc_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail=f"SpendCategory id={category_id} not found")
+
+    existing = await db.execute(
+        select(WalletCardMultiplier).where(
+            WalletCardMultiplier.wallet_id == wallet_id,
+            WalletCardMultiplier.card_id == card_id,
+            WalletCardMultiplier.category_id == category_id,
+        )
+    )
+    row = existing.scalar_one_or_none()
+    if row:
+        row.multiplier = payload.multiplier
+    else:
+        row = WalletCardMultiplier(
+            wallet_id=wallet_id,
+            card_id=card_id,
+            category_id=category_id,
+            multiplier=payload.multiplier,
+        )
+        db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    res = await db.execute(
+        select(WalletCardMultiplier)
+        .options(selectinload(WalletCardMultiplier.spend_category))
+        .where(WalletCardMultiplier.id == row.id)
+    )
+    return res.scalar_one()
+
+
+@app.delete(
+    "/wallets/{wallet_id}/cards/{card_id}/multipliers/{category_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["wallet-multipliers"],
+)
+async def delete_wallet_card_multiplier(
+    wallet_id: int,
+    card_id: int,
+    category_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a multiplier override (reverts to library value)."""
+    result = await db.execute(
+        select(WalletCardMultiplier).where(
+            WalletCardMultiplier.wallet_id == wallet_id,
+            WalletCardMultiplier.card_id == card_id,
+            WalletCardMultiplier.category_id == category_id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="No multiplier override found")
+    await db.delete(row)
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Admin: Reference data CRUD
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/admin/issuers",
+    response_model=IssuerRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["admin"],
+)
+async def admin_create_issuer(
+    payload: AdminCreateIssuerPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    existing = await db.execute(select(Issuer).where(Issuer.name == payload.name.strip()))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Issuer '{payload.name}' already exists")
+    issuer = Issuer(name=payload.name.strip())
+    db.add(issuer)
+    await db.commit()
+    await db.refresh(issuer)
+    return issuer
+
+
+@app.post(
+    "/admin/currencies",
+    response_model=CurrencyRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["admin"],
+)
+async def admin_create_currency(
+    payload: AdminCreateCurrencyPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    existing = await db.execute(select(Currency).where(Currency.name == payload.name.strip()))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Currency '{payload.name}' already exists")
+    if payload.issuer_id is not None:
+        iss_result = await db.execute(select(Issuer).where(Issuer.id == payload.issuer_id))
+        if not iss_result.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail=f"Issuer id={payload.issuer_id} not found")
+    if payload.converts_to_currency_id is not None:
+        tgt = await db.execute(select(Currency).where(Currency.id == payload.converts_to_currency_id))
+        if not tgt.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail=f"Target currency id={payload.converts_to_currency_id} not found")
+
+    currency = Currency(
+        name=payload.name.strip(),
+        issuer_id=payload.issuer_id,
+        reward_kind=payload.reward_kind,
+        cents_per_point=payload.cents_per_point,
+        partner_transfer_rate=payload.partner_transfer_rate,
+        cash_transfer_rate=payload.cash_transfer_rate,
+        converts_to_currency_id=payload.converts_to_currency_id,
+        converts_at_rate=payload.converts_at_rate,
+    )
+    db.add(currency)
+    await db.commit()
+    await db.refresh(currency)
+    res = await db.execute(
+        select(Currency).options(selectinload(Currency.issuer)).where(Currency.id == currency.id)
+    )
+    return res.scalar_one()
+
+
+@app.post(
+    "/admin/spend-categories",
+    response_model=SpendCategoryRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["admin"],
+)
+async def admin_create_spend_category(
+    payload: AdminCreateSpendCategoryPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    existing = await db.execute(select(SpendCategory).where(SpendCategory.category == payload.category.strip()))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"SpendCategory '{payload.category}' already exists")
+    sc = SpendCategory(category=payload.category.strip())
+    db.add(sc)
+    await db.commit()
+    await db.refresh(sc)
+    return sc
+
+
+@app.post(
+    "/admin/cards",
+    response_model=CardRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["admin"],
+)
+async def admin_create_card(
+    payload: AdminCreateCardPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    existing = await db.execute(select(Card).where(Card.name == payload.name.strip()))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Card '{payload.name}' already exists")
+    iss = await db.execute(select(Issuer).where(Issuer.id == payload.issuer_id))
+    if not iss.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail=f"Issuer id={payload.issuer_id} not found")
+    cur = await db.execute(select(Currency).where(Currency.id == payload.currency_id))
+    if not cur.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail=f"Currency id={payload.currency_id} not found")
+    if payload.co_brand_id is not None:
+        cb = await db.execute(select(CoBrand).where(CoBrand.id == payload.co_brand_id))
+        if not cb.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail=f"CoBrand id={payload.co_brand_id} not found")
+    if payload.network_tier_id is not None:
+        nt = await db.execute(select(NetworkTier).where(NetworkTier.id == payload.network_tier_id))
+        if not nt.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail=f"NetworkTier id={payload.network_tier_id} not found")
+
+    card = Card(
+        name=payload.name.strip(),
+        issuer_id=payload.issuer_id,
+        co_brand_id=payload.co_brand_id,
+        currency_id=payload.currency_id,
+        annual_fee=payload.annual_fee,
+        first_year_fee=payload.first_year_fee,
+        business=payload.business,
+        network=payload.network,
+        network_tier_id=payload.network_tier_id,
+        sub=payload.sub,
+        sub_min_spend=payload.sub_min_spend,
+        sub_months=payload.sub_months,
+        sub_spend_earn=payload.sub_spend_earn,
+        annual_bonus=payload.annual_bonus,
+        sub_recurrence_months=payload.sub_recurrence_months,
+        sub_family=payload.sub_family,
+    )
+    db.add(card)
+    await db.commit()
+    res = await db.execute(
+        select(Card).options(*_card_load_opts()).where(Card.id == card.id)
+    )
+    return res.scalar_one()
+
+
+@app.delete(
+    "/admin/cards/{card_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["admin"],
+)
+async def admin_delete_card(
+    card_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Card).where(Card.id == card_id))
+    card = result.scalar_one_or_none()
+    if not card:
+        raise _card_404(card_id)
+    wc_count = await db.execute(select(WalletCard.id).where(WalletCard.card_id == card_id))
+    if wc_count.scalars().first() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete card — it is used in one or more wallets. Remove it from all wallets first.",
+        )
+    await db.delete(card)
+    await db.commit()
+
+
+@app.post(
+    "/admin/cards/{card_id}/multipliers",
+    response_model=CardRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["admin"],
+)
+async def admin_add_card_multiplier(
+    card_id: int,
+    payload: AdminAddCardMultiplierPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    card_result = await db.execute(select(Card).where(Card.id == card_id))
+    if not card_result.scalar_one_or_none():
+        raise _card_404(card_id)
+    sc_result = await db.execute(select(SpendCategory).where(SpendCategory.id == payload.category_id))
+    if not sc_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail=f"SpendCategory id={payload.category_id} not found")
+
+    existing = await db.execute(
+        select(CardCategoryMultiplier).where(
+            CardCategoryMultiplier.card_id == card_id,
+            CardCategoryMultiplier.category_id == payload.category_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Multiplier for this card/category already exists")
+
+    if payload.multiplier_group_id is not None:
+        grp = await db.execute(
+            select(CardMultiplierGroup).where(
+                CardMultiplierGroup.id == payload.multiplier_group_id,
+                CardMultiplierGroup.card_id == card_id,
+            )
+        )
+        if not grp.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail=f"MultiplierGroup id={payload.multiplier_group_id} not found for card {card_id}")
+
+    mult = CardCategoryMultiplier(
+        card_id=card_id,
+        category_id=payload.category_id,
+        multiplier=payload.multiplier,
+        is_portal=payload.is_portal,
+        cap_per_billing_cycle=payload.cap_per_billing_cycle,
+        cap_period=payload.cap_period,
+        multiplier_group_id=payload.multiplier_group_id,
+    )
+    db.add(mult)
+    await db.commit()
+    res = await db.execute(select(Card).options(*_card_load_opts()).where(Card.id == card_id))
+    return res.scalar_one()
+
+
+@app.delete(
+    "/admin/cards/{card_id}/multipliers/{category_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["admin"],
+)
+async def admin_delete_card_multiplier(
+    card_id: int,
+    category_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(CardCategoryMultiplier).where(
+            CardCategoryMultiplier.card_id == card_id,
+            CardCategoryMultiplier.category_id == category_id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Multiplier not found for this card/category")
+    await db.delete(row)
+    await db.commit()
+
+
+@app.post(
+    "/admin/cards/{card_id}/credits",
+    response_model=CardCreditRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["admin"],
+)
+async def admin_add_card_credit(
+    card_id: int,
+    payload: AdminAddCardCreditPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    card_result = await db.execute(select(Card).where(Card.id == card_id))
+    if not card_result.scalar_one_or_none():
+        raise _card_404(card_id)
+    existing = await db.execute(
+        select(CardCredit).where(
+            CardCredit.card_id == card_id,
+            CardCredit.credit_name == payload.credit_name.strip(),
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Credit '{payload.credit_name}' already exists on this card")
+
+    credit = CardCredit(
+        card_id=card_id,
+        credit_name=payload.credit_name.strip(),
+        credit_value=payload.credit_value,
+        is_one_time=payload.is_one_time,
+    )
+    db.add(credit)
+    await db.commit()
+    await db.refresh(credit)
+    return credit
+
+
+@app.delete(
+    "/admin/cards/{card_id}/credits/{credit_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["admin"],
+)
+async def admin_delete_card_credit(
+    card_id: int,
+    credit_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(CardCredit).where(
+            CardCredit.id == credit_id,
+            CardCredit.card_id == card_id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Credit not found on this card")
+    await db.delete(row)
+    await db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -1461,8 +2485,7 @@ def _wallet_to_schema(wallet) -> WalletResultSchema:
             card_id=cr.card_id,
             card_name=cr.card_name,
             selected=cr.selected,
-            annual_ev=cr.annual_ev,
-            second_year_ev=cr.second_year_ev,
+            effective_annual_fee=cr.effective_annual_fee,
             total_points=cr.total_points,
             annual_point_earn=cr.annual_point_earn,
             credit_valuation=cr.credit_valuation,
@@ -1471,22 +2494,27 @@ def _wallet_to_schema(wallet) -> WalletResultSchema:
             sub=cr.sub,
             annual_bonus=cr.annual_bonus,
             sub_extra_spend=cr.sub_extra_spend,
-            sub_spend_amount=cr.sub_spend_amount,
+            sub_spend_earn=cr.sub_spend_earn,
             sub_opp_cost_dollars=cr.sub_opp_cost_dollars,
             sub_opp_cost_gross_dollars=cr.sub_opp_cost_gross_dollars,
             avg_spend_multiplier=cr.avg_spend_multiplier,
             cents_per_point=cr.cents_per_point,
             effective_currency_name=cr.effective_currency_name,
+            effective_currency_id=cr.effective_currency_id,
+            effective_reward_kind=cr.effective_reward_kind,
         )
         for cr in wallet.card_results
     ]
 
     return WalletResultSchema(
         years_counted=wallet.years_counted,
-        total_annual_ev=wallet.total_annual_ev,
+        total_effective_annual_fee=wallet.total_effective_annual_fee,
         total_points_earned=wallet.total_points_earned,
         total_annual_pts=wallet.total_annual_pts,
+        total_cash_reward_dollars=wallet.total_cash_reward_dollars,
+        total_reward_value_usd=wallet.total_reward_value_usd,
         currency_pts=wallet.currency_pts,
+        currency_pts_by_id=wallet.currency_pts_by_id,
         card_results=card_schemas,
     )
 

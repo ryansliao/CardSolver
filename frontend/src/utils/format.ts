@@ -1,0 +1,32 @@
+/** Format a dollar amount as currency with no cents (e.g. $1,234). */
+export function formatMoney(n: number): string {
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+}
+
+/**
+ * Format internal cash-reward units as USD (units are cents when cpp is 1).
+ * Same convention as backend: dollars = units * cpp / 100; pass cpp when not 1.
+ */
+export function formatCashRewardUnits(units: number, centsPerPoint = 1): string {
+  if (!Number.isFinite(units)) return formatMoney(0)
+  const dollars = (units * centsPerPoint) / 100
+  return formatMoney(dollars)
+}
+
+/** Format a point balance with k/M suffix. Returns '0' for zero and non-finite values. */
+export function formatPoints(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return '0'
+  const a = Math.abs(n)
+  if (a >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
+  if (a >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return n.toLocaleString('en-US', { maximumFractionDigits: 0 })
+}
+
+/** Return today's date as a YYYY-MM-DD string (local time). */
+export function today(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}

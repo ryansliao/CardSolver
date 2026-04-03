@@ -42,15 +42,15 @@ createuser -s postgres   # create the default role
 createdb creditcards     # create the database
 ```
 
-### 4. Seed the database (one-time)
+### 4. Sync the workbook into the database
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 python3 -m pip install -r backend/requirements.txt
-cd backend && python3 -m app.seed_data && cd ..
+cd backend && python3 -m app.xlsx_loader && cd ..
 ```
 
-This populates the default user (id=1), issuers, currencies, ecosystems, all cards, multipliers, credits, and default spend categories from the data in `backend/app/seed_data.py` (edit those or load from CSV/Excel via pandas).
+This bootstraps the schema, ensures the default user exists, and syncs workbook-backed reference data from `data/data.xlsx` into the database. `models.py` and `schemas.py` define structure; the workbook and live app changes determine the actual reference contents.
 
 ### 5. Start both servers
 
@@ -92,7 +92,7 @@ Set `DATABASE_URL` in your local `.env` to the Azure connection string, then:
 
 ```bash
 source .venv/bin/activate
-cd backend && python3 -m app.seed_data && cd ..
+cd backend && python3 -m app.xlsx_loader && cd ..
 ```
 
 ### Step 3 — Build the React frontend
@@ -179,9 +179,9 @@ Credit Card Tool/
 │   │   ├── calculator.py           # Pure-Python EV engine (no DB dependency)
 │   │   ├── models.py               # SQLAlchemy ORM: User, Issuer, Currency, Ecosystem, Card, …
 │   │   ├── schemas.py              # Pydantic v2 request/response schemas
-│   │   ├── database.py             # Async PostgreSQL session factory + Azure Identity
-│   │   ├── db_helpers.py           # DB → calculator dataclass converters
-│   │   └── seed_data.py            # One-time seeder (pandas DataFrames)
+│   │   ├── database.py             # Async PostgreSQL session factory + schema migrations
+│   │   ├── db_helpers.py           # Runtime DB -> calculator dataclass converters
+│   │   └── xlsx_loader.py          # Workbook sync: xlsx <-> reference tables
 │   └── requirements.txt
 │
 ├── frontend/                       # React app (Vite + TypeScript + Tailwind)

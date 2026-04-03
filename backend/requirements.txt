@@ -18,18 +18,9 @@ psycopg2-binary>=2.9.9         # Sync PostgreSQL driver — required by Alembic 
 pydantic>=2.7.0                # Request/response schema validation
 pydantic-settings>=2.2.1       # Typed settings/config from env vars (BaseSettings)
 
-# ── Data processing ───────────────────────────────────────────────────────────
-pandas>=2.2.0                  # Data analysis — CSV/Excel import-export,
-                               # portfolio comparison tables, historical EV trends
-numpy>=1.26.0                  # Numerical computing for financial calculations
-openpyxl>=3.1.2                # Excel read/write — reference xlsx, optional seed import
 # ── Serialization ─────────────────────────────────────────────────────────────
 orjson>=3.10.0                 # Fast JSON serializer; FastAPI uses it automatically
                                # when installed (significant speedup for large responses)
-
-# ── Authentication ────────────────────────────────────────────────────────────
-python-jose[cryptography]>=3.3.0  # JWT token creation/validation (future user auth)
-passlib[bcrypt]>=1.7.4            # Password hashing (future user accounts)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 python-dotenv>=1.0.1           # Load .env in local dev
@@ -37,9 +28,3 @@ python-dotenv>=1.0.1           # Load .env in local dev
 # ── Azure ─────────────────────────────────────────────────────────────────────
 azure-identity>=1.17.0         # Managed Identity + service principal auth;
                                # enables passwordless connection to Azure PostgreSQL
-azure-keyvault-secrets>=4.8.0  # Read secrets from Azure Key Vault at runtime
-                               # (DB passwords, API keys, JWT secret)
-azure-storage-blob>=12.20.0    # Blob Storage — store uploaded xlsx files,
-                               # export wallet snapshots, persist calculation history
-azure-monitor-opentelemetry>=1.6.0  # Application Insights — distributed tracing,
-                                    # request logging, performance monitoring on Azure

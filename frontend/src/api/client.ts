@@ -21,87 +21,117 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export interface CardMultiplier {
   category: string
   multiplier: number
+  cap_per_billing_cycle?: number | null
+  cap_period?: 'monthly' | 'quarterly' | 'annually' | null
+  is_portal?: boolean
+}
+
+export interface CardMultiplierGroup {
+  multiplier: number
+  cap_per_billing_cycle: number | null
+  cap_period?: 'monthly' | 'quarterly' | 'annually' | null
+  top_category_only?: boolean
+  /** When set, only the top N spending categories in this group get the rate (1=top 1, 2=top 2, etc.). Null = all get the rate. */
+  top_n_categories?: number | null
+  categories: string[]
 }
 
 export interface CardCredit {
+  id: number
   credit_name: string
   credit_value: number
+  /** If true, value counts once over the projection window (not each year). */
+  is_one_time?: boolean
 }
 
 export interface IssuerRead {
   id: number
   name: string
-  co_brand_partner: string | null
-  network: string | null
+}
+
+export interface CoBrandRead {
+  id: number
+  name: string
 }
 
 export interface CurrencyRead {
   id: number
   issuer_id: number | null
   name: string
+  /** Default `points` when omitted (older API). */
+  reward_kind?: 'points' | 'cash'
   cents_per_point: number
-  is_cashback: boolean
-  is_transferable: boolean
-  converts_to_points?: boolean
+  partner_transfer_rate: number | null
+  cash_transfer_rate: number | null
   converts_to_currency_id?: number | null
+  converts_at_rate?: number | null
   issuer?: IssuerRead | null
   /** When listing with user_id, effective CPP for that user (override or base). */
   user_cents_per_point?: number | null
 }
 
-export interface EcosystemCurrencyRead {
-  currency_id: number
-  currency?: CurrencyRead | null
-}
-
-export interface EcosystemRead {
+export interface NetworkTierRead {
   id: number
   name: string
-  points_currency_id: number
-  cashback_currency_id: number | null
-  points_currency?: CurrencyRead | null
-  cashback_currency?: CurrencyRead | null
-  ecosystem_currencies: EcosystemCurrencyRead[]  // additional only
-}
-
-export interface CardEcosystemMembership {
-  ecosystem_id: number
-  key_card: boolean
-  ecosystem?: EcosystemRead | null
 }
 
 export interface Card {
   id: number
   name: string
   issuer: IssuerRead
+  co_brand: CoBrandRead | null
   currency_obj: CurrencyRead
   issuer_id: number
+  co_brand_id: number | null
   currency_id: number
   annual_fee: number
   first_year_fee: number | null
   business: boolean
-  sub: number
+  network: string | null
+  network_tier_id: number | null
+  network_tier: NetworkTierRead | null
+  sub: number | null
   sub_min_spend: number | null
   sub_months: number | null
-  sub_spend_amount: number
+  sub_spend_earn: number | null
   annual_bonus: number
-  ecosystem_memberships: CardEcosystemMembership[]
+  sub_recurrence_months: number | null
+  sub_family: string | null
   multipliers: CardMultiplier[]
+  multiplier_groups: CardMultiplierGroup[]
   credits: CardCredit[]
 }
 
 export interface SpendCategory {
   id: number
   category: string
-  annual_spend: number
+  parent_id: number | null
+  is_system: boolean
+  children: SpendCategory[]
+}
+
+export interface WalletSpendItem {
+  id: number
+  wallet_id: number
+  spend_category_id: number
+  spend_category: SpendCategory
+  amount: number
+}
+
+export interface CreateWalletSpendItemPayload {
+  spend_category_id: number
+  amount?: number
+}
+
+export interface UpdateWalletSpendItemPayload {
+  amount: number
 }
 
 export interface CardResult {
   card_id: number
   card_name: string
   selected: boolean
-  annual_ev: number
-  second_year_ev: number
+  effective_annual_fee: number
   total_points: number
   annual_point_earn: number
   credit_valuation: number
@@ -110,49 +140,30 @@ export interface CardResult {
   sub: number
   annual_bonus: number
   sub_extra_spend: number
-  sub_spend_amount: number
+  sub_spend_earn: number
   sub_opp_cost_dollars: number
   sub_opp_cost_gross_dollars: number
   avg_spend_multiplier: number
   cents_per_point: number
   effective_currency_name: string
+  effective_currency_id?: number
+  effective_reward_kind?: 'points' | 'cash'
 }
 
 export interface WalletResult {
   years_counted: number
-  total_annual_ev: number
+  total_effective_annual_fee: number
   total_points_earned: number
   total_annual_pts: number
+  total_cash_reward_dollars?: number
+  total_reward_value_usd?: number
   currency_pts: Record<string, number>
+  /** Same as currency_pts but keyed by currency id (stable vs renames). */
+  currency_pts_by_id?: Record<string, number>
   card_results: CardResult[]
 }
 
-export interface ScenarioCard {
-  id: number
-  scenario_id: number
-  card_id: number
-  card_name: string | null
-  start_date: string | null
-  end_date: string | null
-  years_counted: number
-}
-
-export interface Scenario {
-  id: number
-  name: string
-  description: string | null
-  as_of_date: string | null
-  scenario_cards: ScenarioCard[]
-}
-
-export interface ScenarioResult {
-  scenario_id: number
-  scenario_name: string
-  as_of_date: string | null
-  wallet: WalletResult
-}
-
-// ─── Wallets (Wallet Tool) ───────────────────────────────────────────────────
+export type WalletCardAcquisitionType = 'opened' | 'product_change'
 
 export interface WalletCard {
   id: number
@@ -163,8 +174,17 @@ export interface WalletCard {
   sub: number | null
   sub_min_spend: number | null
   sub_months: number | null
-  sub_spend_amount: number | null
+  sub_spend_earn: number | null
   years_counted: number
+  /** Null = use library card annual fee */
+  annual_fee: number | null
+  /** Null = use library card first-year fee */
+  first_year_fee: number | null
+  /** Library CardCredit id (string) -> valuation ($) for this wallet row */
+  credit_overrides: Record<string, number> | null
+  sub_earned_date: string | null
+  closed_date: string | null
+  acquisition_type: WalletCardAcquisitionType
 }
 
 export interface Wallet {
@@ -174,11 +194,21 @@ export interface Wallet {
   description: string | null
   as_of_date: string | null
   wallet_cards: WalletCard[]
+  calc_start_date: string | null
+  calc_end_date: string | null
+  calc_duration_years: number
+  calc_duration_months: number
+  calc_window_mode: 'duration' | 'end'
 }
 
 export interface WalletResultResponse {
   wallet_id: number
   wallet_name: string
+  start_date: string
+  end_date: string | null
+  duration_years: number
+  duration_months: number
+  total_months: number
   as_of_date: string | null
   projection_years: number
   projection_months: number
@@ -199,8 +229,46 @@ export interface AddCardToWalletPayload {
   sub?: number | null
   sub_min_spend?: number | null
   sub_months?: number | null
-  sub_spend_amount?: number | null
+  sub_spend_earn?: number | null
   years_counted?: number
+  annual_fee?: number | null
+  first_year_fee?: number | null
+  credit_overrides?: Record<string, number> | null
+  sub_earned_date?: string | null
+  closed_date?: string | null
+  acquisition_type?: WalletCardAcquisitionType
+}
+
+export interface WalletCurrencyBalance {
+  id: number
+  wallet_id: number
+  currency_id: number
+  currency_name: string
+  initial_balance: number
+  projection_earn: number
+  balance: number
+  user_tracked: boolean
+  updated_date: string | null
+}
+
+export interface TrackWalletCurrencyPayload {
+  currency_id: number
+  initial_balance?: number
+}
+
+export interface UpdateWalletCardPayload {
+  added_date?: string | null
+  sub?: number | null
+  sub_min_spend?: number | null
+  sub_months?: number | null
+  sub_spend_earn?: number | null
+  years_counted?: number | null
+  annual_fee?: number | null
+  first_year_fee?: number | null
+  credit_overrides?: Record<string, number> | null
+  sub_earned_date?: string | null
+  closed_date?: string | null
+  acquisition_type?: WalletCardAcquisitionType | null
 }
 
 export const walletsApi = {
@@ -217,19 +285,36 @@ export const walletsApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  updateCard: (walletId: number, cardId: number, payload: UpdateWalletCardPayload) =>
+    request<WalletCard>(`/wallets/${walletId}/cards/${cardId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
   removeCard: (walletId: number, cardId: number) =>
     request<void>(`/wallets/${walletId}/cards/${cardId}`, { method: 'DELETE' }),
+  roadmap: (walletId: number, asOfDate?: string) => {
+    const qs = asOfDate ? `?as_of_date=${asOfDate}` : ''
+    return request<RoadmapResponse>(`/wallets/${walletId}/roadmap${qs}`)
+  },
   results: (
     walletId: number,
     params?: {
+      start_date?: string
       reference_date?: string
+      end_date?: string
+      duration_years?: number
+      duration_months?: number
       projection_years?: number
       projection_months?: number
       spend_overrides?: Record<string, number>
     }
   ) => {
     const search = new URLSearchParams()
+    if (params?.start_date) search.set('start_date', params.start_date)
     if (params?.reference_date) search.set('reference_date', params.reference_date)
+    if (params?.end_date) search.set('end_date', params.end_date)
+    if (params?.duration_years != null) search.set('duration_years', String(params.duration_years))
+    if (params?.duration_months != null) search.set('duration_months', String(params.duration_months))
     if (params?.projection_years != null) search.set('projection_years', String(params.projection_years))
     if (params?.projection_months != null) search.set('projection_months', String(params.projection_months))
     if (params?.spend_overrides && Object.keys(params.spend_overrides).length > 0) {
@@ -240,197 +325,345 @@ export const walletsApi = {
       `/wallets/${walletId}/results${qs ? `?${qs}` : ''}`
     )
   },
+  listCurrencyBalances: (walletId: number) =>
+    request<WalletCurrencyBalance[]>(`/wallets/${walletId}/currency-balances`),
+  settingsCurrencyIds: (walletId: number) =>
+    request<{ currency_ids: number[] }>(`/wallets/${walletId}/settings-currency-ids`),
+  trackCurrencyBalance: (walletId: number, payload: TrackWalletCurrencyPayload) =>
+    request<WalletCurrencyBalance>(`/wallets/${walletId}/currency-balances`, {
+      method: 'POST',
+      body: JSON.stringify({
+        currency_id: payload.currency_id,
+        initial_balance: payload.initial_balance ?? 0,
+      }),
+    }),
+  setCurrencyInitialBalance: (walletId: number, currencyId: number, initialBalance: number) =>
+    request<WalletCurrencyBalance>(`/wallets/${walletId}/currencies/${currencyId}/balance`, {
+      method: 'PUT',
+      body: JSON.stringify({ initial_balance: initialBalance }),
+    }),
+  deleteCurrencyBalance: (walletId: number, currencyId: number) =>
+    request<void>(`/wallets/${walletId}/currencies/${currencyId}/balance`, { method: 'DELETE' }),
 }
 
-// ─── Issuers ───────────────────────────────────────────────────────────────────
+// ─── Roadmap types ────────────────────────────────────────────────────────────
 
-export interface IssuerCreatePayload {
-  name: string
-  co_brand_partner?: string | null
-  network?: string | null
+export interface RoadmapCardStatus {
+  wallet_card_id: number
+  card_id: number
+  card_name: string
+  issuer_name: string
+  is_business: boolean
+  added_date: string
+  closed_date: string | null
+  is_active: boolean
+  sub_earned_date: string | null
+  /** "no_sub" | "pending" | "earned" | "expired" */
+  sub_status: string
+  sub_window_end: string | null
+  next_sub_eligible_date: string | null
+  sub_days_remaining: number | null
 }
 
-export interface IssuerUpdatePayload {
-  name?: string
-  co_brand_partner?: string | null
-  network?: string | null
+export interface RoadmapRuleStatus {
+  rule_id: number
+  rule_name: string
+  issuer_name: string | null
+  description: string | null
+  max_count: number
+  period_days: number
+  current_count: number
+  is_violated: boolean
+  personal_only: boolean
+  scope_all_issuers: boolean
+  counted_cards: string[]
+}
+
+export interface RoadmapResponse {
+  wallet_id: number
+  wallet_name: string
+  as_of_date: string
+  five_twenty_four_count: number
+  five_twenty_four_eligible: boolean
+  personal_cards_24mo: string[]
+  rule_statuses: RoadmapRuleStatus[]
+  cards: RoadmapCardStatus[]
+}
+
+// ─── Issuer application rules ─────────────────────────────────────────────────
+
+export interface IssuerApplicationRule {
+  id: number
+  issuer_id: number | null
+  issuer_name: string | null
+  rule_name: string
+  description: string | null
+  max_count: number
+  period_days: number
+  personal_only: boolean
+  scope_all_issuers: boolean
 }
 
 export const issuersApi = {
-  list: () => request<IssuerRead[]>('/issuers'),
-  create: (payload: IssuerCreatePayload) =>
-    request<IssuerRead>('/issuers', { method: 'POST', body: JSON.stringify(payload) }),
-  update: (id: number, payload: IssuerUpdatePayload) =>
-    request<IssuerRead>(`/issuers/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  delete: (id: number) => request<void>(`/issuers/${id}`, { method: 'DELETE' }),
+  listApplicationRules: () =>
+    request<IssuerApplicationRule[]>('/issuers/application-rules'),
 }
+
 
 // ─── Currencies ───────────────────────────────────────────────────────────────
 
-export interface CurrencyCreatePayload {
-  issuer_id?: number | null
-  name: string
-  cents_per_point?: number
-  is_cashback?: boolean
-  is_transferable?: boolean
-}
-
-export interface CurrencyUpdatePayload {
-  name?: string
-  issuer_id?: number | null
-  cents_per_point?: number
-  is_cashback?: boolean
-  is_transferable?: boolean
-}
-
 export const currenciesApi = {
-  list: (userId?: number) =>
-    request<CurrencyRead[]>(
-      typeof userId === 'number' ? `/currencies?user_id=${userId}` : '/currencies'
-    ),
-  create: (payload: CurrencyCreatePayload) =>
-    request<CurrencyRead>('/currencies', { method: 'POST', body: JSON.stringify(payload) }),
-  update: (id: number, payload: CurrencyUpdatePayload) =>
-    request<CurrencyRead>(`/currencies/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  delete: (id: number) => request<void>(`/currencies/${id}`, { method: 'DELETE' }),
-  setUserCpp: (userId: number, currencyId: number, centsPerPoint: number) =>
-    request<void>(`/users/${userId}/currencies/${currencyId}/cpp`, {
-      method: 'PUT',
-      body: JSON.stringify({ cents_per_point: centsPerPoint }),
-    }),
-  deleteUserCpp: (userId: number, currencyId: number) =>
-    request<void>(`/users/${userId}/currencies/${currencyId}/cpp`, { method: 'DELETE' }),
-}
-
-// ─── Ecosystems ────────────────────────────────────────────────────────────────
-
-export interface EcosystemCreatePayload {
-  name: string
-  points_currency_id: number
-  cashback_currency_id?: number | null
-  additional_currency_ids?: number[]
-}
-
-export interface EcosystemUpdatePayload {
-  name?: string
-  points_currency_id?: number
-  cashback_currency_id?: number | null
-  additional_currency_ids?: number[]
-}
-
-export const ecosystemsApi = {
-  list: () => request<EcosystemRead[]>('/ecosystems'),
-  get: (id: number) => request<EcosystemRead>(`/ecosystems/${id}`),
-  create: (payload: EcosystemCreatePayload) =>
-    request<EcosystemRead>('/ecosystems', { method: 'POST', body: JSON.stringify(payload) }),
-  update: (id: number, payload: EcosystemUpdatePayload) =>
-    request<EcosystemRead>(`/ecosystems/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  delete: (id: number) => request<void>(`/ecosystems/${id}`, { method: 'DELETE' }),
+  list: () => request<CurrencyRead[]>('/currencies'),
 }
 
 // ─── Cards ────────────────────────────────────────────────────────────────────
 
-export interface CardEcosystemMembershipPayload {
-  ecosystem_id: number
-  key_card: boolean
-}
-
-export interface CardCreatePayload {
-  name: string
-  issuer_id: number
-  currency_id: number
-  annual_fee?: number
-  first_year_fee?: number | null
-  business?: boolean
-  sub?: number
+export interface UpdateCardLibraryPayload {
+  sub?: number | null
   sub_min_spend?: number | null
   sub_months?: number | null
-  sub_spend_amount?: number
-  annual_bonus?: number
-  ecosystem_memberships?: CardEcosystemMembershipPayload[]
-  multipliers?: CardMultiplier[]
-  credits?: CardCredit[]
+  annual_fee?: number | null
+  first_year_fee?: number | null
+}
+
+export interface UpdateCardCreditPayload {
+  credit_value?: number
+  credit_name?: string | null
+  is_one_time?: boolean
 }
 
 export const cardsApi = {
   list: () => request<Card[]>('/cards'),
-  get: (id: number) => request<Card>(`/cards/${id}`),
-  create: (payload: CardCreatePayload) =>
-    request<Card>('/cards', { method: 'POST', body: JSON.stringify(payload) }),
-  update: (id: number, data: Partial<CardCreatePayload>) =>
-    request<Card>(`/cards/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  delete: (id: number) => request<void>(`/cards/${id}`, { method: 'DELETE' }),
+  update: (cardId: number, payload: UpdateCardLibraryPayload) =>
+    request<Card>(`/cards/${cardId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  updateCredit: (cardId: number, creditId: number, payload: UpdateCardCreditPayload) =>
+    request<CardCredit>(`/cards/${cardId}/credits/${creditId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
 }
 
 // ─── Spend categories ─────────────────────────────────────────────────────────
 
-export interface CreateSpendCategoryPayload {
-  category: string
-  annual_spend?: number
-}
-
 export const spendApi = {
   list: () => request<SpendCategory[]>('/spend'),
-  create: (payload: CreateSpendCategoryPayload) =>
-    request<SpendCategory>('/spend', {
-      method: 'POST',
-      body: JSON.stringify({ category: payload.category, annual_spend: payload.annual_spend ?? 0 }),
-    }),
-  update: (category: string, annual_spend: number) =>
-    request<SpendCategory>(`/spend/${encodeURIComponent(category)}`, {
-      method: 'PUT',
-      body: JSON.stringify({ annual_spend }),
-    }),
-  delete: (category: string) =>
-    request<void>(`/spend/${encodeURIComponent(category)}`, { method: 'DELETE' }),
 }
 
-// ─── Calculation ──────────────────────────────────────────────────────────────
-
-export interface CalculateRequest {
-  years_counted: number
-  selected_card_ids: number[]
-  spend_overrides: Record<string, number>
+export const appSpendCategoriesApi = {
+  list: () => request<SpendCategory[]>('/app-spend-categories'),
 }
 
-export const calcApi = {
-  calculate: (payload: CalculateRequest) =>
-    request<WalletResult>('/calculate', { method: 'POST', body: JSON.stringify(payload) }),
-}
-
-// ─── Scenarios ────────────────────────────────────────────────────────────────
-
-export interface CreateScenarioPayload {
-  name: string
-  description?: string
-  as_of_date?: string
-  cards?: { card_id: number; start_date?: string; end_date?: string; years_counted?: number }[]
-}
-
-export interface AddCardToScenarioPayload {
-  card_id: number
-  start_date?: string
-  end_date?: string
-  years_counted?: number
-}
-
-export const scenariosApi = {
-  list: () => request<Scenario[]>('/scenarios'),
-  get: (id: number) => request<Scenario>(`/scenarios/${id}`),
-  create: (payload: CreateScenarioPayload) =>
-    request<Scenario>('/scenarios', { method: 'POST', body: JSON.stringify(payload) }),
-  update: (id: number, payload: Partial<CreateScenarioPayload>) =>
-    request<Scenario>(`/scenarios/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  delete: (id: number) => request<void>(`/scenarios/${id}`, { method: 'DELETE' }),
-  addCard: (scenarioId: number, payload: AddCardToScenarioPayload) =>
-    request<ScenarioCard>(`/scenarios/${scenarioId}/cards`, {
+export const walletSpendItemsApi = {
+  list: (walletId: number) =>
+    request<WalletSpendItem[]>(`/wallets/${walletId}/spend-items`),
+  create: (walletId: number, payload: CreateWalletSpendItemPayload) =>
+    request<WalletSpendItem>(`/wallets/${walletId}/spend-items`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  removeCard: (scenarioId: number, cardId: number) =>
-    request<void>(`/scenarios/${scenarioId}/cards/${cardId}`, { method: 'DELETE' }),
-  results: (id: number, referenceDate?: string) => {
-    const qs = referenceDate ? `?reference_date=${referenceDate}` : ''
-    return request<ScenarioResult>(`/scenarios/${id}/results${qs}`)
-  },
+  update: (walletId: number, itemId: number, payload: UpdateWalletSpendItemPayload) =>
+    request<WalletSpendItem>(`/wallets/${walletId}/spend-items/${itemId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  delete: (walletId: number, itemId: number) =>
+    request<void>(`/wallets/${walletId}/spend-items/${itemId}`, { method: 'DELETE' }),
+}
+
+
+// ─── Wallet spend categories ─────────────────────────────────────────────────
+
+export interface WalletSpendCategoryMapping {
+  id: number
+  spend_category_id: number
+  spend_category_name: string
+  allocation: number
+}
+
+export interface WalletSpendCategory {
+  id: number
+  wallet_id: number
+  name: string
+  amount: number
+  mappings: WalletSpendCategoryMapping[]
+}
+
+export interface WalletSpendCategoryMappingPayload {
+  spend_category_id: number
+  allocation: number
+}
+
+export interface CreateWalletSpendCategoryPayload {
+  name: string
+  amount?: number
+  mappings?: WalletSpendCategoryMappingPayload[]
+}
+
+export interface UpdateWalletSpendCategoryPayload {
+  name?: string
+  amount?: number
+  mappings?: WalletSpendCategoryMappingPayload[]
+}
+
+export const walletSpendCategoryApi = {
+  list: (walletId: number) =>
+    request<WalletSpendCategory[]>(`/wallets/${walletId}/spend-categories`),
+  create: (walletId: number, payload: CreateWalletSpendCategoryPayload) =>
+    request<WalletSpendCategory>(`/wallets/${walletId}/spend-categories`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  update: (walletId: number, id: number, payload: UpdateWalletSpendCategoryPayload) =>
+    request<WalletSpendCategory>(`/wallets/${walletId}/spend-categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  delete: (walletId: number, id: number) =>
+    request<void>(`/wallets/${walletId}/spend-categories/${id}`, { method: 'DELETE' }),
+}
+
+// ─── Wallet CPP overrides ────────────────────────────────────────────────────
+
+export const walletCppApi = {
+  listCurrencies: (walletId: number) =>
+    request<CurrencyRead[]>(`/wallets/${walletId}/currencies`),
+  set: (walletId: number, currencyId: number, centsPerPoint: number) =>
+    request<void>(`/wallets/${walletId}/currencies/${currencyId}/cpp`, {
+      method: 'PUT',
+      body: JSON.stringify({ cents_per_point: centsPerPoint }),
+    }),
+  delete: (walletId: number, currencyId: number) =>
+    request<void>(`/wallets/${walletId}/currencies/${currencyId}/cpp`, { method: 'DELETE' }),
+}
+
+// ─── Wallet card credit overrides ────────────────────────────────────────────
+
+export interface WalletCardCreditOverride {
+  id: number
+  wallet_card_id: number
+  library_credit_id: number
+  credit_name: string
+  value: number
+  is_one_time: boolean
+}
+
+export interface UpsertWalletCardCreditPayload {
+  value: number
+  is_one_time?: boolean | null
+}
+
+export const walletCardCreditApi = {
+  list: (walletId: number, cardId: number) =>
+    request<WalletCardCreditOverride[]>(`/wallets/${walletId}/cards/${cardId}/credits`),
+  upsert: (walletId: number, cardId: number, libraryCreditId: number, payload: UpsertWalletCardCreditPayload) =>
+    request<WalletCardCreditOverride>(`/wallets/${walletId}/cards/${cardId}/credits/${libraryCreditId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  delete: (walletId: number, cardId: number, libraryCreditId: number) =>
+    request<void>(`/wallets/${walletId}/cards/${cardId}/credits/${libraryCreditId}`, { method: 'DELETE' }),
+}
+
+// ─── Wallet card multiplier overrides ────────────────────────────────────────
+
+export interface WalletCardMultiplierOverride {
+  id: number
+  wallet_id: number
+  card_id: number
+  category_id: number
+  category_name: string
+  multiplier: number
+}
+
+export const walletCardMultiplierApi = {
+  list: (walletId: number) =>
+    request<WalletCardMultiplierOverride[]>(`/wallets/${walletId}/card-multipliers`),
+  upsert: (walletId: number, cardId: number, categoryId: number, multiplier: number) =>
+    request<WalletCardMultiplierOverride>(`/wallets/${walletId}/cards/${cardId}/multipliers/${categoryId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ multiplier }),
+    }),
+  delete: (walletId: number, cardId: number, categoryId: number) =>
+    request<void>(`/wallets/${walletId}/cards/${cardId}/multipliers/${categoryId}`, { method: 'DELETE' }),
+}
+
+// ─── Admin: Reference data CRUD ──────────────────────────────────────────────
+
+export const adminApi = {
+  createIssuer: (name: string) =>
+    request<IssuerRead>('/admin/issuers', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  createCurrency: (payload: {
+    name: string
+    issuer_id?: number | null
+    reward_kind?: 'points' | 'cash'
+    cents_per_point?: number
+    partner_transfer_rate?: number | null
+    cash_transfer_rate?: number | null
+    converts_to_currency_id?: number | null
+    converts_at_rate?: number | null
+  }) =>
+    request<CurrencyRead>('/admin/currencies', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  createSpendCategory: (category: string) =>
+    request<SpendCategory>('/admin/spend-categories', {
+      method: 'POST',
+      body: JSON.stringify({ category }),
+    }),
+  createCard: (payload: {
+    name: string
+    issuer_id: number
+    currency_id: number
+    co_brand_id?: number | null
+    annual_fee?: number
+    first_year_fee?: number | null
+    business?: boolean
+    network?: string | null
+    network_tier_id?: number | null
+    sub?: number | null
+    sub_min_spend?: number | null
+    sub_months?: number | null
+    sub_spend_earn?: number | null
+    annual_bonus?: number
+    sub_recurrence_months?: number | null
+    sub_family?: string | null
+  }) =>
+    request<Card>('/admin/cards', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteCard: (cardId: number) =>
+    request<void>(`/admin/cards/${cardId}`, { method: 'DELETE' }),
+  addCardMultiplier: (cardId: number, payload: {
+    category_id: number
+    multiplier: number
+    is_portal?: boolean
+    cap_per_billing_cycle?: number | null
+    cap_period?: 'monthly' | 'quarterly' | 'annually' | null
+    multiplier_group_id?: number | null
+  }) =>
+    request<Card>(`/admin/cards/${cardId}/multipliers`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteCardMultiplier: (cardId: number, categoryId: number) =>
+    request<void>(`/admin/cards/${cardId}/multipliers/${categoryId}`, { method: 'DELETE' }),
+  addCardCredit: (cardId: number, payload: {
+    credit_name: string
+    credit_value?: number
+    is_one_time?: boolean
+  }) =>
+    request<CardCredit>(`/admin/cards/${cardId}/credits`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteCardCredit: (cardId: number, creditId: number) =>
+    request<void>(`/admin/cards/${cardId}/credits/${creditId}`, { method: 'DELETE' }),
 }

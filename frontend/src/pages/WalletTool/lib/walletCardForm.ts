@@ -1,0 +1,127 @@
+import type { Card, UpdateWalletCardPayload, WalletCard, WalletCardAcquisitionType } from '../../../api/client'
+
+/** Effective credit values when editing an existing wallet row (overrides + library). */
+export function initialCreditOverridesForEdit(wc: WalletCard, lib: Card): Record<number, number> {
+  const m: Record<number, number> = {}
+  for (const cr of lib.credits) {
+    const sid = String(cr.id)
+    const raw = wc.credit_overrides?.[sid]
+    m[cr.id] = raw !== undefined ? Number(raw) : cr.credit_value
+  }
+  return m
+}
+
+export function parseOptionalInt(s: string): number | null {
+  const t = s.trim()
+  if (!t) return null
+  const n = Number.parseInt(t, 10)
+  return Number.isNaN(n) ? NaN : n
+}
+
+export function buildWalletCardFields(
+  subPoints: string,
+  subMinSpend: string,
+  subMonths: string,
+  annualFee: string,
+  firstYearFee: string
+):
+  | {
+      ok: true
+      sub: number | null
+      sub_min_spend: number | null
+      sub_months: number | null
+      annual_fee: number | null
+      first_year_fee: number | null
+    }
+  | { ok: false; message: string } {
+  const sub = parseOptionalInt(subPoints)
+  if (subPoints.trim() !== '' && (Number.isNaN(sub!) || sub! < 0)) {
+    return { ok: false, message: 'SUB points must be a non-negative integer or empty.' }
+  }
+  const sub_min_spend = parseOptionalInt(subMinSpend)
+  if (subMinSpend.trim() !== '' && (Number.isNaN(sub_min_spend!) || sub_min_spend! < 0)) {
+    return { ok: false, message: 'SUB min spend must be a non-negative integer or empty.' }
+  }
+  const sub_months = parseOptionalInt(subMonths)
+  if (subMonths.trim() !== '' && (Number.isNaN(sub_months!) || sub_months! < 0)) {
+    return { ok: false, message: 'SUB months must be a non-negative integer or empty.' }
+  }
+
+  const afRaw = annualFee.trim()
+  let annual_fee: number | null
+  if (afRaw === '') {
+    annual_fee = null
+  } else {
+    annual_fee = Number.parseFloat(afRaw)
+    if (Number.isNaN(annual_fee) || annual_fee < 0) {
+      return { ok: false, message: 'Annual fee must be a non-negative number or empty.' }
+    }
+  }
+
+  const fyRaw = firstYearFee.trim()
+  let first_year_fee: number | null
+  if (fyRaw === '') {
+    first_year_fee = null
+  } else {
+    const fy = Number.parseFloat(fyRaw)
+    if (Number.isNaN(fy) || fy < 0) {
+      return { ok: false, message: 'First-year fee must be a non-negative number or empty.' }
+    }
+    first_year_fee = fy
+  }
+
+  return {
+    ok: true,
+    sub: subPoints.trim() === '' ? null : sub,
+    sub_min_spend: subMinSpend.trim() === '' ? null : sub_min_spend,
+    sub_months: subMonths.trim() === '' ? null : sub_months,
+    annual_fee,
+    first_year_fee,
+  }
+}
+
+/** When a parsed value matches the library default, store null on the wallet row (inherit). */
+function intOverride(parsed: number | null, lib: number | null | undefined): number | null {
+  if (parsed === null) return null
+  if (lib != null && parsed === lib) return null
+  return parsed
+}
+
+function floatOverride(parsed: number | null, lib: number | null | undefined): number | null {
+  if (parsed === null) return null
+  if (lib != null && Math.abs(parsed - lib) < 1e-9) return null
+  return parsed
+}
+
+export type BuiltWalletFields = Extract<
+  ReturnType<typeof buildWalletCardFields>,
+  { ok: true }
+>
+
+/** Map form state + library card to a PATCH payload (null = inherit library where applicable). */
+export function walletFormToUpdatePayload(
+  built: BuiltWalletFields,
+  lib: Card,
+  creditOverrides: Record<number, number>,
+  addedDate: string,
+  acquisitionType: WalletCardAcquisitionType
+): UpdateWalletCardPayload {
+  const co: Record<string, number> = {}
+  for (const cr of lib.credits) {
+    const v = creditOverrides[cr.id] ?? cr.credit_value
+    if (Math.abs(v - cr.credit_value) > 1e-6) {
+      co[String(cr.id)] = v
+    }
+  }
+
+  return {
+    added_date: addedDate,
+    acquisition_type: acquisitionType,
+    sub: intOverride(built.sub, lib.sub ?? undefined),
+    sub_min_spend: intOverride(built.sub_min_spend, lib.sub_min_spend ?? undefined),
+    sub_months: intOverride(built.sub_months, lib.sub_months ?? undefined),
+    annual_fee: floatOverride(built.annual_fee, lib.annual_fee),
+    first_year_fee: floatOverride(built.first_year_fee, lib.first_year_fee ?? undefined),
+    credit_overrides: co,
+  }
+}

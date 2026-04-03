@@ -1,31 +1,51 @@
+import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import Library from './pages/Library/index'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import WalletTool from './pages/WalletTool/index'
+
+interface ErrorBoundaryState {
+  hasError: boolean
+  error: Error | null
+}
+
+class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false, error: null }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Unhandled render error:', error, info)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 text-center">
+          <h2 className="text-xl font-bold text-red-400 mb-2">Something went wrong</h2>
+          <p className="text-slate-400 text-sm mb-4">{this.state.error?.message}</p>
+          <button
+            className="px-4 py-2 bg-slate-700 rounded text-sm hover:bg-slate-600"
+            onClick={() => this.setState({ hasError: false, error: null })}
+          >
+            Try again
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000 } },
 })
 
 function Nav() {
-  const { pathname } = useLocation()
-  const link = (to: string, label: string) => (
-    <Link
-      to={to}
-      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-        pathname === to
-          ? 'bg-indigo-600 text-white'
-          : 'text-slate-300 hover:text-white hover:bg-slate-700'
-      }`}
-    >
-      {label}
-    </Link>
-  )
   return (
     <nav className="bg-slate-900 border-b border-slate-700 px-6 py-3 flex items-center gap-2">
       <span className="text-white font-bold text-lg mr-6">Credit Card Optimizer</span>
-      {link('/', 'Wallet Tool')}
-      {link('/library', 'Library')}
     </nav>
   )
 }
@@ -37,11 +57,11 @@ export default function App() {
         <div className="min-h-screen bg-slate-950 text-slate-100">
           <Nav />
           <main className="p-6">
-            <Routes>
-              <Route path="/" element={<WalletTool />} />
-              <Route path="/library" element={<Library />} />
-              <Route path="/cards" element={<Navigate to="/library" replace />} />
-            </Routes>
+            <ErrorBoundary>
+              <Routes>
+                <Route path="/" element={<WalletTool />} />
+              </Routes>
+            </ErrorBoundary>
           </main>
         </div>
       </BrowserRouter>
