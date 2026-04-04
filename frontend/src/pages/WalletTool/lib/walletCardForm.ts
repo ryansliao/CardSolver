@@ -22,6 +22,7 @@ export function buildWalletCardFields(
   subPoints: string,
   subMinSpend: string,
   subMonths: string,
+  annualBonus: string,
   annualFee: string,
   firstYearFee: string
 ):
@@ -30,6 +31,7 @@ export function buildWalletCardFields(
       sub: number | null
       sub_min_spend: number | null
       sub_months: number | null
+      annual_bonus: number | null
       annual_fee: number | null
       first_year_fee: number | null
     }
@@ -45,6 +47,10 @@ export function buildWalletCardFields(
   const sub_months = parseOptionalInt(subMonths)
   if (subMonths.trim() !== '' && (Number.isNaN(sub_months!) || sub_months! < 0)) {
     return { ok: false, message: 'SUB months must be a non-negative integer or empty.' }
+  }
+  const annual_bonus = parseOptionalInt(annualBonus)
+  if (annualBonus.trim() !== '' && (Number.isNaN(annual_bonus!) || annual_bonus! < 0)) {
+    return { ok: false, message: 'Annual bonus must be a non-negative integer or empty.' }
   }
 
   const afRaw = annualFee.trim()
@@ -75,6 +81,7 @@ export function buildWalletCardFields(
     sub: subPoints.trim() === '' ? null : sub,
     sub_min_spend: subMinSpend.trim() === '' ? null : sub_min_spend,
     sub_months: subMonths.trim() === '' ? null : sub_months,
+    annual_bonus: annualBonus.trim() === '' ? null : annual_bonus,
     annual_fee,
     first_year_fee,
   }
@@ -120,6 +127,7 @@ export function walletFormToUpdatePayload(
     sub: intOverride(built.sub, lib.sub ?? undefined),
     sub_min_spend: intOverride(built.sub_min_spend, lib.sub_min_spend ?? undefined),
     sub_months: intOverride(built.sub_months, lib.sub_months ?? undefined),
+    annual_bonus: intOverride(built.annual_bonus, lib.annual_bonus ?? undefined),
     annual_fee: floatOverride(built.annual_fee, lib.annual_fee),
     first_year_fee: floatOverride(built.first_year_fee, lib.first_year_fee ?? undefined),
     credit_overrides: co,

@@ -19,14 +19,6 @@ import { ApplicationRuleWarningModal } from './components/roadmap/ApplicationRul
 import { DEFAULT_USER_ID } from './constants'
 import { queryKeys } from './lib/queryKeys'
 
-/** Earliest `added_date` among wallet cards (YYYY-MM-DD), or null if none. */
-function earliestCardOpeningIso(cards: WalletCard[] | undefined): string | null {
-  if (!cards?.length) return null
-  return cards.reduce<string>((min, wc) => {
-    const d = wc.added_date.slice(0, 10)
-    return d < min ? d : min
-  }, cards[0].added_date.slice(0, 10))
-}
 
 type WalletCardModalOpen =
   | { mode: 'add' }
@@ -37,9 +29,6 @@ export default function WalletToolPage() {
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [walletCardModal, setWalletCardModal] = useState<WalletCardModalOpen | null>(null)
-  const [startDate, setStartDate] = useState('')
-  const [windowLengthMode, setWindowLengthMode] = useState<'duration' | 'end'>('duration')
-  const [endDate, setEndDate] = useState('')
   const [durationYears, setDurationYears] = useState(2)
   const [durationMonths, setDurationMonths] = useState(0)
   const [result, setResult] = useState<WalletResultResponse | null>(null)
@@ -162,55 +151,28 @@ export default function WalletToolPage() {
   useEffect(() => {
     if (selectedWalletId == null || !selectedWallet) return
 
-    if (selectedWallet.calc_start_date) {
-      // Restore the last-used calculation configuration
-      setStartDate(selectedWallet.calc_start_date.slice(0, 10))
-      setWindowLengthMode(selectedWallet.calc_window_mode)
-      setDurationYears(selectedWallet.calc_duration_years)
-      setDurationMonths(selectedWallet.calc_duration_months)
-      setEndDate(selectedWallet.calc_end_date ? selectedWallet.calc_end_date.slice(0, 10) : '')
+    setDurationYears(selectedWallet.calc_duration_years)
+    setDurationMonths(selectedWallet.calc_duration_months)
 
-      // Auto-run the last calculation
-      const savedParams =
-        selectedWallet.calc_window_mode === 'end'
-          ? {
-              start_date: selectedWallet.calc_start_date.slice(0, 10),
-              end_date: selectedWallet.calc_end_date?.slice(0, 10),
-            }
-          : {
-              start_date: selectedWallet.calc_start_date.slice(0, 10),
-              duration_years: selectedWallet.calc_duration_years,
-              duration_months: selectedWallet.calc_duration_months,
-            }
-      resultsMutation.mutate({ walletId: selectedWalletId, params: savedParams })
-    } else {
-      // No saved config — use earliest card date or today as default start
-      const earliest = earliestCardOpeningIso(selectedWallet.wallet_cards)
-      const fromWalletAsOf = selectedWallet.as_of_date ? selectedWallet.as_of_date.slice(0, 10) : ''
-      setStartDate(earliest ?? (fromWalletAsOf || today()))
+    if (selectedWallet.calc_start_date) {
+      // Auto-run the last calculation from today
+      resultsMutation.mutate({
+        walletId: selectedWalletId,
+        params: {
+          start_date: today(),
+          duration_years: selectedWallet.calc_duration_years,
+          duration_months: selectedWallet.calc_duration_months,
+        },
+      })
     }
   }, [selectedWalletId])
 
-  function buildResultsParams(): {
-    start_date: string
-    end_date?: string
-    duration_years?: number
-    duration_months?: number
-  } {
-    if (windowLengthMode === 'end') {
-      return { start_date: startDate, end_date: endDate }
-    }
-    return {
-      start_date: startDate,
-      duration_years: durationYears,
-      duration_months: durationMonths,
-    }
+  function buildResultsParams() {
+    return { start_date: today(), duration_years: durationYears, duration_months: durationMonths }
   }
 
   const durationTotalMonths = durationYears * 12 + durationMonths
-  const windowParamsValid =
-    Boolean(startDate) &&
-    (windowLengthMode === 'end' ? Boolean(endDate) : durationTotalMonths > 0)
+  const windowParamsValid = durationTotalMonths > 0
 
   function calculate() {
     if (selectedWalletId == null || !windowParamsValid) return
@@ -275,88 +237,33 @@ export default function WalletToolPage() {
           </div>
         ) : (
           <>
-            {/* Time frame & Calculate */}
-            <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-slate-400">Start</label>
-                <input
-                  type="date"
-                  className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-slate-400">Window</span>
-                <div className="inline-flex rounded-lg border border-slate-600 overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWindowLengthMode('duration')
-                      setEndDate('')
-                    }}
-                    className={`text-sm px-3 py-1.5 transition-colors ${
-                      windowLengthMode === 'duration'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                    }`}
-                  >
-                    Duration
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setWindowLengthMode('end')}
-                    className={`text-sm px-3 py-1.5 border-l border-slate-600 transition-colors ${
-                      windowLengthMode === 'end'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                    }`}
-                  >
-                    End date
-                  </button>
-                </div>
-                {windowLengthMode === 'duration' ? (
-                  <>
-                    <select
-                      className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5"
-                      value={durationYears}
-                      onChange={(e) => setDurationYears(Number(e.target.value))}
-                      aria-label="Duration years"
-                    >
-                      {[0, 1, 2, 3, 4, 5].map((n) => (
-                        <option key={n} value={n}>
-                          {n} yr
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5"
-                      value={durationMonths}
-                      onChange={(e) => setDurationMonths(Number(e.target.value))}
-                      aria-label="Duration months"
-                    >
-                      {Array.from({ length: 12 }, (_, i) => (
-                        <option key={i} value={i}>
-                          {i} mo
-                        </option>
-                      ))}
-                    </select>
-                  </>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <label htmlFor="calc-end-date" className="sr-only">
-                      End date
-                    </label>
-                    <input
-                      id="calc-end-date"
-                      type="date"
-                      className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                    />
-                  </div>
-                )}
-              </div>
+            {/* Duration & Calculate */}
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <span className="text-sm text-slate-400">Duration</span>
+              <select
+                className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-2"
+                value={durationYears}
+                onChange={(e) => setDurationYears(Number(e.target.value))}
+                aria-label="Duration years"
+              >
+                {[0, 1, 2, 3, 4, 5].map((n) => (
+                  <option key={n} value={n}>
+                    {n} yr
+                  </option>
+                ))}
+              </select>
+              <select
+                className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-2"
+                value={durationMonths}
+                onChange={(e) => setDurationMonths(Number(e.target.value))}
+                aria-label="Duration months"
+              >
+                {Array.from({ length: 12 }, (_, i) => (
+                  <option key={i} value={i}>
+                    {i} mo
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 onClick={calculate}

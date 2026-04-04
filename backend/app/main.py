@@ -80,7 +80,7 @@ from sqlalchemy.orm import selectinload
 
 from .calculator import compute_wallet
 from .constants import ALLOCATION_SUM_TOLERANCE, ALL_OTHER_CATEGORY as ALL_OTHER_SPEND_NAME, DEFAULT_USER_ID
-from .database import AsyncSessionLocal, create_tables, get_db
+from .database import create_tables, get_db
 from .db_helpers import (
     apply_wallet_card_multiplier_overrides,
     apply_wallet_card_overrides,
@@ -193,205 +193,9 @@ def _years_counted_from_total_months(total_months: int) -> int:
     return max(1, full + (1 if rem >= 6 else 0))
 
 
-async def _seed_issuer_application_rules(session: AsyncSession) -> None:
-    """Seed common well-known issuer velocity/eligibility rules if none exist yet."""
-    existing = await session.execute(select(IssuerApplicationRule))
-    if existing.scalars().first():
-        return
-
-    issuers_result = await session.execute(select(Issuer))
-    issuer_by_name: dict[str, int] = {i.name: i.id for i in issuers_result.scalars().all()}
-
-    rules: list[IssuerApplicationRule] = []
-
-    chase_id = issuer_by_name.get("Chase")
-    amex_id = issuer_by_name.get("American Express")
-    citi_id = issuer_by_name.get("Citi")
-    bilt_id = None  # No known hard velocity rules
-
-    if chase_id:
-        rules += [
-            IssuerApplicationRule(
-                issuer_id=chase_id,
-                rule_name="5/24",
-                description=(
-                    "Chase denies most card applications if you have opened 5 or more personal "
-                    "credit cards (from any issuer) in the last 24 months. Business cards from most "
-                    "issuers do NOT count toward this limit."
-                ),
-                max_count=5,
-                period_days=730,
-                personal_only=True,
-                scope_all_issuers=True,
-            ),
-            IssuerApplicationRule(
-                issuer_id=chase_id,
-                rule_name="2/30",
-                description=(
-                    "Chase typically limits applicants to 2 Chase credit card approvals within "
-                    "any 30-day rolling window."
-                ),
-                max_count=2,
-                period_days=30,
-                personal_only=False,
-                scope_all_issuers=False,
-            ),
-        ]
-
-    if amex_id:
-        rules += [
-            IssuerApplicationRule(
-                issuer_id=amex_id,
-                rule_name="1/90 Personal",
-                description=(
-                    "American Express typically approves only one new personal credit card "
-                    "application per 90-day rolling window."
-                ),
-                max_count=1,
-                period_days=90,
-                personal_only=True,
-                scope_all_issuers=False,
-            ),
-            IssuerApplicationRule(
-                issuer_id=amex_id,
-                rule_name="1/90 Business",
-                description=(
-                    "American Express typically approves only one new business credit card "
-                    "application per 90-day rolling window."
-                ),
-                max_count=1,
-                period_days=90,
-                personal_only=False,
-                scope_all_issuers=False,
-            ),
-            IssuerApplicationRule(
-                issuer_id=amex_id,
-                rule_name="5 Card Max",
-                description=(
-                    "American Express generally caps cardholders at 5 open credit cards (charge "
-                    "cards not counted). Having 5+ open Amex credit cards usually results in denial."
-                ),
-                max_count=5,
-                period_days=36500,
-                personal_only=False,
-                scope_all_issuers=False,
-            ),
-        ]
-
-    if citi_id:
-        rules += [
-            IssuerApplicationRule(
-                issuer_id=citi_id,
-                rule_name="1/8",
-                description=(
-                    "Citi limits approvals to 1 new card per 8-day rolling window."
-                ),
-                max_count=1,
-                period_days=8,
-                personal_only=False,
-                scope_all_issuers=False,
-            ),
-            IssuerApplicationRule(
-                issuer_id=citi_id,
-                rule_name="2/65",
-                description=(
-                    "Citi limits approvals to 2 new cards per 65-day rolling window."
-                ),
-                max_count=2,
-                period_days=65,
-                personal_only=False,
-                scope_all_issuers=False,
-            ),
-        ]
-
-    for rule in rules:
-        session.add(rule)
-    if rules:
-        await session.commit()
-
-
-# ---------------------------------------------------------------------------
-# Spend category seed data (hierarchy added to unified SpendCategory table)
-# ---------------------------------------------------------------------------
-
-# (category_name, parent_name, is_system, explicit_id)
-# parent_name=None means top-level. is_system=True for "All Other".
-# explicit_id is set only for the two anchor categories (All Other=1, Travel=2).
-_SPEND_CATEGORY_SEED: list[tuple[str, Optional[str], bool, Optional[int]]] = [
-    # System catch-all — always present, locked (ID 1)
-    (ALL_OTHER_SPEND_NAME,   None,        True,  1),
-    # Travel (ID 2)
-    ("Travel",               None,        False, 2),
-    ("Hotels",               "Travel",    False, None),
-    ("Car Rentals",          "Travel",    False, None),
-    ("Cruises",              "Travel",    False, None),
-    ("Rideshare",            "Travel",    False, None),
-    ("Transit",              "Travel",    False, None),
-    # Dining
-    ("Dining",               None,        False, None),
-    ("Restaurants",          "Dining",    False, None),
-    ("Fast Food",            "Dining",    False, None),
-    ("Coffee & Bars",        "Dining",    False, None),
-    # Groceries
-    ("Groceries",            None,        False, None),
-    ("Online Groceries",     "Groceries", False, None),
-    # Gas
-    ("Gas",                  None,        False, None),
-    ("Gas Stations",         "Gas",       False, None),
-    ("EV Charging",          "Gas",       False, None),
-    # Shopping (independent top-level categories)
-    ("Online Shopping",      None,        False, None),
-    ("Wholesale Clubs",      None,        False, None),
-    ("Home Improvement",     None,        False, None),
-    # Entertainment & Lifestyle
-    ("Entertainment",        None,        False, None),
-    ("Streaming",            None,        False, None),
-    ("Phone",                None,        False, None),
-]
-
-
-async def _seed_spend_category_hierarchy(session: AsyncSession) -> None:
-    """
-    Ensure all spend categories exist and have correct parent_id / is_system.
-    Creates missing categories; updates metadata on existing ones if they have default values.
-    "All Other" is pinned to ID 1, "Travel" to ID 2 on fresh installs.
-    Safe to re-run on every startup. Obsolete category cleanup is handled in database.py migrations.
-    """
-    sc_result = await session.execute(select(SpendCategory))
-    by_name: dict[str, SpendCategory] = {sc.category: sc for sc in sc_result.scalars().all()}
-
-    # Pass 1: create missing categories (all with parent_id=None for now)
-    for name, _parent, is_sys, explicit_id in _SPEND_CATEGORY_SEED:
-        if name not in by_name:
-            kwargs: dict = {"category": name, "is_system": is_sys}
-            if explicit_id is not None:
-                kwargs["id"] = explicit_id
-            sc = SpendCategory(**kwargs)
-            session.add(sc)
-            by_name[name] = sc
-    await session.flush()
-
-    # Pass 2: set parent_id and is_system on any row that needs it
-    for name, parent_name, is_sys, _explicit_id in _SPEND_CATEGORY_SEED:
-        sc = by_name.get(name)
-        if sc is None:
-            continue
-        parent = by_name.get(parent_name) if parent_name else None
-        desired_parent_id = parent.id if parent else None
-        if sc.parent_id != desired_parent_id:
-            sc.parent_id = desired_parent_id
-        if not sc.is_system and is_sys:
-            sc.is_system = is_sys
-    await session.flush()
-
-
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     await create_tables()
-    async with AsyncSessionLocal() as session:
-        await _seed_issuer_application_rules(session)
-        await _seed_spend_category_hierarchy(session)
-        await session.commit()
     yield
 
 
@@ -461,6 +265,7 @@ def _wc_read(wc: WalletCard, card: Card) -> WalletCardRead:
         sub_min_spend=_inh(wc.sub_min_spend, card.sub_min_spend),
         sub_months=_inh(wc.sub_months, card.sub_months),
         sub_spend_earn=_inh(wc.sub_spend_earn, card.sub_spend_earn),
+        annual_bonus=_inh(wc.annual_bonus, card.annual_bonus),
         years_counted=wc.years_counted,
         annual_fee=_inh(wc.annual_fee, card.annual_fee),
         first_year_fee=_inh(wc.first_year_fee, card.first_year_fee),
@@ -479,8 +284,8 @@ def _card_load_opts():
     return [
         selectinload(Card.issuer),
         selectinload(Card.co_brand),
-        selectinload(Card.currency_obj).selectinload(Currency.issuer),
-        selectinload(Card.currency_obj).selectinload(Currency.converts_to_currency).selectinload(Currency.issuer),
+        selectinload(Card.currency_obj),
+        selectinload(Card.currency_obj).selectinload(Currency.converts_to_currency),
         selectinload(Card.network_tier),
         selectinload(Card.multipliers).selectinload(CardCategoryMultiplier.spend_category),
         selectinload(Card.multiplier_groups).selectinload(CardMultiplierGroup.categories).selectinload(CardCategoryMultiplier.spend_category),
@@ -527,8 +332,7 @@ async def list_currencies(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Currency)
         .options(
-            selectinload(Currency.issuer),
-            selectinload(Currency.converts_to_currency).selectinload(Currency.issuer),
+            selectinload(Currency.converts_to_currency),
         )
         .order_by(Currency.name)
     )
@@ -1146,6 +950,7 @@ async def add_card_to_wallet(
         sub_min_spend=payload.sub_min_spend,
         sub_months=payload.sub_months,
         sub_spend_earn=payload.sub_spend_earn,
+        annual_bonus=payload.annual_bonus,
         years_counted=payload.years_counted,
         annual_fee=payload.annual_fee,
         first_year_fee=payload.first_year_fee,
@@ -1218,6 +1023,21 @@ async def remove_card_from_wallet(
             detail=f"Card {card_id} not in wallet {wallet_id}",
         )
     await db.delete(wc)
+    await db.flush()
+
+    # Clean up currency balance rows for currencies no longer earned by any remaining card.
+    remaining_currency_ids = await _effective_earn_currency_ids_for_wallet(db, wallet_id)
+    balance_q = select(WalletCurrencyBalance).where(
+        WalletCurrencyBalance.wallet_id == wallet_id,
+    )
+    if remaining_currency_ids:
+        balance_q = balance_q.where(
+            WalletCurrencyBalance.currency_id.not_in(remaining_currency_ids)
+        )
+    orphaned_balances = await db.execute(balance_q)
+    for balance_row in orphaned_balances.scalars().all():
+        await db.delete(balance_row)
+
     await db.commit()
 
 
@@ -1865,7 +1685,6 @@ async def list_wallet_currencies_with_cpp(
 
     cur_result = await db.execute(
         select(Currency)
-        .options(selectinload(Currency.issuer))
         .order_by(Currency.name)
     )
     currencies = cur_result.scalars().all()
@@ -2216,10 +2035,6 @@ async def admin_create_currency(
     existing = await db.execute(select(Currency).where(Currency.name == payload.name.strip()))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail=f"Currency '{payload.name}' already exists")
-    if payload.issuer_id is not None:
-        iss_result = await db.execute(select(Issuer).where(Issuer.id == payload.issuer_id))
-        if not iss_result.scalar_one_or_none():
-            raise HTTPException(status_code=404, detail=f"Issuer id={payload.issuer_id} not found")
     if payload.converts_to_currency_id is not None:
         tgt = await db.execute(select(Currency).where(Currency.id == payload.converts_to_currency_id))
         if not tgt.scalar_one_or_none():
@@ -2227,7 +2042,6 @@ async def admin_create_currency(
 
     currency = Currency(
         name=payload.name.strip(),
-        issuer_id=payload.issuer_id,
         reward_kind=payload.reward_kind,
         cents_per_point=payload.cents_per_point,
         partner_transfer_rate=payload.partner_transfer_rate,
@@ -2238,10 +2052,7 @@ async def admin_create_currency(
     db.add(currency)
     await db.commit()
     await db.refresh(currency)
-    res = await db.execute(
-        select(Currency).options(selectinload(Currency.issuer)).where(Currency.id == currency.id)
-    )
-    return res.scalar_one()
+    return currency
 
 
 @app.post(
@@ -2300,7 +2111,6 @@ async def admin_create_card(
         annual_fee=payload.annual_fee,
         first_year_fee=payload.first_year_fee,
         business=payload.business,
-        network=payload.network,
         network_tier_id=payload.network_tier_id,
         sub=payload.sub,
         sub_min_spend=payload.sub_min_spend,

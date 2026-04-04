@@ -65,7 +65,6 @@ def _currency_data(
     return CurrencyData(
         id=orm_currency.id,
         name=orm_currency.name,
-        issuer_name=orm_currency.issuer.name if orm_currency.issuer else "",
         reward_kind=rk,
         cents_per_point=cpp,
         cash_transfer_rate=orm_currency.cash_transfer_rate if orm_currency.cash_transfer_rate is not None else 1.0,
@@ -96,10 +95,7 @@ async def load_card_data(
         select(Card).options(
             selectinload(Card.issuer),
             selectinload(Card.currency_obj)
-            .selectinload(Currency.issuer),
-            selectinload(Card.currency_obj)
-            .selectinload(Currency.converts_to_currency)
-            .selectinload(Currency.issuer),
+            .selectinload(Currency.converts_to_currency),
             selectinload(Card.multipliers).selectinload(CardCategoryMultiplier.spend_category),
             selectinload(Card.multiplier_groups).selectinload(CardMultiplierGroup.categories).selectinload(CardCategoryMultiplier.spend_category),
             selectinload(Card.credits),
@@ -145,7 +141,7 @@ async def load_card_data(
                 sub_min_spend=card.sub_min_spend,
                 sub_months=card.sub_months,
                 sub_spend_earn=card.sub_spend_earn if card.sub_spend_earn is not None else 0,
-                annual_bonus=card.annual_bonus,
+                annual_bonus=card.annual_bonus if card.annual_bonus is not None else 0,
                 multipliers=multipliers,
                 multiplier_groups=multiplier_groups_list,
                 credit_lines=credit_lines,
@@ -366,6 +362,9 @@ def apply_wallet_card_overrides(
                     wc.sub_spend_earn
                     if wc.sub_spend_earn is not None
                     else cd.sub_spend_earn
+                ),
+                annual_bonus=(
+                    wc.annual_bonus if wc.annual_bonus is not None else cd.annual_bonus
                 ),
                 annual_fee=annual_fee,
                 first_year_fee=first_year_fee,

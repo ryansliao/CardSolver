@@ -42,9 +42,6 @@ class Issuer(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
 
-    currencies: Mapped[list["Currency"]] = relationship(
-        back_populates="issuer", cascade="all, delete-orphan"
-    )
     cards: Mapped[list["Card"]] = relationship(back_populates="issuer")
     application_rules: Mapped[list["IssuerApplicationRule"]] = relationship(
         back_populates="issuer", cascade="all, delete-orphan"
@@ -76,6 +73,8 @@ class Network(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
 
+    tiers: Mapped[list["NetworkTier"]] = relationship(back_populates="network")
+
     def __repr__(self) -> str:
         return f"<Network id={self.id} name={self.name!r}>"
 
@@ -87,6 +86,11 @@ class NetworkTier(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    network_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("networks.id", ondelete="SET NULL"), nullable=True
+    )
+
+    network: Mapped[Optional["Network"]] = relationship(back_populates="tiers")
 
     def __repr__(self) -> str:
         return f"<NetworkTier id={self.id} name={self.name!r}>"
@@ -94,7 +98,7 @@ class NetworkTier(Base):
 
 class Currency(Base):
     """
-    A reward currency. May be tied to an issuer (issuer_id set) or standalone (e.g. Cash).
+    A reward currency (e.g. Chase UR, Cash).
 
     cash_transfer_rate: rate when redeeming as cash/statement credit (1.0 = pure cash, 0.01 = 1¢/pt).
     partner_transfer_rate: rate for airline/hotel partner transfers; null = not transferable.
@@ -105,9 +109,6 @@ class Currency(Base):
     __tablename__ = "currencies"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    issuer_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("issuers.id", ondelete="CASCADE"), nullable=True
-    )
     name: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
     # "points" (incl. miles) vs "cash" — affects display and CPP override behavior
     reward_kind: Mapped[str] = mapped_column(String(20), default="points", nullable=False)
@@ -124,7 +125,6 @@ class Currency(Base):
     # When converting to target: 1 unit of this currency = converts_at_rate units of target (e.g. 0.7 for 1:0.7)
     converts_at_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
-    issuer: Mapped[Optional["Issuer"]] = relationship(back_populates="currencies")
     cards: Mapped[list["Card"]] = relationship(
         back_populates="currency_obj",
         foreign_keys="Card.currency_id",
@@ -170,7 +170,6 @@ class Card(Base):
     # First year annual fee (optional; if set, often lower than annual_fee, e.g. waived or reduced)
     first_year_fee: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     business: Mapped[bool] = mapped_column(Boolean, default=False)
-    network: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     network_tier_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("network_tiers.id", ondelete="SET NULL"), nullable=True
     )
@@ -183,7 +182,7 @@ class Card(Base):
     sub_spend_earn: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Recurring annual bonus (e.g. Chase Ink Preferred 10k points/year; can be points or cash)
-    annual_bonus: Mapped[int] = mapped_column(Integer, default=0)
+    annual_bonus: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
 
     # Roadmap: how many months before the SUB can be earned again (e.g. 48 for Sapphire family)
     sub_recurrence_months: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -418,6 +417,9 @@ class WalletCard(Base):
     sub_months: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     sub_spend_earn: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     years_counted: Mapped[int] = mapped_column(Integer, default=2)
+
+    # Optional annual_bonus override (null = use Card's annual_bonus)
+    annual_bonus: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Optional fee overrides (null = use Card's annual_fee / first_year_fee)
     annual_fee: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

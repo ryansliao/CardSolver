@@ -70,7 +70,7 @@ export function CardLibraryInfoModal({
               <div className="flex justify-between gap-3">
                 <dt className="text-slate-500">Network</dt>
                 <dd className="text-slate-200 text-right">
-                  {[card.network, card.network_tier?.name].filter(Boolean).join(' · ') || '—'}
+                  {card.network_tier?.name || '—'}
                 </dd>
               </div>
               <div className="flex justify-between gap-3">

@@ -41,7 +41,6 @@ class CurrencyData:
 
     id: int
     name: str
-    issuer_name: str
     reward_kind: str  # "points" (incl. miles) or "cash"
     cents_per_point: float
     cash_transfer_rate: float

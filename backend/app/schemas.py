@@ -34,6 +34,7 @@ class NetworkTierRead(BaseModel):
 
     id: int
     name: str
+    network_id: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +46,6 @@ class CurrencyRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    issuer_id: Optional[int] = None
     name: str
     reward_kind: str = "points"
     cents_per_point: float
@@ -53,7 +53,6 @@ class CurrencyRead(BaseModel):
     cash_transfer_rate: Optional[float] = None
     converts_to_currency_id: Optional[int] = None
     converts_at_rate: Optional[float] = None
-    issuer: Optional[IssuerRead] = None
     # When listing with ?user_id=, effective CPP for that user (override or base)
     user_cents_per_point: Optional[float] = None
 
@@ -173,13 +172,12 @@ class CardRead(BaseModel):
     annual_fee: float
     first_year_fee: Optional[float] = None
     business: bool = False
-    network: Optional[str] = None
     network_tier_id: Optional[int] = None
     sub: Optional[int] = None
     sub_min_spend: Optional[int] = None
     sub_months: Optional[int] = None
     sub_spend_earn: Optional[int] = None
-    annual_bonus: int
+    annual_bonus: Optional[int] = None
     sub_recurrence_months: Optional[int] = None
     sub_family: Optional[str] = None
 
@@ -442,7 +440,6 @@ class AdminCreateSpendCategoryPayload(BaseModel):
 
 class AdminCreateCurrencyPayload(BaseModel):
     name: str = Field(..., max_length=80)
-    issuer_id: Optional[int] = None
     reward_kind: str = Field(default="points", pattern="^(points|cash)$")
     cents_per_point: float = Field(default=1.0, gt=0)
     partner_transfer_rate: Optional[float] = Field(default=None, gt=0)
@@ -459,13 +456,12 @@ class AdminCreateCardPayload(BaseModel):
     annual_fee: float = Field(default=0.0, ge=0)
     first_year_fee: Optional[float] = Field(default=None, ge=0)
     business: bool = False
-    network: Optional[str] = Field(default=None, max_length=40)
     network_tier_id: Optional[int] = None
     sub: Optional[int] = Field(default=None, ge=0)
     sub_min_spend: Optional[int] = Field(default=None, ge=0)
     sub_months: Optional[int] = Field(default=None, ge=1)
     sub_spend_earn: Optional[int] = Field(default=None, ge=0)
-    annual_bonus: int = Field(default=0, ge=0)
+    annual_bonus: Optional[int] = Field(default=None, ge=0)
     sub_recurrence_months: Optional[int] = Field(default=None, ge=1)
     sub_family: Optional[str] = Field(default=None, max_length=80)
 
@@ -497,6 +493,7 @@ class WalletCardBase(BaseModel):
     sub_min_spend: Optional[int] = None
     sub_months: Optional[int] = None
     sub_spend_earn: Optional[int] = None
+    annual_bonus: Optional[int] = Field(default=None, ge=0)
     years_counted: int = Field(default=2, ge=1, le=20)
     annual_fee: Optional[float] = Field(default=None, ge=0)
     first_year_fee: Optional[float] = Field(default=None, ge=0)
@@ -516,6 +513,7 @@ class WalletCardUpdate(BaseModel):
     sub_min_spend: Optional[int] = None
     sub_months: Optional[int] = None
     sub_spend_earn: Optional[int] = None
+    annual_bonus: Optional[int] = Field(default=None, ge=0)
     years_counted: Optional[int] = Field(default=None, ge=1, le=20)
     annual_fee: Optional[float] = Field(default=None, ge=0)
     first_year_fee: Optional[float] = Field(default=None, ge=0)

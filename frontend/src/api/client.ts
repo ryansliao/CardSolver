@@ -56,7 +56,6 @@ export interface CoBrandRead {
 
 export interface CurrencyRead {
   id: number
-  issuer_id: number | null
   name: string
   /** Default `points` when omitted (older API). */
   reward_kind?: 'points' | 'cash'
@@ -65,7 +64,6 @@ export interface CurrencyRead {
   cash_transfer_rate: number | null
   converts_to_currency_id?: number | null
   converts_at_rate?: number | null
-  issuer?: IssuerRead | null
   /** When listing with user_id, effective CPP for that user (override or base). */
   user_cents_per_point?: number | null
 }
@@ -73,6 +71,7 @@ export interface CurrencyRead {
 export interface NetworkTierRead {
   id: number
   name: string
+  network_id: number | null
 }
 
 export interface Card {
@@ -87,14 +86,13 @@ export interface Card {
   annual_fee: number
   first_year_fee: number | null
   business: boolean
-  network: string | null
   network_tier_id: number | null
   network_tier: NetworkTierRead | null
   sub: number | null
   sub_min_spend: number | null
   sub_months: number | null
   sub_spend_earn: number | null
-  annual_bonus: number
+  annual_bonus: number | null
   sub_recurrence_months: number | null
   sub_family: string | null
   multipliers: CardMultiplier[]
@@ -175,6 +173,8 @@ export interface WalletCard {
   sub_min_spend: number | null
   sub_months: number | null
   sub_spend_earn: number | null
+  /** Null = use library card annual bonus */
+  annual_bonus: number | null
   years_counted: number
   /** Null = use library card annual fee */
   annual_fee: number | null
@@ -230,6 +230,7 @@ export interface AddCardToWalletPayload {
   sub_min_spend?: number | null
   sub_months?: number | null
   sub_spend_earn?: number | null
+  annual_bonus?: number | null
   years_counted?: number
   annual_fee?: number | null
   first_year_fee?: number | null
@@ -262,6 +263,7 @@ export interface UpdateWalletCardPayload {
   sub_min_spend?: number | null
   sub_months?: number | null
   sub_spend_earn?: number | null
+  annual_bonus?: number | null
   years_counted?: number | null
   annual_fee?: number | null
   first_year_fee?: number | null
@@ -600,7 +602,6 @@ export const adminApi = {
     }),
   createCurrency: (payload: {
     name: string
-    issuer_id?: number | null
     reward_kind?: 'points' | 'cash'
     cents_per_point?: number
     partner_transfer_rate?: number | null
@@ -625,13 +626,12 @@ export const adminApi = {
     annual_fee?: number
     first_year_fee?: number | null
     business?: boolean
-    network?: string | null
     network_tier_id?: number | null
     sub?: number | null
     sub_min_spend?: number | null
     sub_months?: number | null
     sub_spend_earn?: number | null
-    annual_bonus?: number
+    annual_bonus?: number | null
     sub_recurrence_months?: number | null
     sub_family?: string | null
   }) =>

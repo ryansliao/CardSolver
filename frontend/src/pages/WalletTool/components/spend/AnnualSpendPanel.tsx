@@ -37,14 +37,6 @@ function SpendItemRow({
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm text-slate-200 font-medium flex-1 truncate flex items-center gap-2 min-w-0">
           <span className="truncate">{cat.category}</span>
-          {isSystem && (
-            <span
-              className="shrink-0 text-[10px] uppercase tracking-wide text-slate-500 font-semibold"
-              title="This category is required and cannot be removed"
-            >
-              Locked
-            </span>
-          )}
         </span>
         <div className="flex items-center gap-1 shrink-0">
           {isEditingAmount ? (
