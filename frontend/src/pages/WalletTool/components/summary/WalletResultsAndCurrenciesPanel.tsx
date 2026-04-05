@@ -246,8 +246,6 @@ export function WalletResultsAndCurrenciesPanel({
                     return s + ((c.total_points - subPts) * c.cents_per_point) / 100
                   }, 0)
                   const hasResultData = result != null && cards.length > 0
-                  const combinedPoints = b.balance + currencyTotalPoints
-                  const combinedCashDollars = (b.balance * cpp) / 100 + currencyTotalCashDollars
 
                   return (
                     <li key={b.id} className="bg-slate-800/80 rounded-lg overflow-hidden">
@@ -264,8 +262,8 @@ export function WalletResultsAndCurrenciesPanel({
                             <span className="text-sm font-semibold text-slate-300 tabular-nums">
                               {hasResultData
                                 ? isCash
-                                  ? formatMoney(combinedCashDollars)
-                                  : `${formatPoints(Math.round(combinedPoints))} Pts`
+                                  ? formatMoney(currencyTotalCashDollars)
+                                  : `${formatPoints(Math.round(currencyTotalPoints))} Pts`
                                 : isCash
                                   ? formatCashRewardUnits(b.balance, cpp)
                                   : `${formatPoints(b.balance)} Pts`}
@@ -314,8 +312,8 @@ export function WalletResultsAndCurrenciesPanel({
                             const subPts = includeSubs ? 0 : (card.sub + card.sub_spend_earn)
                             const cardTotalPts = card.total_points - subPts
                             const totalEarnLabel = cardIsCash
-                              ? `${formatMoney((cardTotalPts * card.cents_per_point) / 100)} Total Cash Back`
-                              : `${formatPoints(Math.round(cardTotalPts))} Points`
+                              ? `${formatMoney((cardTotalPts * card.cents_per_point) / 100)} Cash`
+                              : `${formatPoints(Math.round(cardTotalPts))} Pts`
                             const isExpanded = expandedCardIds.has(card.card_id)
                             const hasCategoryBreakdown = card.category_earn && card.category_earn.length > 0
                             return (
@@ -334,9 +332,12 @@ export function WalletResultsAndCurrenciesPanel({
                                     </p>
                                     <p className="text-xs text-slate-500 mt-0.5">
                                       {totalEarnLabel}
-                                    </p>
-                                    <p className="text-xs text-slate-500">
-                                      {formatMoney(card.credit_valuation)} Credit Value
+                                      {card.credit_valuation !== 0 && (
+                                        <span className="text-slate-600 mx-1">·</span>
+                                      )}
+                                      {card.credit_valuation !== 0 && (
+                                        <span>{formatMoney(card.credit_valuation)} Credit Value</span>
+                                      )}
                                     </p>
                                   </div>
                                   <div className="text-right shrink-0">
