@@ -19,10 +19,17 @@ function compareWalletCardsByOpeningNewestFirst(a: WalletCard, b: WalletCard): n
 
 function SubBadge({ wc }: { wc: WalletCard }) {
   if (!wc.sub) return null
-  if (wc.sub_projected_earn_date) {
+  if (wc.sub_earned_date) {
     return (
       <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-900/50 text-emerald-300 border border-emerald-700/50">
         SUB Earned
+      </span>
+    )
+  }
+  if (wc.sub_projected_earn_date) {
+    return (
+      <span className="text-xs px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-300 border border-amber-700/50">
+        SUB Projected: {wc.sub_projected_earn_date}
       </span>
     )
   }
@@ -106,9 +113,14 @@ function CardItem({
           <p className="text-xs text-slate-400 mt-0.5">
             {wc.acquisition_type === 'product_change' ? 'PC Date:' : 'Opening Date: '} {wc.added_date}
           </p>
-          {isInWallet && wc.sub_projected_earn_date && (
+          {isInWallet && wc.sub_earned_date && (
             <p className="text-xs text-slate-500 mt-0.5">
-              SUB Earned: {wc.sub_projected_earn_date}
+              SUB Earned: {wc.sub_earned_date}
+            </p>
+          )}
+          {isInWallet && !wc.sub_earned_date && wc.sub_projected_earn_date && (
+            <p className="text-xs text-slate-500 mt-0.5">
+              SUB Projected: {wc.sub_projected_earn_date}
             </p>
           )}
         </div>

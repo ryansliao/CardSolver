@@ -80,7 +80,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from .calculator import calc_annual_allocated_spend, compute_wallet
+from .calculator import calc_annual_allocated_spend, compute_wallet, plan_sub_targeting
 from .constants import ALLOCATION_SUM_TOLERANCE, ALL_OTHER_CATEGORY as ALL_OTHER_SPEND_NAME, DEFAULT_USER_ID
 from .database import create_tables, get_db
 from .db_helpers import (
@@ -1099,8 +1099,9 @@ async def _effective_earn_currency_ids_for_wallet(
     wallet_id: int,
 ) -> set[int]:
     """
-    Currency IDs this wallet's cards effectively earn (upgrade rule matches calculator:
-    e.g. UR Cash → UR when a UR card is also in the wallet).
+    Currency IDs this wallet's in-wallet cards effectively earn (upgrade rule
+    matches calculator: e.g. UR Cash → UR when a UR card is also in the wallet).
+    On-deck cards are excluded — only cards actively in the wallet count.
     """
     result = await db.execute(
         select(WalletCard)
@@ -1109,7 +1110,7 @@ async def _effective_earn_currency_ids_for_wallet(
             .selectinload(Card.currency_obj)
             .selectinload(Currency.converts_to_currency),
         )
-        .where(WalletCard.wallet_id == wallet_id)
+        .where(WalletCard.wallet_id == wallet_id, WalletCard.panel == "in_wallet")
     )
     wcs = list(result.scalars().all())
     if not wcs:
@@ -1173,9 +1174,13 @@ async def _sync_wallet_balances_from_currency_pts(
     Keys are currency ids (same as calculator effective earn). Existing rows get
     projection_earn updated from the latest calculate; new rows are created for
     positive earn not yet present.
+
+    Non-user-tracked balance rows for currencies no longer earned by any
+    in-wallet card are removed so they don't clutter the currencies list.
     """
     today = date.today()
     valid_ids = set((await db.execute(select(Currency.id))).scalars().all())
+    active_currency_ids = await _effective_earn_currency_ids_for_wallet(db, wallet_id)
 
     res = await db.execute(
         select(WalletCurrencyBalance)
@@ -1186,6 +1191,11 @@ async def _sync_wallet_balances_from_currency_pts(
     by_cid = {r.currency_id: r for r in rows}
 
     for row in rows:
+        # Remove stale rows for currencies no longer earned by in-wallet cards
+        # (unless the user explicitly tracks them).
+        if row.currency_id not in active_currency_ids and not row.user_tracked:
+            await db.delete(row)
+            continue
         earn = float(currency_pts_by_id.get(row.currency_id, 0.0))
         row.projection_earn = earn
         row.balance = round(row.initial_balance + earn, 4)
@@ -1372,7 +1382,13 @@ async def wallet_results(
     selected_card_data = [c for c in modified_cards if c.id in card_ids_sel]
     wcids = {c.currency.id for c in selected_card_data}
 
+    # Cards whose SUB has already been earned (user toggled in UI) need no
+    # spend allocation — exclude them from priority/planning entirely.
+    sub_already_earned_ids = {wc.card_id for wc in active_wallet_cards if wc.sub_earned_date}
+
     def _has_sub_window(cd: "CardData") -> bool:
+        if cd.id in sub_already_earned_ids:
+            return False
         if not cd.sub or not cd.sub_min_spend or not cd.wallet_added_date:
             return False
         if cd.sub_months:
@@ -1383,45 +1399,60 @@ async def wallet_results(
 
     sub_priority_card_ids = {cd.id for cd in selected_card_data if _has_sub_window(cd)}
 
-    # For SUB projection purposes, each SUB-priority card gets the full wallet
-    # daily spend rate. In practice the user directs all spend to one SUB card at
-    # a time until its min is hit, then moves to the next. Non-SUB cards get their
-    # actual allocated spend from the priority-aware allocation.
-    total_annual_spend = sum(spend.values())
-    total_daily_rate = total_annual_spend / 365.0
+    # Plan SUB spend: check if all SUBs can be hit simultaneously (parallel),
+    # otherwise find a sequential schedule (earliest deadline first).
+    sub_cards_for_plan = [cd for cd in selected_card_data if _has_sub_window(cd)]
+    sub_plan = plan_sub_targeting(sub_cards_for_plan, spend, ref_date, wcids)
+
+    # Build per-card daily rates from the plan.  Cards in the plan get their
+    # planned allocation; non-SUB cards get their normal allocated spend.
+    plan_rates: dict[int, float] = {s.card_id: s.daily_spend_allocated for s in sub_plan.schedules}
     card_daily_rates: dict[int, float] = {}
     for cd in selected_card_data:
-        if cd.id in sub_priority_card_ids:
-            card_daily_rates[cd.id] = total_daily_rate
+        if cd.id in plan_rates:
+            card_daily_rates[cd.id] = plan_rates[cd.id]
         else:
             allocated = calc_annual_allocated_spend(cd, selected_card_data, spend, wcids, sub_priority_card_ids)
             card_daily_rates[cd.id] = allocated / 365.0
 
-    # Auto-project SUB earn dates and determine earnable status.
+    # Auto-project SUB earn dates from the plan schedule, falling back to the
+    # old per-card projection for cards not covered by the plan.
+    plan_earn_dates: dict[int, date] = {s.card_id: s.projected_earn_date for s in sub_plan.schedules}
     projected_dates: dict[int, Optional[date]] = {}
     for wc in active_wallet_cards:
         lib = library_cards_by_id.get(wc.card_id)
         eff_min = wc.sub_min_spend if wc.sub_min_spend is not None else (lib.sub_min_spend if lib else None)
         eff_months = wc.sub_months if wc.sub_months is not None else (lib.sub_months if lib else None)
         eff_sub = wc.sub if wc.sub is not None else (lib.sub if lib else None)
-        daily_rate = card_daily_rates.get(wc.card_id, 0.0)
-        if not eff_sub or not eff_min:
+        if wc.card_id in plan_earn_dates:
+            proj = plan_earn_dates[wc.card_id]
+        elif not eff_sub or not eff_min:
             proj = None
         else:
+            daily_rate = card_daily_rates.get(wc.card_id, 0.0)
             proj = _projected_sub_earn_date(wc.added_date, eff_min, eff_months, daily_rate)
         projected_dates[wc.card_id] = proj
         if wc.sub_projected_earn_date != proj:
             wc.sub_projected_earn_date = proj
 
-    # Patch sub_earnable and sub_projected_earn_date onto each CardData before calculation.
-    # The projected dates were just computed above but apply_wallet_card_overrides ran earlier
-    # with stale values, so we must sync them here.
+    # Patch sub_earnable, sub_already_earned, and sub_projected_earn_date onto
+    # each CardData.  Cards whose SUB was already earned keep sub_earnable=True
+    # (the bonus still counts) and sub_already_earned=True (no spend redirection).
+    # Cards in the plan get sub_earnable from plan membership.  Others use the
+    # per-card spend rate check.
+    plan_card_ids = {s.card_id for s in sub_plan.schedules}
     modified_cards = [
         dataclasses.replace(
             c,
-            sub_already_earned=False,
-            sub_earnable=_is_sub_earnable(
-                c.sub_min_spend, c.sub_months, card_daily_rates.get(c.id, 0.0)
+            sub_already_earned=c.id in sub_already_earned_ids,
+            sub_earnable=(
+                True
+                if c.id in sub_already_earned_ids
+                else (
+                    (c.id in plan_card_ids)
+                    if c.id in sub_priority_card_ids
+                    else _is_sub_earnable(c.sub_min_spend, c.sub_months, card_daily_rates.get(c.id, 0.0))
+                )
             ),
             sub_projected_earn_date=projected_dates.get(c.id, c.sub_projected_earn_date),
         )
