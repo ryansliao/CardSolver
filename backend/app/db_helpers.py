@@ -24,6 +24,7 @@ from .models import (
     SpendCategory,
     Wallet,
     WalletCardCredit,
+    WalletCardGroupSelection,
     WalletCardMultiplier,
     WalletCurrencyCpp,
     WalletSpendCategory,
@@ -113,14 +114,14 @@ async def load_card_data(
         portal_categories: set[str] = {
             m.category for m in card.multipliers if getattr(m, "is_portal", False)
         }
-        # Group metadata for top-N: (multiplier, categories list, top_n_categories or None)
-        multiplier_groups_list: list[tuple[float, list[str], int | None]] = []
+        # Group metadata for top-N: (multiplier, categories list, top_n_categories or None, group_id)
+        multiplier_groups_list: list[tuple[float, list[str], int | None, int | None]] = []
         for grp in getattr(card, "multiplier_groups", []) or []:
             top_n = getattr(grp, "top_n_categories", None)
             if top_n is None and getattr(grp, "top_category_only", False):
                 top_n = 1
             cats = [c.category for c in getattr(grp, "categories", []) if getattr(c, "category", None)]
-            multiplier_groups_list.append((grp.multiplier, cats, top_n))
+            multiplier_groups_list.append((grp.multiplier, cats, top_n, grp.id))
         credit_lines = [
             CreditLine(
                 library_credit_id=c.id,
@@ -407,4 +408,63 @@ def apply_wallet_card_multiplier_overrides(
         patched_multipliers = dict(cd.multipliers)
         patched_multipliers.update(card_overrides)
         out.append(dataclasses.replace(cd, multipliers=patched_multipliers))
+    return out
+
+
+async def load_wallet_card_group_selections(
+    session: AsyncSession,
+    wallet_id: int,
+) -> dict[int, dict[int, set[str]]]:
+    """
+    Load manual group category selections for cards in a wallet.
+    Returns: {card_id: {group_id: {category_name, ...}}}
+    """
+    from .models import WalletCard as WalletCardModel
+
+    result = await session.execute(
+        select(WalletCardGroupSelection)
+        .options(selectinload(WalletCardGroupSelection.spend_category))
+        .join(WalletCardModel, WalletCardModel.id == WalletCardGroupSelection.wallet_card_id)
+        .where(WalletCardModel.wallet_id == wallet_id)
+    )
+    rows = result.scalars().all()
+    # Build: card_id -> {group_id -> {category_name, ...}}
+    # We need card_id from the wallet_card relationship
+    wc_ids: set[int] = {r.wallet_card_id for r in rows}
+    if not wc_ids:
+        return {}
+    wc_result = await session.execute(
+        select(WalletCardModel).where(WalletCardModel.id.in_(wc_ids))
+    )
+    wc_map = {wc.id: wc.card_id for wc in wc_result.scalars().all()}
+
+    out: dict[int, dict[int, set[str]]] = {}
+    for r in rows:
+        card_id = wc_map.get(r.wallet_card_id)
+        if card_id is None:
+            continue
+        cat_name = r.spend_category.category if r.spend_category else ""
+        if not cat_name:
+            continue
+        out.setdefault(card_id, {}).setdefault(r.multiplier_group_id, set()).add(cat_name)
+    return out
+
+
+def apply_wallet_card_group_selections(
+    card_data_list: list[CardData],
+    selections: dict[int, dict[int, set[str]]],
+) -> list[CardData]:
+    """
+    Return CardData copies with manual group category selections applied.
+    Sets CardData.group_selected_categories for each card that has selections.
+    """
+    if not selections:
+        return card_data_list
+    out: list[CardData] = []
+    for cd in card_data_list:
+        card_sels = selections.get(cd.id)
+        if not card_sels:
+            out.append(cd)
+            continue
+        out.append(dataclasses.replace(cd, group_selected_categories=card_sels))
     return out

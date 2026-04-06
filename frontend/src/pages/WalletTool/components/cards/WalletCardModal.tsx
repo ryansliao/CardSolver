@@ -5,11 +5,13 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   type AddCardToWalletPayload,
   type CardCredit,
+  type CardMultiplierGroup,
   type UpdateWalletCardPayload,
   type WalletCard,
   type WalletCardAcquisitionType,
   cardsApi,
   walletCardCreditApi,
+  walletCardGroupSelectionApi,
 } from '../../../../api/client'
 import { ModalBackdrop } from '../../../../components/ModalBackdrop'
 import { formatMoney, today } from '../../../../utils/format'
@@ -158,6 +160,9 @@ export function WalletCardModal({
   const [creditOverrides, setCreditOverrides] = useState<Record<number, number>>({})
   const [creditsExpanded, setCreditsExpanded] = useState(false)
   const [editingCredit, setEditingCredit] = useState<CardCredit | null>(null)
+  const [groupSelectionsExpanded, setGroupSelectionsExpanded] = useState(false)
+  // group_id -> array of selected spend_category_ids (length == top_n)
+  const [groupSelections, setGroupSelections] = useState<Record<number, number[]>>({})
   const [formError, setFormError] = useState<string | null>(null)
 
   // Tracks the last key we hydrated form state from, preventing re-runs when the
@@ -172,6 +177,13 @@ export function WalletCardModal({
   const { data: existingCreditOverrides } = useQuery({
     queryKey: queryKeys.walletCardCredits(walletCard?.wallet_id ?? null, walletCard?.card_id ?? null),
     queryFn: () => walletCardCreditApi.list(walletCard!.wallet_id, walletCard!.card_id),
+    enabled: mode === 'edit' && walletCard != null,
+  })
+
+  // Fetch existing group category selections (edit mode only)
+  const { data: existingGroupSelections } = useQuery({
+    queryKey: queryKeys.walletCardGroupSelections(walletCard?.wallet_id ?? null, walletCard?.card_id ?? null),
+    queryFn: () => walletCardGroupSelectionApi.list(walletCard!.wallet_id, walletCard!.card_id),
     enabled: mode === 'edit' && walletCard != null,
   })
 
@@ -202,6 +214,12 @@ export function WalletCardModal({
       effectiveCardId != null && cards ? cards.find((c) => c.id === effectiveCardId) : undefined,
     [effectiveCardId, cards]
   )
+
+  // Groups with top-N behavior on the selected card
+  const topNGroups = useMemo<CardMultiplierGroup[]>(() => {
+    if (!lib) return []
+    return lib.multiplier_groups.filter((g) => g.top_n_categories != null && g.top_n_categories > 0)
+  }, [lib])
 
   // Close card dropdown when clicking outside
   useEffect(() => {
@@ -244,6 +262,7 @@ export function WalletCardModal({
       setAnnualFee(String(lib.annual_fee))
       setFirstYearFee(lib.first_year_fee != null ? String(lib.first_year_fee) : '')
       setCreditOverrides({})
+      setGroupSelections({})
       setFormError(null)
     } else {
       if (!walletCard || !lib) return
@@ -265,6 +284,7 @@ export function WalletCardModal({
       const effFy = walletCard.first_year_fee ?? lib.first_year_fee
       setFirstYearFee(effFy != null ? String(effFy) : '')
       setCreditOverrides({})
+      setGroupSelections({})
       setFormError(null)
     }
   }, [mode, cardId, lib, walletCard])
@@ -279,6 +299,21 @@ export function WalletCardModal({
     }
     setCreditOverrides(m)
   }, [mode, lib, existingCreditOverrides])
+
+  // Populate group selection state from the wallet-specific API data (edit mode).
+  useEffect(() => {
+    if (mode !== 'edit' || !lib || existingGroupSelections === undefined) return
+    const m: Record<number, number[]> = {}
+    for (const g of topNGroups) {
+      const picks = existingGroupSelections
+        .filter((s) => s.multiplier_group_id === g.id)
+        .map((s) => s.spend_category_id)
+      if (picks.length > 0) {
+        m[g.id] = picks
+      }
+    }
+    setGroupSelections(m)
+  }, [mode, lib, existingGroupSelections, topNGroups])
 
   function selectPcFromCard(id: number) {
     setPcFromCardId(id)
@@ -347,10 +382,25 @@ export function WalletCardModal({
         creditOps.push(walletCardCreditApi.delete(walletCard.wallet_id, walletCard.card_id, cr.id))
       }
     }
+    // Save group selections via the dedicated API.
+    const groupOps: Promise<unknown>[] = []
+    for (const g of topNGroups) {
+      const rawPicks = groupSelections[g.id] ?? []
+      const realPicks = rawPicks.filter((id) => id !== 0)
+      const hadExisting = existingGroupSelections?.some((s) => s.multiplier_group_id === g.id)
+      if (realPicks.length === (g.top_n_categories ?? 1)) {
+        groupOps.push(walletCardGroupSelectionApi.set(walletCard.wallet_id, walletCard.card_id, g.id, realPicks))
+      } else if (hadExisting && realPicks.length === 0) {
+        // All slots reverted to auto — delete selections
+        groupOps.push(walletCardGroupSelectionApi.delete(walletCard.wallet_id, walletCard.card_id, g.id))
+      }
+      // If partially filled (some auto, some real), skip saving — user needs to fill all slots
+    }
+
     try {
-      await Promise.all(creditOps)
+      await Promise.all([...creditOps, ...groupOps])
     } catch {
-      setFormError('Failed to save credit valuations.')
+      setFormError('Failed to save overrides.')
       return
     }
 
@@ -379,7 +429,7 @@ export function WalletCardModal({
     <>
       <ModalBackdrop
         onClose={onClose}
-        className="bg-slate-800 border border-slate-600 rounded-xl w-full max-w-lg shadow-xl flex flex-col"
+        className="bg-slate-800 border border-slate-600 rounded-xl w-full max-w-lg shadow-xl flex flex-col max-h-[90vh]"
       >
         {/* ── Fixed header ── */}
         <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-slate-700">
@@ -394,7 +444,7 @@ export function WalletCardModal({
         </div>
 
         {/* ── Body ── */}
-        <div className="px-6 py-4">
+        <div className="px-6 py-4 overflow-y-auto flex-1 min-h-0">
           {mode === 'edit' && !lib ? (
             <p className="text-sm text-slate-400 py-8 text-center">Loading card…</p>
           ) : (
@@ -651,6 +701,74 @@ export function WalletCardModal({
                           </li>
                         ))}
                       </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Bonus Category Selections inline collapsible */}
+              {topNGroups.length > 0 && (
+                <div className="border border-slate-600 rounded-lg overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setGroupSelectionsExpanded((prev) => !prev)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-slate-300 hover:bg-slate-700/40"
+                  >
+                    <span>Bonus Category Selections</span>
+                    <svg
+                      className={`w-4 h-4 text-slate-400 transition-transform ${groupSelectionsExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {groupSelectionsExpanded && (
+                    <div className="border-t border-slate-700 px-3 py-3 space-y-4">
+                      {topNGroups.map((g) => {
+                        const topN = g.top_n_categories ?? 1
+                        const picks = groupSelections[g.id] ?? []
+                        return (
+                          <div key={g.id}>
+                            <p className="text-xs text-slate-400 mb-2">
+                              {g.multiplier}x — pick {topN} of {g.categories.length} categories
+                            </p>
+                            {Array.from({ length: topN }, (_, slotIdx) => {
+                              const currentPick = picks[slotIdx] ?? 0
+                              // Categories already picked in other slots for this group
+                              const otherPicks = picks.filter((_, i) => i !== slotIdx)
+                              return (
+                                <select
+                                  key={slotIdx}
+                                  className="w-full bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2 rounded-lg outline-none focus:border-indigo-500 mb-2"
+                                  value={currentPick}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value)
+                                    setGroupSelections((prev) => {
+                                      const arr = [...(prev[g.id] ?? Array(topN).fill(0))]
+                                      arr[slotIdx] = val
+                                      return { ...prev, [g.id]: arr }
+                                    })
+                                  }}
+                                >
+                                  <option value={0}>Auto (by spend)</option>
+                                  {g.categories.map((cat) => (
+                                    <option
+                                      key={cat.spend_category_id}
+                                      value={cat.spend_category_id}
+                                      disabled={otherPicks.includes(cat.spend_category_id)}
+                                    >
+                                      {cat.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              )
+                            })}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>

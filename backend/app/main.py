@@ -84,12 +84,14 @@ from .calculator import calc_annual_allocated_spend, compute_wallet
 from .constants import ALLOCATION_SUM_TOLERANCE, ALL_OTHER_CATEGORY as ALL_OTHER_SPEND_NAME, DEFAULT_USER_ID
 from .database import create_tables, get_db
 from .db_helpers import (
+    apply_wallet_card_group_selections,
     apply_wallet_card_multiplier_overrides,
     apply_wallet_card_overrides,
     ensure_all_other_wallet_spend_category,
     ensure_all_other_wallet_spend_item,
     load_card_data,
     load_wallet_card_credits,
+    load_wallet_card_group_selections,
     load_wallet_card_multipliers,
     load_wallet_cpp_overrides,
     load_wallet_spend,
@@ -110,6 +112,7 @@ from .models import (
     Wallet,
     WalletCard,
     WalletCardCredit,
+    WalletCardGroupSelection,
     WalletCardMultiplier,
     WalletCurrencyBalance,
     WalletCurrencyCpp,
@@ -120,10 +123,13 @@ from .models import (
 from .schemas import (
     AdminAddCardCreditPayload,
     AdminAddCardMultiplierPayload,
+    AdminCreateCardMultiplierGroupPayload,
     AdminCreateCardPayload,
     AdminCreateCurrencyPayload,
     AdminCreateIssuerPayload,
     AdminCreateSpendCategoryPayload,
+    AdminUpdateCardMultiplierGroupPayload,
+    CardMultiplierGroupRead,
     CardCreditRead,
     CardRead,
     CardResultSchema,
@@ -140,6 +146,8 @@ from .schemas import (
     WalletCardCreditRead,
     WalletCardCreditUpsert,
     WalletCardCreate,
+    WalletCardGroupSelectionRead,
+    WalletCardGroupSelectionSet,
     WalletCardMultiplierRead,
     WalletCardMultiplierUpsert,
     WalletCardRead,
@@ -1351,6 +1359,8 @@ async def wallet_results(
     )
     wallet_multiplier_rows = await load_wallet_card_multipliers(db, wallet_id)
     modified_cards = apply_wallet_card_multiplier_overrides(modified_cards, wallet_multiplier_rows)
+    group_selections = await load_wallet_card_group_selections(db, wallet_id)
+    modified_cards = apply_wallet_card_group_selections(modified_cards, group_selections)
     selected_ids = card_ids_sel
     spend = await load_wallet_spend_items(db, wallet_id)
     if overrides:
@@ -2133,6 +2143,162 @@ async def delete_wallet_card_multiplier(
 
 
 # ---------------------------------------------------------------------------
+# Wallet card group category selections
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/wallets/{wallet_id}/cards/{card_id}/group-selections",
+    response_model=list[WalletCardGroupSelectionRead],
+)
+async def list_wallet_card_group_selections(
+    wallet_id: int,
+    card_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    wc = await db.execute(
+        select(WalletCard).where(
+            WalletCard.wallet_id == wallet_id,
+            WalletCard.card_id == card_id,
+        )
+    )
+    wc_row = wc.scalar_one_or_none()
+    if not wc_row:
+        raise HTTPException(status_code=404, detail="Wallet card not found")
+    result = await db.execute(
+        select(WalletCardGroupSelection)
+        .options(selectinload(WalletCardGroupSelection.spend_category))
+        .where(WalletCardGroupSelection.wallet_card_id == wc_row.id)
+    )
+    return result.scalars().all()
+
+
+@app.put(
+    "/wallets/{wallet_id}/cards/{card_id}/group-selections/{group_id}",
+    response_model=list[WalletCardGroupSelectionRead],
+)
+async def set_wallet_card_group_selections(
+    wallet_id: int,
+    card_id: int,
+    group_id: int,
+    payload: WalletCardGroupSelectionSet,
+    db: AsyncSession = Depends(get_db),
+):
+    wc = await db.execute(
+        select(WalletCard).where(
+            WalletCard.wallet_id == wallet_id,
+            WalletCard.card_id == card_id,
+        )
+    )
+    wc_row = wc.scalar_one_or_none()
+    if not wc_row:
+        raise HTTPException(status_code=404, detail="Wallet card not found")
+
+    # Validate group belongs to this card
+    grp = await db.execute(
+        select(CardMultiplierGroup)
+        .options(
+            selectinload(CardMultiplierGroup.categories).selectinload(
+                CardCategoryMultiplier.spend_category
+            )
+        )
+        .where(
+            CardMultiplierGroup.id == group_id,
+            CardMultiplierGroup.card_id == card_id,
+        )
+    )
+    grp_row = grp.scalar_one_or_none()
+    if not grp_row:
+        raise HTTPException(status_code=404, detail="Multiplier group not found for this card")
+
+    # Delete existing selections for this group
+    existing = await db.execute(
+        select(WalletCardGroupSelection).where(
+            WalletCardGroupSelection.wallet_card_id == wc_row.id,
+            WalletCardGroupSelection.multiplier_group_id == group_id,
+        )
+    )
+    for row in existing.scalars().all():
+        await db.delete(row)
+
+    # If empty list, revert to auto-pick
+    if not payload.spend_category_ids:
+        await db.commit()
+        return []
+
+    # Validate: count matches top_n
+    top_n = grp_row.top_n_categories
+    if top_n is None and getattr(grp_row, "top_category_only", False):
+        top_n = 1
+    if top_n and len(payload.spend_category_ids) != top_n:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Must select exactly {top_n} categories, got {len(payload.spend_category_ids)}",
+        )
+
+    # Validate: each category is in the group
+    valid_cat_ids = {c.category_id for c in grp_row.categories}
+    for cat_id in payload.spend_category_ids:
+        if cat_id not in valid_cat_ids:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Category {cat_id} is not in this multiplier group",
+            )
+
+    # Insert new selections
+    for cat_id in payload.spend_category_ids:
+        db.add(
+            WalletCardGroupSelection(
+                wallet_card_id=wc_row.id,
+                multiplier_group_id=group_id,
+                spend_category_id=cat_id,
+            )
+        )
+    await db.commit()
+
+    # Return the new selections
+    result = await db.execute(
+        select(WalletCardGroupSelection)
+        .options(selectinload(WalletCardGroupSelection.spend_category))
+        .where(
+            WalletCardGroupSelection.wallet_card_id == wc_row.id,
+            WalletCardGroupSelection.multiplier_group_id == group_id,
+        )
+    )
+    return result.scalars().all()
+
+
+@app.delete(
+    "/wallets/{wallet_id}/cards/{card_id}/group-selections/{group_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_wallet_card_group_selections(
+    wallet_id: int,
+    card_id: int,
+    group_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    wc = await db.execute(
+        select(WalletCard).where(
+            WalletCard.wallet_id == wallet_id,
+            WalletCard.card_id == card_id,
+        )
+    )
+    wc_row = wc.scalar_one_or_none()
+    if not wc_row:
+        raise HTTPException(status_code=404, detail="Wallet card not found")
+    existing = await db.execute(
+        select(WalletCardGroupSelection).where(
+            WalletCardGroupSelection.wallet_card_id == wc_row.id,
+            WalletCardGroupSelection.multiplier_group_id == group_id,
+        )
+    )
+    for row in existing.scalars().all():
+        await db.delete(row)
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
 # Admin: Reference data CRUD
 # ---------------------------------------------------------------------------
 
@@ -2358,6 +2524,225 @@ async def admin_delete_card_multiplier(
     if not row:
         raise HTTPException(status_code=404, detail="Multiplier not found for this card/category")
     await db.delete(row)
+    await db.commit()
+
+
+# ---- Multiplier Group CRUD ----
+
+
+@app.get(
+    "/admin/cards/{card_id}/multiplier-groups",
+    response_model=list[CardMultiplierGroupRead],
+    tags=["admin"],
+)
+async def admin_list_card_multiplier_groups(
+    card_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    card_result = await db.execute(select(Card).where(Card.id == card_id))
+    if not card_result.scalar_one_or_none():
+        raise _card_404(card_id)
+    result = await db.execute(
+        select(CardMultiplierGroup)
+        .options(
+            selectinload(CardMultiplierGroup.categories).selectinload(
+                CardCategoryMultiplier.spend_category
+            )
+        )
+        .where(CardMultiplierGroup.card_id == card_id)
+    )
+    return result.scalars().all()
+
+
+@app.post(
+    "/admin/cards/{card_id}/multiplier-groups",
+    response_model=CardMultiplierGroupRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["admin"],
+)
+async def admin_create_card_multiplier_group(
+    card_id: int,
+    payload: AdminCreateCardMultiplierGroupPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    card_result = await db.execute(select(Card).where(Card.id == card_id))
+    if not card_result.scalar_one_or_none():
+        raise _card_404(card_id)
+
+    grp = CardMultiplierGroup(
+        card_id=card_id,
+        multiplier=payload.multiplier,
+        cap_per_billing_cycle=payload.cap_per_billing_cycle,
+        cap_period=payload.cap_period,
+        top_n_categories=payload.top_n_categories,
+    )
+    db.add(grp)
+    await db.flush()
+
+    # Create CardCategoryMultiplier rows for each category in the group
+    for cat_id in payload.category_ids:
+        sc_result = await db.execute(
+            select(SpendCategory).where(SpendCategory.id == cat_id)
+        )
+        if not sc_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=404, detail=f"SpendCategory id={cat_id} not found"
+            )
+        # Check for existing multiplier on this card/category
+        existing = await db.execute(
+            select(CardCategoryMultiplier).where(
+                CardCategoryMultiplier.card_id == card_id,
+                CardCategoryMultiplier.category_id == cat_id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409,
+                detail=f"Multiplier for card {card_id} / category {cat_id} already exists",
+            )
+        db.add(
+            CardCategoryMultiplier(
+                card_id=card_id,
+                category_id=cat_id,
+                multiplier=payload.multiplier,
+                multiplier_group_id=grp.id,
+            )
+        )
+
+    await db.commit()
+    # Reload with relationships
+    result = await db.execute(
+        select(CardMultiplierGroup)
+        .options(
+            selectinload(CardMultiplierGroup.categories).selectinload(
+                CardCategoryMultiplier.spend_category
+            )
+        )
+        .where(CardMultiplierGroup.id == grp.id)
+    )
+    return result.scalar_one()
+
+
+@app.patch(
+    "/admin/cards/{card_id}/multiplier-groups/{group_id}",
+    response_model=CardMultiplierGroupRead,
+    tags=["admin"],
+)
+async def admin_update_card_multiplier_group(
+    card_id: int,
+    group_id: int,
+    payload: AdminUpdateCardMultiplierGroupPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(CardMultiplierGroup).where(
+            CardMultiplierGroup.id == group_id,
+            CardMultiplierGroup.card_id == card_id,
+        )
+    )
+    grp = result.scalar_one_or_none()
+    if not grp:
+        raise HTTPException(
+            status_code=404,
+            detail=f"MultiplierGroup id={group_id} not found for card {card_id}",
+        )
+
+    if payload.multiplier is not None:
+        grp.multiplier = payload.multiplier
+    if payload.cap_per_billing_cycle is not None:
+        grp.cap_per_billing_cycle = payload.cap_per_billing_cycle
+    if payload.cap_period is not None:
+        grp.cap_period = payload.cap_period
+    if payload.top_n_categories is not None:
+        grp.top_n_categories = payload.top_n_categories
+
+    # If category_ids provided, replace the group's category memberships
+    if payload.category_ids is not None:
+        # Remove existing group category multipliers
+        existing = await db.execute(
+            select(CardCategoryMultiplier).where(
+                CardCategoryMultiplier.multiplier_group_id == group_id
+            )
+        )
+        for row in existing.scalars().all():
+            await db.delete(row)
+
+        mult = payload.multiplier if payload.multiplier is not None else grp.multiplier
+        for cat_id in payload.category_ids:
+            sc_result = await db.execute(
+                select(SpendCategory).where(SpendCategory.id == cat_id)
+            )
+            if not sc_result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=404, detail=f"SpendCategory id={cat_id} not found"
+                )
+            # Check for conflicting standalone multiplier
+            conflict = await db.execute(
+                select(CardCategoryMultiplier).where(
+                    CardCategoryMultiplier.card_id == card_id,
+                    CardCategoryMultiplier.category_id == cat_id,
+                    CardCategoryMultiplier.multiplier_group_id != group_id,
+                )
+            )
+            if conflict.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Multiplier for card {card_id} / category {cat_id} already exists outside this group",
+                )
+            db.add(
+                CardCategoryMultiplier(
+                    card_id=card_id,
+                    category_id=cat_id,
+                    multiplier=mult,
+                    multiplier_group_id=group_id,
+                )
+            )
+    elif payload.multiplier is not None:
+        # Sync multiplier to all category rows in the group
+        existing = await db.execute(
+            select(CardCategoryMultiplier).where(
+                CardCategoryMultiplier.multiplier_group_id == group_id
+            )
+        )
+        for row in existing.scalars().all():
+            row.multiplier = payload.multiplier
+
+    await db.commit()
+    result = await db.execute(
+        select(CardMultiplierGroup)
+        .options(
+            selectinload(CardMultiplierGroup.categories).selectinload(
+                CardCategoryMultiplier.spend_category
+            )
+        )
+        .where(CardMultiplierGroup.id == group_id)
+    )
+    return result.scalar_one()
+
+
+@app.delete(
+    "/admin/cards/{card_id}/multiplier-groups/{group_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["admin"],
+)
+async def admin_delete_card_multiplier_group(
+    card_id: int,
+    group_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(CardMultiplierGroup).where(
+            CardMultiplierGroup.id == group_id,
+            CardMultiplierGroup.card_id == card_id,
+        )
+    )
+    grp = result.scalar_one_or_none()
+    if not grp:
+        raise HTTPException(
+            status_code=404,
+            detail=f"MultiplierGroup id={group_id} not found for card {card_id}",
+        )
+    await db.delete(grp)
     await db.commit()
 
 

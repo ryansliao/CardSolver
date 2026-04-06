@@ -77,8 +77,10 @@ class CardData:
 
     # category -> multiplier (standalone + group categories; top-N applied at calc time via multiplier_groups)
     multipliers: dict[str, float] = field(default_factory=dict)
-    # Group metadata for top-N: (multiplier, categories list, top_n_categories or None)
-    multiplier_groups: list[tuple[float, list[str], Optional[int]]] = field(default_factory=list)
+    # Group metadata for top-N: (multiplier, categories list, top_n_categories or None, group_id or None)
+    multiplier_groups: list[tuple[float, list[str], Optional[int], Optional[int]]] = field(default_factory=list)
+    # Manual group category selections: group_id -> set of selected category names (empty/missing = auto-pick by spend)
+    group_selected_categories: dict[int, set[str]] = field(default_factory=dict)
     credit_lines: list[CreditLine] = field(default_factory=list)
     # Set of category names where the multiplier only applies via the card's booking portal
     portal_categories: set[str] = field(default_factory=set)
@@ -178,16 +180,21 @@ def _build_effective_multipliers(card: CardData, spend: dict[str, float]) -> dic
     effective = dict(card.multipliers)
     all_other = _all_other_multiplier(effective)
 
-    for group_mult, group_cats, top_n in card.multiplier_groups:
+    for group_mult, group_cats, top_n, group_id in card.multiplier_groups:
         if top_n is None or top_n <= 0:
             continue
-        # Rank group categories by spend (desc); only top N get group_mult
-        ranked = sorted(
-            group_cats,
-            key=lambda c: _spend_for_category(spend, c) if c else 0.0,
-            reverse=True,
-        )
-        top_set = set(ranked[:top_n])
+        # Use manual selections if present for this group, otherwise auto-pick by spend
+        manual = card.group_selected_categories.get(group_id) if group_id else None
+        if manual:
+            top_set = manual
+        else:
+            # Rank group categories by spend (desc); only top N get group_mult
+            ranked = sorted(
+                group_cats,
+                key=lambda c: _spend_for_category(spend, c) if c else 0.0,
+                reverse=True,
+            )
+            top_set = set(ranked[:top_n])
         for cat in group_cats:
             key = cat.strip() if cat else ""
             if not key:

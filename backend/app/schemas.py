@@ -116,6 +116,11 @@ class CardMultiplierSchema(BaseModel):
     is_portal: bool = False
 
 
+class GroupCategoryItem(BaseModel):
+    spend_category_id: int
+    name: str
+
+
 class CardMultiplierGroupSchema(BaseModel):
     """Group of categories sharing one multiplier, optional cap, and optional top-N behavior."""
 
@@ -124,30 +129,34 @@ class CardMultiplierGroupSchema(BaseModel):
     cap_period: Optional[str] = None  # monthly, quarterly, annually
     top_category_only: bool = False  # legacy; use top_n_categories=1 instead
     top_n_categories: Optional[int] = None  # 1=top 1, 2=top 2, etc.; None=all get the rate
-    categories: list[str] = []
+    categories: list[GroupCategoryItem] = []
 
 
 class CardMultiplierGroupRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+    id: int
     multiplier: float
     cap_per_billing_cycle: Optional[float] = None
     cap_period: Optional[str] = None
     top_category_only: bool = False  # legacy
     top_n_categories: Optional[int] = None  # 1=top 1, 2=top 2; None=all
-    categories: list[str] = []
+    categories: list[GroupCategoryItem] = []
 
     @model_validator(mode="wrap")
     @classmethod
     def categories_from_orm(cls, data: Any, handler: Any) -> Any:
         if hasattr(data, "categories") and not isinstance(data, dict):
             # ORM object: categories is list of CardCategoryMultiplier
-            # c.category is the property that reads c.spend_category.category
-            cats = [c.category for c in data.categories]
+            cats = [
+                {"spend_category_id": c.category_id, "name": c.category}
+                for c in data.categories
+            ]
             top_n = getattr(data, "top_n_categories", None)
             if top_n is None and getattr(data, "top_category_only", False):
                 top_n = 1
             return handler(
                 {
+                    "id": data.id,
                     "multiplier": data.multiplier,
                     "cap_per_billing_cycle": getattr(
                         data, "cap_per_billing_cycle", None
@@ -475,10 +484,59 @@ class AdminAddCardMultiplierPayload(BaseModel):
     multiplier_group_id: Optional[int] = None
 
 
+class AdminCreateCardMultiplierGroupPayload(BaseModel):
+    multiplier: float = Field(..., gt=0)
+    cap_per_billing_cycle: Optional[float] = Field(default=None, gt=0)
+    cap_period: Optional[str] = Field(default=None, pattern="^(monthly|quarterly|annually)$")
+    top_n_categories: Optional[int] = Field(default=None, ge=1)
+    category_ids: list[int] = Field(default_factory=list)
+
+
+class AdminUpdateCardMultiplierGroupPayload(BaseModel):
+    multiplier: Optional[float] = Field(default=None, gt=0)
+    cap_per_billing_cycle: Optional[float] = None
+    cap_period: Optional[str] = Field(default=None, pattern="^(monthly|quarterly|annually)$")
+    top_n_categories: Optional[int] = None
+    category_ids: Optional[list[int]] = None
+
+
 class AdminAddCardCreditPayload(BaseModel):
     credit_name: str = Field(..., max_length=120)
     credit_value: float = Field(default=0.0, ge=0)
     is_one_time: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Wallet card group selection schemas
+# ---------------------------------------------------------------------------
+
+
+class WalletCardGroupSelectionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    wallet_card_id: int
+    multiplier_group_id: int
+    spend_category_id: int
+    category_name: str = ""
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def resolve_category_name(cls, data: Any, handler: Any) -> Any:
+        if hasattr(data, "spend_category") and not isinstance(data, dict):
+            return handler(
+                {
+                    "id": data.id,
+                    "wallet_card_id": data.wallet_card_id,
+                    "multiplier_group_id": data.multiplier_group_id,
+                    "spend_category_id": data.spend_category_id,
+                    "category_name": data.spend_category.category if data.spend_category else "",
+                }
+            )
+        return handler(data)
+
+
+class WalletCardGroupSelectionSet(BaseModel):
+    spend_category_ids: list[int] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

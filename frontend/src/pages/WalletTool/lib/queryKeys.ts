@@ -18,4 +18,6 @@ export const queryKeys = {
   roadmap: (walletId: number) => ['roadmap', walletId] as const,
   walletCardCredits: (walletId: number | null, cardId: number | null) =>
     ['wallet-card-credits', walletId, cardId] as const,
+  walletCardGroupSelections: (walletId: number | null, cardId: number | null) =>
+    ['wallet-card-group-selections', walletId, cardId] as const,
 } as const

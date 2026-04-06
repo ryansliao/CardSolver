@@ -26,14 +26,20 @@ export interface CardMultiplier {
   is_portal?: boolean
 }
 
+export interface GroupCategoryItem {
+  spend_category_id: number
+  name: string
+}
+
 export interface CardMultiplierGroup {
+  id: number
   multiplier: number
   cap_per_billing_cycle: number | null
   cap_period?: 'monthly' | 'quarterly' | 'annually' | null
   top_category_only?: boolean
   /** When set, only the top N spending categories in this group get the rate (1=top 1, 2=top 2, etc.). Null = all get the rate. */
   top_n_categories?: number | null
-  categories: string[]
+  categories: GroupCategoryItem[]
 }
 
 export interface CardCredit {
@@ -603,6 +609,30 @@ export const walletCardMultiplierApi = {
     }),
   delete: (walletId: number, cardId: number, categoryId: number) =>
     request<void>(`/wallets/${walletId}/cards/${cardId}/multipliers/${categoryId}`, { method: 'DELETE' }),
+}
+
+// ─── Wallet card group category selections ─────────────────────────────────
+
+export interface WalletCardGroupSelection {
+  id: number
+  wallet_card_id: number
+  multiplier_group_id: number
+  spend_category_id: number
+  category_name: string
+}
+
+export const walletCardGroupSelectionApi = {
+  list: (walletId: number, cardId: number) =>
+    request<WalletCardGroupSelection[]>(`/wallets/${walletId}/cards/${cardId}/group-selections`),
+  set: (walletId: number, cardId: number, groupId: number, spendCategoryIds: number[]) =>
+    request<WalletCardGroupSelection[]>(
+      `/wallets/${walletId}/cards/${cardId}/group-selections/${groupId}`,
+      { method: 'PUT', body: JSON.stringify({ spend_category_ids: spendCategoryIds }) },
+    ),
+  delete: (walletId: number, cardId: number, groupId: number) =>
+    request<void>(`/wallets/${walletId}/cards/${cardId}/group-selections/${groupId}`, {
+      method: 'DELETE',
+    }),
 }
 
 // ─── Admin: Reference data CRUD ──────────────────────────────────────────────

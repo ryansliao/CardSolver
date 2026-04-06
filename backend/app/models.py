@@ -441,6 +441,9 @@ class WalletCard(Base):
     credit_overrides_rows: Mapped[list["WalletCardCredit"]] = relationship(
         back_populates="wallet_card", cascade="all, delete-orphan"
     )
+    group_selections: Mapped[list["WalletCardGroupSelection"]] = relationship(
+        back_populates="wallet_card", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<WalletCard wallet={self.wallet_id} card={self.card_id} added={self.added_date}>"
@@ -540,6 +543,43 @@ class WalletCardCredit(Base):
 
     def __repr__(self) -> str:
         return f"<WalletCardCredit wc={self.wallet_card_id} credit={self.library_credit_id} value={self.value}>"
+
+
+class WalletCardGroupSelection(Base):
+    """
+    Per-wallet-card manual category selection for a multiplier group with top_n_categories.
+    Each row pins one category as "selected" for the group's bonus rate.
+    For a group with top_n_categories=N, exactly N rows should exist.
+    When no rows exist for a (wallet_card_id, multiplier_group_id) pair, the calculator
+    auto-picks by spend (current behavior).
+    """
+
+    __tablename__ = "wallet_card_group_selections"
+    __table_args__ = (
+        UniqueConstraint("wallet_card_id", "multiplier_group_id", "spend_category_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    wallet_card_id: Mapped[int] = mapped_column(
+        ForeignKey("wallet_cards.id", ondelete="CASCADE"), nullable=False
+    )
+    multiplier_group_id: Mapped[int] = mapped_column(
+        ForeignKey("card_multiplier_groups.id", ondelete="CASCADE"), nullable=False
+    )
+    spend_category_id: Mapped[int] = mapped_column(
+        ForeignKey("spend_categories.id", ondelete="RESTRICT"), nullable=False
+    )
+
+    wallet_card: Mapped["WalletCard"] = relationship(back_populates="group_selections")
+    multiplier_group: Mapped["CardMultiplierGroup"] = relationship()
+    spend_category: Mapped["SpendCategory"] = relationship()
+
+    @property
+    def category_name(self) -> str:
+        return self.spend_category.category if self.spend_category else ""
+
+    def __repr__(self) -> str:
+        return f"<WalletCardGroupSelection wc={self.wallet_card_id} grp={self.multiplier_group_id} cat={self.spend_category_id}>"
 
 
 class WalletCurrencyCpp(Base):
