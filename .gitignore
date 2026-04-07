@@ -22,6 +22,7 @@ Thumbs.db
 .cursor/
 .vscode/
 .idea/
+.claude/
 
 # Alembic
 alembic/__pycache__/

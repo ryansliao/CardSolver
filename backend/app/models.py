@@ -261,7 +261,6 @@ class CardMultiplierGroup(Base):
     multiplier: Mapped[float] = mapped_column(Float, default=1.0)
     cap_per_billing_cycle: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     cap_period_months: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    top_category_only: Mapped[bool] = mapped_column(Boolean, default=False)  # legacy; prefer top_n_categories
     top_n_categories: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1=top 1, 2=top 2, etc.; None=all
     is_rotating: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_additive: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

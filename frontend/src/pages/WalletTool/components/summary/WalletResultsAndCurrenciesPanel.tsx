@@ -5,6 +5,9 @@ import { walletCppApi, walletsApi } from '../../../../api/client'
 import { formatCashRewardUnits, formatMoney, formatPoints } from '../../../../utils/format'
 import { queryKeys } from '../../lib/queryKeys'
 import { CurrencySettingsModal } from '../summary/CurrencySettingsModal'
+import { SpendTabContent } from '../spend/SpendTabContent'
+
+type WalletSummaryTab = 'summary' | 'spend'
 
 function formatDuration(years: number, months: number): string {
   const total = years * 12 + months
@@ -13,6 +16,53 @@ function formatDuration(years: number, months: number): string {
   if (y === 0) return `${m} mo`
   if (m === 0) return `${y} yr`
   return `${y} yr ${m} mo`
+}
+
+interface LabeledToggleProps {
+  leftLabel: string
+  rightLabel: string
+  isRight: boolean
+  onToggle: () => void
+  activeColor: 'emerald' | 'indigo'
+  ariaLabel: string
+  title?: string
+}
+
+function LabeledToggle({
+  leftLabel,
+  rightLabel,
+  isRight,
+  onToggle,
+  activeColor,
+  ariaLabel,
+  title,
+}: LabeledToggleProps) {
+  const activeText = activeColor === 'emerald' ? 'text-emerald-300' : 'text-indigo-300'
+  const knobColor = activeColor === 'emerald' ? 'bg-emerald-400' : 'bg-indigo-400'
+  return (
+    <div className="flex items-center gap-1.5 text-xs select-none" title={title}>
+      <span className={!isRight ? `${activeText} font-medium` : 'text-slate-500'}>
+        {leftLabel}
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={isRight}
+        aria-label={ariaLabel}
+        onClick={onToggle}
+        className="relative w-8 h-4 rounded-full bg-slate-700 hover:bg-slate-600 transition-colors"
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full ${knobColor} transition-transform ${
+            isRight ? 'translate-x-4' : 'translate-x-0'
+          }`}
+        />
+      </button>
+      <span className={isRight ? `${activeText} font-medium` : 'text-slate-500'}>
+        {rightLabel}
+      </span>
+    </div>
+  )
 }
 
 interface Props {
@@ -25,7 +75,7 @@ interface Props {
   onDurationChange: (years: number, months: number) => void
   onDurationCommit: (years: number, months: number) => void
   onCppChange: () => void
-  onOpenSpend: () => void
+  onSpendChange: () => void
 }
 
 export function WalletResultsAndCurrenciesPanel({
@@ -38,21 +88,13 @@ export function WalletResultsAndCurrenciesPanel({
   onDurationChange,
   onDurationCommit,
   onCppChange,
-  onOpenSpend,
+  onSpendChange,
 }: Props) {
   const [editingCurrencyId, setEditingCurrencyId] = useState<number | null>(null)
+  const [activeTab, setActiveTab] = useState<WalletSummaryTab>('summary')
   const [showDurationSlider, setShowDurationSlider] = useState(false)
-  const [expandedCardIds, setExpandedCardIds] = useState<Set<number>>(new Set())
   const [includeSubs, setIncludeSubs] = useState(true)
-
-  function toggleCardExpand(cardId: number) {
-    setExpandedCardIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(cardId)) next.delete(cardId)
-      else next.add(cardId)
-      return next
-    })
-  }
+  const [calcMode, setCalcMode] = useState<'annual' | 'total'>('annual')
 
   const { data: currencies = [], isLoading: currenciesLoading } = useQuery({
     queryKey: queryKeys.walletCurrencies(walletId),
@@ -84,13 +126,32 @@ export function WalletResultsAndCurrenciesPanel({
     return (c?.reward_kind ?? 'points') === 'cash' ? 'cash' : 'points'
   }
 
-  const selectedCards = result?.card_results.filter((c) => c.selected) ?? []
-  const totalAnnualFees = selectedCards.reduce((s, c) => s + c.annual_fee, 0)
-  const totalEffectiveAF = selectedCards.reduce((s, c) => s + c.effective_annual_fee, 0)
-  const totalWalletPoints = selectedCards.reduce((s, c) => {
+  const totalYears = Math.max(durationYears + durationMonths / 12, 1 / 12)
+  const isTotal = calcMode === 'total'
+  // Multipliers convert calculator outputs to the requested mode.
+  // - effective_annual_fee and annual_fee are per-year → ×totalYears for Total
+  // - total_points is already total over the duration → ÷totalYears for Annual
+  const feeMultiplier = isTotal ? totalYears : 1
+  const pointsMultiplier = isTotal ? 1 : 1 / totalYears
+  const subDollarsAnnualized = (c: CardResult) =>
+    ((c.sub + c.sub_spend_earn) * c.cents_per_point) / 100 / totalYears
+  const adjustedEffectiveAF = (c: CardResult) =>
+    (c.effective_annual_fee + (includeSubs ? 0 : subDollarsAnnualized(c))) * feeMultiplier
+  const adjustedCardPoints = (c: CardResult) => {
     const subPts = includeSubs ? 0 : c.sub + c.sub_spend_earn
-    return s + (c.total_points - subPts)
-  }, 0)
+    return (c.total_points - subPts) * pointsMultiplier
+  }
+
+  const selectedCards = result?.card_results.filter((c) => c.selected) ?? []
+  const totalAnnualFees = selectedCards.reduce((s, c) => s + c.annual_fee * feeMultiplier, 0)
+  const totalEffectiveAF = selectedCards.reduce((s, c) => s + adjustedEffectiveAF(c), 0)
+  const totalWalletPoints = selectedCards.reduce((s, c) => s + adjustedCardPoints(c), 0)
+
+  const eafLabel = isTotal ? 'Total Expected Value' : 'Effective Annual Fee'
+  const totalEafDisplay = isTotal ? -totalEffectiveAF : totalEffectiveAF
+  const pointsLabel = isTotal ? 'Total Points' : 'Annual Points'
+  const feesLabel = isTotal ? 'Total Fees' : 'Total Annual Fees'
+  const cardEafLabel = isTotal ? 'Eff. Total Fee' : 'Eff. Annual Fee'
 
   const cardsByCurrency = useMemo(() => {
     if (!result) return {} as Record<string, CardResult[]>
@@ -112,32 +173,79 @@ export function WalletResultsAndCurrenciesPanel({
   const isLoading = currenciesLoading || (walletId != null && balancesLoading)
 
   return (
-    <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 min-w-0 min-h-0 h-full flex flex-col overflow-hidden">
+    <div className="flex h-full min-w-0 min-h-0 items-stretch">
+      {/* Binder-style icon tabs sitting outside the panel on the left, near the top */}
+      {walletId != null && (
+        <div className="shrink-0 flex flex-col gap-1 pt-6 z-10">
+          {([
+            {
+              key: 'summary' as const,
+              label: 'Summary',
+              icon: (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="9" rx="1" />
+                  <rect x="14" y="3" width="7" height="5" rx="1" />
+                  <rect x="14" y="12" width="7" height="9" rx="1" />
+                  <rect x="3" y="16" width="7" height="5" rx="1" />
+                </svg>
+              ),
+            },
+            {
+              key: 'spend' as const,
+              label: 'Spend',
+              icon: (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="1" x2="12" y2="23" />
+                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+              ),
+            },
+          ]).map((tab) => {
+            const isActive = activeTab === tab.key
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`p-2 rounded-l-md border border-r-0 transition-colors ${
+                  isActive
+                    ? 'bg-slate-900 text-indigo-300 border-slate-700 -mr-px'
+                    : 'bg-slate-800/70 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+                aria-pressed={isActive}
+                aria-label={tab.label}
+                title={tab.label}
+              >
+                {tab.icon}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden">
       <div className="shrink-0 flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-slate-200">Wallet Summary</h2>
         {walletId != null && (
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setIncludeSubs((v) => !v)}
-              className={`px-1.5 py-0.5 rounded text-xs transition-colors ${includeSubs ? 'text-emerald-300 bg-emerald-900/50 border border-emerald-700/50' : 'text-slate-500 hover:text-slate-200 hover:bg-slate-700 border border-transparent'}`}
+          <div className="flex items-center gap-6">
+            <LabeledToggle
+              leftLabel="No SUBs"
+              rightLabel="SUBs"
+              isRight={includeSubs}
+              onToggle={() => setIncludeSubs((v) => !v)}
+              activeColor="emerald"
+              ariaLabel="Toggle SUB inclusion"
               title={includeSubs ? 'SUBs included in totals' : 'SUBs excluded from totals'}
-              aria-label="Toggle SUB inclusion"
-            >
-              Include SUBs
-            </button>
-            <button
-              type="button"
-              onClick={onOpenSpend}
-              className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-700 transition-colors"
-              title="Annual Spend"
-              aria-label="Edit annual spend"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="1" x2="12" y2="23" />
-                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-              </svg>
-            </button>
+            />
+            <LabeledToggle
+              leftLabel="Annual"
+              rightLabel="Total"
+              isRight={isTotal}
+              onToggle={() => setCalcMode((m) => (m === 'annual' ? 'total' : 'annual'))}
+              activeColor="indigo"
+              ariaLabel="Toggle annual vs total"
+              title={isTotal ? `Showing totals over ${formatDuration(durationYears, durationMonths)}` : 'Showing per-year values'}
+            />
             <button
               type="button"
               onClick={() => setShowDurationSlider((v) => !v)}
@@ -194,7 +302,6 @@ export function WalletResultsAndCurrenciesPanel({
           </div>
         </div>
       )}
-
       <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-y-auto pr-0.5 -mr-0.5">
         {walletId == null ? (
           <div className="text-slate-500 text-sm py-4">Select a wallet.</div>
@@ -210,15 +317,15 @@ export function WalletResultsAndCurrenciesPanel({
               {result ? (
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-indigo-900/40 border border-indigo-700 rounded-xl p-3 text-center">
-                    <p className="text-[10px] text-indigo-300 uppercase tracking-wider">Effective Annual Fee</p>
-                    <p className="text-xl font-bold text-indigo-100 mt-0.5">{formatMoney(totalEffectiveAF)}</p>
+                    <p className="text-[10px] text-indigo-300 uppercase tracking-wider">{eafLabel}</p>
+                    <p className="text-xl font-bold text-indigo-100 mt-0.5">{formatMoney(totalEafDisplay)}</p>
                   </div>
                   <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 text-center">
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">Total Points</p>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">{pointsLabel}</p>
                     <p className="text-xl font-bold text-white mt-0.5">{formatPoints(Math.round(totalWalletPoints))}</p>
                   </div>
                   <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 text-center">
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">Total Annual Fees</p>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">{feesLabel}</p>
                     <p className="text-xl font-bold text-white mt-0.5">{formatMoney(totalAnnualFees)}</p>
                   </div>
                 </div>
@@ -231,12 +338,12 @@ export function WalletResultsAndCurrenciesPanel({
               )}
             </div>
 
-            {/* Currencies + Cards combined */}
-            {isLoading ? (
+            {/* Currencies + Cards combined (Summary tab) */}
+            {activeTab === 'summary' && isLoading ? (
               <div className="flex flex-1 min-h-0 items-center justify-center text-slate-500 text-sm">
                 Loading…
               </div>
-            ) : (
+            ) : activeTab === 'summary' ? (
               <div className="flex flex-col flex-1 min-h-0 pt-3">
                 <ul className="space-y-2">
                   {sortedBalances.map((b) => {
@@ -245,14 +352,11 @@ export function WalletResultsAndCurrenciesPanel({
                   const isCash = rk === 'cash'
                   const estValue = b.balance > 0 ? (b.balance * cpp) / 100 : 0
                   const cards = cardsByCurrency[b.currency_name] ?? []
-                  const currencyTotalPoints = cards.reduce((s, c) => {
-                    const subPts = includeSubs ? 0 : (c.sub + c.sub_spend_earn)
-                    return s + c.total_points - subPts
-                  }, 0)
-                  const currencyTotalCashDollars = cards.reduce((s, c) => {
-                    const subPts = includeSubs ? 0 : (c.sub + c.sub_spend_earn)
-                    return s + ((c.total_points - subPts) * c.cents_per_point) / 100
-                  }, 0)
+                  const currencyTotalPoints = cards.reduce((s, c) => s + adjustedCardPoints(c), 0)
+                  const currencyTotalCashDollars = cards.reduce(
+                    (s, c) => s + (adjustedCardPoints(c) * c.cents_per_point) / 100,
+                    0
+                  )
                   const hasResultData = result != null && cards.length > 0
 
                   return (
@@ -314,16 +418,14 @@ export function WalletResultsAndCurrenciesPanel({
                       {cards.length > 0 && (
                         <div className="border-t border-slate-700/60">
                           {cards.map((card, idx) => {
-                            const cardEffectiveAF = card.effective_annual_fee
+                            const cardEffectiveAF = adjustedEffectiveAF(card)
                             const isLast = idx === cards.length - 1
                             const cardIsCash = (card.effective_reward_kind ?? 'points') === 'cash'
-                            const subPts = includeSubs ? 0 : (card.sub + card.sub_spend_earn)
-                            const cardTotalPts = card.total_points - subPts
-                            const totalEarnLabel = cardIsCash
-                              ? `${formatMoney((cardTotalPts * card.cents_per_point) / 100)} Cash`
-                              : `${formatPoints(Math.round(cardTotalPts))} Pts`
-                            const isExpanded = expandedCardIds.has(card.card_id)
-                            const hasCategoryBreakdown = card.category_earn && card.category_earn.length > 0
+                            const cardTotalPts = adjustedCardPoints(card)
+                            const totalEarnNumber = cardIsCash
+                              ? formatMoney((cardTotalPts * card.cents_per_point) / 100)
+                              : formatPoints(Math.round(cardTotalPts))
+                            const totalEarnUnit = cardIsCash ? 'Cash' : 'Pts'
                             return (
                               <div
                                 key={card.card_id}
@@ -339,7 +441,7 @@ export function WalletResultsAndCurrenciesPanel({
                                       {card.card_name}
                                     </p>
                                     <p className="text-xs text-slate-500 mt-0.5">
-                                      {totalEarnLabel}
+                                      {totalEarnNumber} {totalEarnUnit}
                                       {card.credit_valuation !== 0 && (
                                         <span className="text-slate-600 mx-1">·</span>
                                       )}
@@ -354,45 +456,9 @@ export function WalletResultsAndCurrenciesPanel({
                                     >
                                       {formatMoney(cardEffectiveAF)}
                                     </p>
-                                    <p className="text-xs text-slate-500">Eff. Annual Fee</p>
+                                    <p className="text-xs text-slate-500">{cardEafLabel}</p>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => hasCategoryBreakdown && toggleCardExpand(card.card_id)}
-                                    disabled={!hasCategoryBreakdown}
-                                    className={`shrink-0 p-1 rounded transition-colors ${hasCategoryBreakdown ? 'text-slate-600 hover:text-slate-300 hover:bg-slate-700' : 'text-slate-800 cursor-default'}`}
-                                    aria-label={isExpanded ? 'Collapse category breakdown' : 'Expand category breakdown'}
-                                  >
-                                    <svg
-                                      width="12"
-                                      height="12"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="2.5"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}
-                                    >
-                                      <polyline points="6 9 12 15 18 9" />
-                                    </svg>
-                                  </button>
                                 </div>
-                                {/* Category earn breakdown */}
-                                {isExpanded && hasCategoryBreakdown && (
-                                  <div className="border-t border-slate-700/30 px-3 pt-1.5 pb-2 space-y-0.5">
-                                    {card.category_earn.map((item) => (
-                                      <div key={item.category} className="flex items-center justify-between gap-2">
-                                        <span className="text-xs text-slate-500 truncate">{item.category}</span>
-                                        <span className="text-xs text-slate-300 tabular-nums shrink-0">
-                                          {cardIsCash
-                                            ? formatMoney((item.points * card.cents_per_point) / 100)
-                                            : `${formatPoints(item.points)} Pts`}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
                             )
                           })}
@@ -408,9 +474,23 @@ export function WalletResultsAndCurrenciesPanel({
                   </p>
                 )}
               </div>
+            ) : null}
+
+            {/* Spend tab content */}
+            {activeTab === 'spend' && (
+              <SpendTabContent
+                walletId={walletId}
+                selectedCards={selectedCards}
+                isTotal={isTotal}
+                totalYears={totalYears}
+                onSpendChange={onSpendChange}
+              />
             )}
+
           </>
         )}
+      </div>
+
       </div>
 
       {editingCurrencyId != null && editingCurrency != null && (

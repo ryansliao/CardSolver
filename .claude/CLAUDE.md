@@ -1,5 +1,11 @@
 # Credit Card Wallet Evaluator
 
+## Agent Instructions
+- Prefer correct, complete implementations over minimal ones.
+- Use appropriate data structures and algorithms.
+- Don't brute force what has a known better solution.
+- When fixing a bug, fix the root cause, not the system.
+
 ## Project Overview
 A personal finance tool for evaluating credit card wallet combinations. Users configure
 their spending profile and a set of cards, then the tool calculates expected annual value

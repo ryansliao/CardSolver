@@ -268,7 +268,7 @@ def _years_counted_from_total_months(total_months: int) -> int:
 #   1. Issuers ("Discover", "Chase") if missing
 #   2. Currencies ("Discover Cashback Bonus" cash, "Chase UR" points) if missing
 #   3. Spend categories referenced by the historical rotation (Wholesale Clubs,
-#      Drug Stores, Public Transit, EV Charging, Streaming Services, …) if missing
+#      Drug Stores, Transit, EV Charging, Streaming, …) if missing
 #   4. Card rows for each rotating card if missing
 #   5. A CardMultiplierGroup per card with cap_per_billing_cycle=1500,
 #      cap_period_months=3, is_rotating=True, multiplier=5.0, top_n_categories=None
@@ -280,37 +280,37 @@ def _years_counted_from_total_months(total_months: int) -> int:
 
 _DISCOVER_IT_HISTORY: list[tuple[int, int, list[str]]] = [
     # 2023
-    (2023, 1, ["Grocery Stores", "Drug Stores", "Streaming Services"]),
+    (2023, 1, ["Groceries", "Drugstores", "Streaming"]),
     (2023, 2, ["Gas", "Wholesale Clubs"]),
-    (2023, 3, ["Restaurants"]),
+    (2023, 3, ["Dining"]),
     (2023, 4, ["Amazon", "Target"]),
     # 2024
-    (2024, 1, ["Restaurants", "Drug Stores"]),
-    (2024, 2, ["Gas", "Public Transit", "Utilities"]),
-    (2024, 3, ["Restaurants"]),
+    (2024, 1, ["Dining", "Drugstores"]),
+    (2024, 2, ["Gas", "Transit", "Utilities"]),
+    (2024, 3, ["Dining"]),
     (2024, 4, ["Amazon", "Target"]),
     # 2025
-    (2025, 1, ["Restaurants", "Home Improvement", "Streaming Services"]),
-    (2025, 2, ["Gas", "Public Transit", "EV Charging"]),
-    (2025, 3, ["Restaurants"]),
+    (2025, 1, ["Dining", "Home Improvement", "Streaming"]),
+    (2025, 2, ["Gas", "Transit", "EV Charging"]),
+    (2025, 3, ["Dining"]),
     (2025, 4, ["Amazon", "Target"]),
 ]
 
 _CHASE_FREEDOM_FLEX_HISTORY: list[tuple[int, int, list[str]]] = [
     # 2023
-    (2023, 1, ["Grocery Stores", "Fitness Clubs"]),
+    (2023, 1, ["Groceries", "Fitness"]),
     (2023, 2, ["Amazon", "Lowe's"]),
     (2023, 3, ["Gas", "EV Charging", "Movies"]),
     (2023, 4, ["PayPal", "Wholesale Clubs"]),
     # 2024
-    (2024, 1, ["Grocery Stores", "Fitness Clubs"]),
-    (2024, 2, ["Hotels", "Restaurants"]),
+    (2024, 1, ["Groceries", "Fitness"]),
+    (2024, 2, ["Hotels", "Dining"]),
     (2024, 3, ["Gas", "EV Charging", "Movies"]),
     (2024, 4, ["PayPal", "McDonald's"]),
     # 2025
-    (2025, 1, ["Grocery Stores", "Fitness Clubs"]),
+    (2025, 1, ["Groceries", "Fitness"]),
     (2025, 2, ["Hotels", "Amazon"]),
-    (2025, 3, ["Gas", "EV Charging", "Restaurants"]),
+    (2025, 3, ["Gas", "EV Charging", "Dining"]),
     (2025, 4, ["PayPal", "Wholesale Clubs"]),
 ]
 
@@ -370,8 +370,8 @@ _ROTATING_CARD_SPECS: list[dict] = [
         # Travel is_portal=True so the calculator's portal-share path
         # (Phase B) gates the +4 to the configured Chase Travel share.
         "always_on_premiums": [
-            ("Restaurants", 2.0, False),
-            ("Drug Stores", 2.0, False),
+            ("Dining", 2.0, False),
+            ("Drugstores", 2.0, False),
             ("Travel", 4.0, True),
         ],
     },
@@ -475,6 +475,103 @@ async def _seed_rotating_cards_and_history() -> None:
                 )
                 await session.rollback()
                 continue
+
+
+# Per-card portal multiplier specs for non-rotating cards. Each entry maps a
+# card name (case-insensitive) to a list of (category_name, multiplier,
+# is_additive) portal rows. Categories that don't yet exist as SpendCategory
+# rows are auto-created. The seed only touches cards that already exist in the
+# library — it never creates the card itself. Each portal row is materialized
+# as a STANDALONE (multiplier_group_id IS NULL) is_portal=True
+# CardCategoryMultiplier; existing portal rows on the same (card, category)
+# are synced to the spec.
+_PORTAL_PREMIUM_SPECS: list[dict] = [
+    {
+        # Capital One Venture X — Capital One Travel portal advertised rates:
+        #   10x on hotels and rental cars booked through Capital One Travel
+        #   5x  on flights and vacation rentals booked through Capital One Travel
+        # All four are non-additive (the portal rate replaces the card's base
+        # 2x miles on the portal-booked portion).
+        "card_name": "Capital One Venture X",
+        "rows": [
+            ("Hotels", 10.0, False),
+            ("Car Rentals", 10.0, False),
+            ("Flights", 5.0, False),
+            ("Vacation Rentals", 5.0, False),
+        ],
+    },
+]
+
+
+async def _seed_portal_premiums() -> None:
+    """
+    Idempotently add portal-only multiplier rows to existing cards from
+    `_PORTAL_PREMIUM_SPECS`. Skips any card that isn't already in the library.
+    Each spec runs in its own transaction so a failure on one card doesn't
+    roll back the others.
+    """
+    from sqlalchemy import func
+
+    async with AsyncSessionLocal() as session:
+        for spec in _PORTAL_PREMIUM_SPECS:
+            try:
+                await _seed_one_portal_premium(session, spec)
+                await session.commit()
+            except Exception:
+                logger.exception(
+                    "portal premium seed: failed to seed %r — rolling back",
+                    spec["card_name"],
+                )
+                await session.rollback()
+                continue
+
+
+async def _seed_one_portal_premium(session, spec: dict) -> None:
+    from sqlalchemy import func
+
+    card_row = await session.execute(
+        select(Card).where(func.lower(Card.name) == spec["card_name"].lower())
+    )
+    card = card_row.scalar_one_or_none()
+    if card is None:
+        # Card hasn't been added to the library yet — nothing to do.
+        return
+
+    existing_standalone = await session.execute(
+        select(CardCategoryMultiplier).where(
+            CardCategoryMultiplier.card_id == card.id,
+            CardCategoryMultiplier.multiplier_group_id.is_(None),
+            CardCategoryMultiplier.is_portal == True,  # noqa: E712
+        )
+    )
+    portal_by_cat_id = {m.category_id: m for m in existing_standalone.scalars()}
+
+    for cat_name, mult, is_add in spec["rows"]:
+        sc = await _ensure_spend_category(session, cat_name)
+        existing = portal_by_cat_id.get(sc.id)
+        if existing is None:
+            # A non-portal standalone on the same (card, category) is allowed
+            # to coexist (migration 027), so we don't need to check for it.
+            session.add(
+                CardCategoryMultiplier(
+                    card_id=card.id,
+                    category_id=sc.id,
+                    multiplier=float(mult),
+                    is_additive=bool(is_add),
+                    is_portal=True,
+                    multiplier_group_id=None,
+                )
+            )
+            logger.info(
+                "portal premium seed: added %sx portal %r on %r",
+                mult, cat_name, card.name,
+            )
+        else:
+            if abs(existing.multiplier - float(mult)) > 1e-6:
+                existing.multiplier = float(mult)
+            if bool(existing.is_additive) != bool(is_add):
+                existing.is_additive = bool(is_add)
+    await session.flush()
 
 
 async def _seed_one_rotating_card(session, spec: dict) -> None:
@@ -607,10 +704,16 @@ async def _seed_one_rotating_card(session, spec: dict) -> None:
                 CardCategoryMultiplier.multiplier_group_id.is_(None),
             )
         )
-        standalone_by_cat_id = {m.category_id: m for m in existing_standalone.scalars()}
+        # Key by (category_id, is_portal) so a portal row and a non-portal row
+        # on the same category are tracked separately — migration 027 lets
+        # both coexist on a single (card, category) pair.
+        standalone_by_key = {
+            (m.category_id, bool(m.is_portal)): m
+            for m in existing_standalone.scalars()
+        }
         for cat_name, premium, is_portal in always_on:
             sc = await _ensure_spend_category(session, cat_name)
-            existing = standalone_by_cat_id.get(sc.id)
+            existing = standalone_by_key.get((sc.id, bool(is_portal)))
             if existing is None:
                 session.add(
                     CardCategoryMultiplier(
@@ -628,12 +731,11 @@ async def _seed_one_rotating_card(session, spec: dict) -> None:
                 )
             else:
                 # Only sync if the existing row is also additive — never
-                # clobber a user-set non-additive standalone.
+                # clobber a user-set non-additive standalone. (is_portal
+                # already matches because it's part of the lookup key.)
                 if existing.is_additive:
                     if abs(existing.multiplier - float(premium)) > 1e-6:
                         existing.multiplier = float(premium)
-                    if bool(existing.is_portal) != bool(is_portal):
-                        existing.is_portal = bool(is_portal)
         await session.flush()
 
     # 7. History rows
@@ -671,6 +773,10 @@ async def lifespan(app: FastAPI):
         await _seed_rotating_cards_and_history()
     except Exception:  # pragma: no cover — defensive
         logger.exception("rotating seed failed")
+    try:
+        await _seed_portal_premiums()
+    except Exception:  # pragma: no cover — defensive
+        logger.exception("portal premium seed failed")
     yield
 
 
@@ -2707,8 +2813,6 @@ async def set_wallet_card_group_selections(
 
     # Validate: count matches top_n
     top_n = grp_row.top_n_categories
-    if top_n is None and getattr(grp_row, "top_category_only", False):
-        top_n = 1
     if top_n and len(payload.spend_category_ids) != top_n:
         raise HTTPException(
             status_code=422,

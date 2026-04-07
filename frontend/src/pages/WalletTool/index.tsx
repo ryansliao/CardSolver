@@ -10,8 +10,6 @@ import {
   type WalletResultResponse,
 } from '../../api/client'
 import { today } from '../../utils/format'
-import { ModalBackdrop } from '../../components/ModalBackdrop'
-import { AnnualSpendPanel } from './components/spend/AnnualSpendPanel'
 import { WalletCardModal } from './components/cards/WalletCardModal'
 import { CreateWalletModal } from './components/wallet/CreateWalletModal'
 import { WalletResultsAndCurrenciesPanel } from './components/summary/WalletResultsAndCurrenciesPanel'
@@ -35,7 +33,6 @@ export default function WalletToolPage() {
   const [result, setResult] = useState<WalletResultResponse | null>(null)
   const [closeCardId, setCloseCardId] = useState<number | null>(null)
   const [closeDateInput, setCloseDateInput] = useState('')
-  const [showSpendModal, setShowSpendModal] = useState(false)
   const [applicationRuleWarnings, setApplicationRuleWarnings] = useState<RoadmapRuleStatus[] | null>(
     null
   )
@@ -261,7 +258,7 @@ export default function WalletToolPage() {
                 }}
                 onDurationCommit={(y, m) => runCalculation(y, m)}
                 onCppChange={() => runCalculation()}
-                onOpenSpend={() => setShowSpendModal(true)}
+                onSpendChange={() => runCalculation()}
               />
 
               <CardsListPanel
@@ -295,19 +292,6 @@ export default function WalletToolPage() {
           </>
         )}
       </div>
-
-      {showSpendModal && selectedWalletId != null && (
-        <ModalBackdrop
-          onClose={() => setShowSpendModal(false)}
-          label="Annual Spend"
-          className="w-full max-w-md h-[80vh]"
-        >
-          <AnnualSpendPanel
-            walletId={selectedWalletId}
-            onSpendChange={() => runCalculation()}
-          />
-        </ModalBackdrop>
-      )}
 
       {showCreateModal && (
         <CreateWalletModal

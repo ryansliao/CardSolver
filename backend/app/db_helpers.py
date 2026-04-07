@@ -125,9 +125,17 @@ async def load_card_data(
         if sc.parent_id is not None:
             children_by_parent.setdefault(sc.parent_id, []).append(sc)
 
-    def _descendant_names(root_id: int) -> list[str]:
-        """Return [root.category, …all descendant categories…] for use in
-        portal_premiums expansion. Walks the tree breadth-first."""
+    def _expand_portal_row(
+        root_id: int,
+        explicit_ids: set[int],
+    ) -> list[str]:
+        """Return category names covered by a portal row at root_id.
+
+        Walks the spend-category subtree rooted at root_id, but stops descending
+        into any child that has its own explicit portal row on the same card —
+        that more-specific row takes precedence and will be expanded separately.
+        Returns [] if root_id is unknown.
+        """
         out: list[str] = []
         root = sc_by_id.get(root_id)
         if root is None:
@@ -137,6 +145,8 @@ async def load_card_data(
         while stack:
             pid = stack.pop()
             for child in children_by_parent.get(pid, []):
+                if child.id in explicit_ids and child.id != root_id:
+                    continue  # more-specific portal row wins this subtree
                 out.append(child.category)
                 stack.append(child.id)
         return out
@@ -170,7 +180,12 @@ async def load_card_data(
         # has spend on the leaf categories.
         non_add_overrides: dict[str, float] = {}
         additive_premiums: dict[str, float] = {}
-        portal_premiums_list: list[tuple[str, float, bool]] = []
+        # Collect portal rows up front so per-sub-category rows can shadow a
+        # broader parent row in the same card. Issuers like Capital One / Amex
+        # / Citi advertise different portal multipliers for different travel
+        # sub-categories (e.g. Hotels @ 10x, Flights @ 5x); the most specific
+        # row wins for each leaf in the spend-category hierarchy.
+        portal_rows: list[tuple[int, str, float, bool]] = []  # (cat_id, cat, mult, is_add)
         for m in card.multipliers:
             if getattr(m, "multiplier_group_id", None) is not None:
                 continue  # grouped rows are aggregated below
@@ -181,20 +196,26 @@ async def load_card_data(
                 continue  # the base is captured by all_other_rate above
             is_add = bool(getattr(m, "is_additive", False))
             if bool(getattr(m, "is_portal", False)):
-                # Expand to the named category + all descendants in the
-                # spend-category hierarchy. If the named category has no
-                # children we still get a single entry (the named row).
-                names = _descendant_names(m.category_id) or [cat]
-                for name in names:
-                    portal_premiums_list.append(
-                        (name.strip().lower(), float(m.multiplier), is_add)
-                    )
+                portal_rows.append((m.category_id, cat, float(m.multiplier), is_add))
                 continue
             if is_add:
                 additive_premiums[cat] = additive_premiums.get(cat, 0.0) + float(m.multiplier)
             else:
                 # Non-additive replaces the base for this category.
                 non_add_overrides[cat] = float(m.multiplier)
+
+        # Materialize portal rows now that we know the full set of explicit
+        # portal category ids on this card. Each row expands across its
+        # descendant subtree, but stops at any descendant that owns its own
+        # explicit portal row (handled in _expand_portal_row).
+        portal_premiums_list: list[tuple[str, float, bool]] = []
+        explicit_portal_ids: set[int] = {cid for cid, _c, _m, _a in portal_rows}
+        for cid, cat_label, mult, is_add in portal_rows:
+            names = _expand_portal_row(cid, explicit_portal_ids) or [cat_label]
+            for name in names:
+                portal_premiums_list.append(
+                    (name.strip().lower(), mult, is_add)
+                )
 
         multipliers: dict[str, float] = {}
         # Always re-emit the base under "All Other" so callers can read it.
@@ -247,8 +268,6 @@ async def load_card_data(
         ] = []
         for grp in getattr(card, "multiplier_groups", []) or []:
             top_n = getattr(grp, "top_n_categories", None)
-            if top_n is None and getattr(grp, "top_category_only", False):
-                top_n = 1
             cats = [c.category for c in getattr(grp, "categories", []) if getattr(c, "category", None)]
             cap_amount = getattr(grp, "cap_per_billing_cycle", None)
             cap_months = getattr(grp, "cap_period_months", None)

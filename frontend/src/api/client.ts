@@ -45,7 +45,6 @@ export interface CardMultiplierGroup {
   cap_per_billing_cycle: number | null
   /** Length of one cap period in calendar months: 1=monthly, 3=quarterly, 6=semi-annual, 12=annual. */
   cap_period_months?: number | null
-  top_category_only?: boolean
   /** When set, only the top N spending categories in this group get the rate (1=top 1, 2=top 2, etc.). Null = all get the rate. */
   top_n_categories?: number | null
   /** When true, the cap is allocated per-category by `rotation_weights` (Discover IT, Chase Freedom Flex). */

@@ -17,29 +17,6 @@ function compareWalletCardsByOpeningNewestFirst(a: WalletCard, b: WalletCard): n
   return db.localeCompare(da)
 }
 
-function SubBadge({ wc }: { wc: WalletCard }) {
-  if (!wc.sub) return null
-  if (wc.sub_earned_date) {
-    return (
-      <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-900/50 text-emerald-300 border border-emerald-700/50">
-        SUB Earned
-      </span>
-    )
-  }
-  if (wc.sub_projected_earn_date) {
-    return (
-      <span className="text-xs px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-300 border border-amber-700/50">
-        SUB Projected: {wc.sub_projected_earn_date}
-      </span>
-    )
-  }
-  return (
-    <span className="text-xs px-1.5 py-0.5 rounded bg-red-900/50 text-red-300 border border-red-700/50">
-      SUB Not Earned
-    </span>
-  )
-}
-
 interface Props {
   wallet: Wallet
   roadmap: RoadmapResponse | undefined
@@ -97,8 +74,10 @@ function CardItem({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span
-              className={`inline-block w-2 h-2 rounded-full shrink-0 ${isClosed ? 'bg-slate-500' : 'bg-emerald-400'}`}
-              title={isClosed ? `Closed ${wc.closed_date}` : 'Active'}
+              className={`inline-block w-2 h-2 rounded-full shrink-0 ${
+                isClosed ? 'bg-slate-500' : isInWallet ? 'bg-emerald-400' : 'bg-amber-400'
+              }`}
+              title={isClosed ? `Closed ${wc.closed_date}` : isInWallet ? 'In Wallet' : 'On Deck'}
             />
             <p className={`text-sm font-medium ${isClosed ? 'text-slate-400 line-through' : 'text-white'}`}>
               {wc.card_name ?? `Card #${wc.card_id}`}
@@ -108,7 +87,6 @@ function CardItem({
                 Transfer
               </span>
             )}
-            {isInWallet && <SubBadge wc={wc} />}
             {wc.acquisition_type === 'product_change' && (
               <span className="text-[10px] font-medium bg-violet-900/60 text-violet-300 border border-violet-700/50 rounded px-1.5 py-0.5">
                 PC
@@ -332,36 +310,6 @@ export function CardsListPanel({
         </button>
       </div>
       <div className="min-h-0 overflow-y-auto flex-1 flex flex-col gap-4">
-        {/* On Deck panel */}
-        <div
-          className={`rounded-lg border transition-colors ${
-            dragOverPanel === 'on_deck'
-              ? 'border-indigo-500 bg-indigo-950/20'
-              : 'border-slate-700/50'
-          }`}
-          onDragOver={(e) => handleDragOver('on_deck', e)}
-          onDragLeave={(e) => handleDragLeave('on_deck', e)}
-          onDrop={(e) => handleDrop('on_deck', e)}
-        >
-          <div className="px-3 pt-2 pb-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">On Deck</p>
-          </div>
-          <ul className="space-y-2 px-2 pb-2">
-            {onDeckCards.length === 0 && (
-              <li className="text-slate-600 text-xs py-2 text-center">No Cards Added</li>
-            )}
-            {onDeckCards.map((wc) => (
-              <CardItem
-                key={wc.id}
-                wc={wc}
-                isInWallet={false}
-                draggable
-                {...sharedCardProps}
-              />
-            ))}
-          </ul>
-        </div>
-
         {/* In Wallet panel */}
         <div
           className={`rounded-lg border transition-colors ${
@@ -385,6 +333,36 @@ export function CardsListPanel({
                 key={wc.id}
                 wc={wc}
                 isInWallet
+                draggable
+                {...sharedCardProps}
+              />
+            ))}
+          </ul>
+        </div>
+
+        {/* On Deck panel */}
+        <div
+          className={`rounded-lg border transition-colors ${
+            dragOverPanel === 'on_deck'
+              ? 'border-indigo-500 bg-indigo-950/20'
+              : 'border-slate-700/50'
+          }`}
+          onDragOver={(e) => handleDragOver('on_deck', e)}
+          onDragLeave={(e) => handleDragLeave('on_deck', e)}
+          onDrop={(e) => handleDrop('on_deck', e)}
+        >
+          <div className="px-3 pt-2 pb-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">On Deck</p>
+          </div>
+          <ul className="space-y-2 px-2 pb-2">
+            {onDeckCards.length === 0 && (
+              <li className="text-slate-600 text-xs py-2 text-center">No Cards Added</li>
+            )}
+            {onDeckCards.map((wc) => (
+              <CardItem
+                key={wc.id}
+                wc={wc}
+                isInWallet={false}
                 draggable
                 {...sharedCardProps}
               />

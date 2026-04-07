@@ -131,7 +131,6 @@ class CardMultiplierGroupSchema(BaseModel):
     multiplier: float
     cap_per_billing_cycle: Optional[float] = None
     cap_period_months: Optional[int] = None  # 1=monthly, 3=quarterly, 6=semi-annual, 12=annual
-    top_category_only: bool = False  # legacy; use top_n_categories=1 instead
     top_n_categories: Optional[int] = None  # 1=top 1, 2=top 2, etc.; None=all get the rate
     is_rotating: bool = False
     is_additive: bool = False
@@ -197,7 +196,6 @@ class CardMultiplierGroupRead(BaseModel):
     multiplier: float
     cap_per_billing_cycle: Optional[float] = None
     cap_period_months: Optional[int] = None
-    top_category_only: bool = False  # legacy
     top_n_categories: Optional[int] = None  # 1=top 1, 2=top 2; None=all
     is_rotating: bool = False
     is_additive: bool = False
@@ -216,8 +214,6 @@ class CardMultiplierGroupRead(BaseModel):
                 for c in data.categories
             ]
             top_n = getattr(data, "top_n_categories", None)
-            if top_n is None and getattr(data, "top_category_only", False):
-                top_n = 1
             return handler(
                 {
                     "id": data.id,
@@ -229,7 +225,6 @@ class CardMultiplierGroupRead(BaseModel):
                     "is_rotating": bool(getattr(data, "is_rotating", False)),
                     "is_additive": bool(getattr(data, "is_additive", False)),
                     "rotation_weights": _build_rotation_weights(data),
-                    "top_category_only": top_n == 1 if top_n is not None else False,
                     "top_n_categories": top_n,
                     "categories": cats,
                 }
