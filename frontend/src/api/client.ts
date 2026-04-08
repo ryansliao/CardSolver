@@ -215,6 +215,7 @@ export interface WalletResult {
 }
 
 export type WalletCardAcquisitionType = 'opened' | 'product_change'
+export type WalletCardPanel = 'in_wallet' | 'future' | 'considering'
 
 export interface WalletCard {
   id: number
@@ -241,7 +242,7 @@ export interface WalletCard {
   closed_date: string | null
   transfer_enabler: boolean
   acquisition_type: WalletCardAcquisitionType
-  panel: 'on_deck' | 'in_wallet'
+  panel: WalletCardPanel
 }
 
 export interface Wallet {
@@ -295,7 +296,7 @@ export interface AddCardToWalletPayload {
   sub_earned_date?: string | null
   closed_date?: string | null
   acquisition_type?: WalletCardAcquisitionType
-  panel?: 'on_deck' | 'in_wallet'
+  panel?: WalletCardPanel
 }
 
 export interface WalletCurrencyBalance {
@@ -329,7 +330,7 @@ export interface UpdateWalletCardPayload {
   sub_earned_date?: string | null
   closed_date?: string | null
   acquisition_type?: WalletCardAcquisitionType | null
-  panel?: 'on_deck' | 'in_wallet'
+  panel?: WalletCardPanel
 }
 
 export const walletsApi = {

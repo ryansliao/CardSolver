@@ -728,7 +728,7 @@ class WalletCardBase(BaseModel):
     sub_projected_earn_date: Optional[date] = None
     closed_date: Optional[date] = None
     acquisition_type: Literal["opened", "product_change"] = "opened"
-    panel: Literal["on_deck", "in_wallet"] = "on_deck"
+    panel: Literal["in_wallet", "future", "considering"] = "considering"
 
 
 class WalletCardCreate(WalletCardBase):
@@ -749,7 +749,7 @@ class WalletCardUpdate(BaseModel):
     sub_earned_date: Optional[date] = None
     closed_date: Optional[date] = None
     acquisition_type: Optional[Literal["opened", "product_change"]] = None
-    panel: Optional[Literal["on_deck", "in_wallet"]] = None
+    panel: Optional[Literal["in_wallet", "future", "considering"]] = None
 
 
 class WalletCardRead(WalletCardBase):

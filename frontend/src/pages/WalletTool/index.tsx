@@ -261,32 +261,39 @@ export default function WalletToolPage() {
                 onSpendChange={() => runCalculation()}
               />
 
-              <CardsListPanel
-                wallet={selectedWallet}
-                roadmap={roadmap}
-                closeCardId={closeCardId}
-                closeDateInput={closeDateInput}
-                isUpdating={updateWalletCardMutation.isPending}
-                isRemoving={removeCardMutation.isPending}
-                onSetCloseCard={setCloseCardId}
-                onSetCloseDateInput={setCloseDateInput}
-                onUpdateCard={(cardId, payload) => {
-                  updateWalletCardMutation.mutate(
-                    { walletId: selectedWallet.id, cardId, payload },
-                    {
-                      onSuccess: () => {
-                        setCloseCardId(null)
-                        setCloseDateInput('')
-                      },
+              {/* Mirror the tab column on the Results panel so both inner panels
+                  end up the same visual width inside their grid cells. */}
+              <div className="flex h-full min-w-0 min-h-0 items-stretch">
+                <div className="flex-1 min-w-0 min-h-0">
+                  <CardsListPanel
+                    wallet={selectedWallet}
+                    roadmap={roadmap}
+                    closeCardId={closeCardId}
+                    closeDateInput={closeDateInput}
+                    isUpdating={updateWalletCardMutation.isPending}
+                    isRemoving={removeCardMutation.isPending}
+                    onSetCloseCard={setCloseCardId}
+                    onSetCloseDateInput={setCloseDateInput}
+                    onUpdateCard={(cardId, payload) => {
+                      updateWalletCardMutation.mutate(
+                        { walletId: selectedWallet.id, cardId, payload },
+                        {
+                          onSuccess: () => {
+                            setCloseCardId(null)
+                            setCloseDateInput('')
+                          },
+                        }
+                      )
+                    }}
+                    onRemoveCard={(cardId) =>
+                      removeCardMutation.mutate({ walletId: selectedWallet.id, cardId })
                     }
-                  )
-                }}
-                onRemoveCard={(cardId) =>
-                  removeCardMutation.mutate({ walletId: selectedWallet.id, cardId })
-                }
-                onEditCard={(wc) => setWalletCardModal({ mode: 'edit', walletCard: wc })}
-                onAddCard={() => setWalletCardModal({ mode: 'add' })}
-              />
+                    onEditCard={(wc) => setWalletCardModal({ mode: 'edit', walletCard: wc })}
+                    onAddCard={() => setWalletCardModal({ mode: 'add' })}
+                  />
+                </div>
+                <div className="shrink-0 w-[35px]" aria-hidden />
+              </div>
             </div>
 
           </>

@@ -87,7 +87,7 @@ export function CurrencySettingsModal({
         {!isCash ? (
           <>
             <div>
-              <label className="block text-xs text-slate-400 mb-1">¢ per point</label>
+              <label className="block text-xs text-slate-400 mb-1">¢ Per Point</label>
               <input
                 type="number"
                 min={0.01}
@@ -124,7 +124,7 @@ export function CurrencySettingsModal({
         {tracked && (
           <div>
             <label className="block text-xs text-slate-400 mb-1">
-              {isCash ? 'Initial balance (USD)' : 'Initial balance (pts)'}
+              {isCash ? 'Initial Balance (USD)' : 'Initial Balance (Pts)'}
             </label>
             <input
               type="number"
@@ -167,7 +167,7 @@ export function CurrencySettingsModal({
                 deleteBalanceMutation.mutate(currency.id)
             }}
           >
-            Remove from wallet
+            Remove From Wallet
           </button>
         ) : (
           <span />

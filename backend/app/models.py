@@ -501,8 +501,12 @@ class WalletCard(Base):
     # Acquisition tracking: "opened" = new application, "product_change" = PC from same issuer
     acquisition_type: Mapped[str] = mapped_column(String(20), nullable=False, default="opened")
 
-    # Panel placement: "on_deck" = not included in calculations, "in_wallet" = included
-    panel: Mapped[str] = mapped_column(String(10), nullable=False, default="on_deck")
+    # Panel placement:
+    #   "in_wallet"   = currently held; included in calculations
+    #   "future"      = not yet held but committed (added_date in the future); included in calculations
+    #   "considering" = candidate, not committed; excluded from calculations
+    # Closed state is derived from `closed_date` and is not stored in this column.
+    panel: Mapped[str] = mapped_column(String(16), nullable=False, default="considering")
 
     wallet: Mapped["Wallet"] = relationship(back_populates="wallet_cards")
     card: Mapped["Card"] = relationship(back_populates="wallet_cards")

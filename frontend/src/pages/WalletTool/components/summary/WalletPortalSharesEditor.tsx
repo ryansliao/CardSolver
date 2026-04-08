@@ -51,10 +51,13 @@ export function WalletPortalSharesEditor({
   // category name heuristics for resilience).
   const portalIssuers = useMemo(() => {
     if (!cards || walletCards.length === 0) return []
-    // Only "in_wallet" cards contribute to EAF, so on-deck cards must be
-    // excluded — otherwise the slider shows but moving it has no effect.
+    // Only cards that contribute to EAF count — i.e. "in_wallet" (held) and
+    // "future" (committed). "Considering" cards are excluded since moving the
+    // slider would have no effect on them.
     const inWalletCardIds = new Set(
-      walletCards.filter((wc) => wc.panel === 'in_wallet').map((wc) => wc.card_id),
+      walletCards
+        .filter((wc) => wc.panel === 'in_wallet' || wc.panel === 'future')
+        .map((wc) => wc.card_id),
     )
     const issuerMap = new Map<number, { id: number; name: string; cardNames: string[] }>()
     for (const c of cards) {

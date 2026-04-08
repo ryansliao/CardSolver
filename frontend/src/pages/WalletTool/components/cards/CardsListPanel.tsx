@@ -4,8 +4,27 @@ import type {
   UpdateWalletCardPayload,
   Wallet,
   WalletCard,
+  WalletCardPanel,
 } from '../../../../api/client'
 import { today } from '../../../../utils/format'
+
+const PANEL_LABELS: Record<WalletCardPanel, string> = {
+  in_wallet: 'In Wallet',
+  future: 'Future',
+  considering: 'Considering',
+}
+
+const PANEL_DRAG_CLASSES: Record<WalletCardPanel, string> = {
+  in_wallet: 'border-emerald-500 bg-emerald-950/20',
+  future: 'border-sky-500 bg-sky-950/20',
+  considering: 'border-indigo-500 bg-indigo-950/20',
+}
+
+const PANEL_DOT_CLASSES: Record<WalletCardPanel, string> = {
+  in_wallet: 'bg-emerald-400',
+  future: 'bg-sky-400',
+  considering: 'bg-amber-400',
+}
 
 /** Newest opening / PC date first; cards with no date sort last. */
 function compareWalletCardsByOpeningNewestFirst(a: WalletCard, b: WalletCard): number {
@@ -38,7 +57,7 @@ function CardItem({
   closeDateInput,
   isUpdating,
   isRemoving,
-  isInWallet,
+  panel,
   onSetCloseCard,
   onSetCloseDateInput,
   onUpdateCard,
@@ -51,7 +70,7 @@ function CardItem({
   closeDateInput: string
   isUpdating: boolean
   isRemoving: boolean
-  isInWallet: boolean
+  panel: WalletCardPanel
   onSetCloseCard: (cardId: number | null) => void
   onSetCloseDateInput: (v: string) => void
   onUpdateCard: (cardId: number, payload: UpdateWalletCardPayload) => void
@@ -60,6 +79,7 @@ function CardItem({
   draggable: boolean
 }) {
   const isClosed = !!wc.closed_date
+  const isFuture = panel === 'future'
 
   return (
     <li
@@ -75,18 +95,13 @@ function CardItem({
           <div className="flex items-center gap-2 flex-wrap">
             <span
               className={`inline-block w-2 h-2 rounded-full shrink-0 ${
-                isClosed ? 'bg-slate-500' : isInWallet ? 'bg-emerald-400' : 'bg-amber-400'
+                isClosed ? 'bg-slate-500' : PANEL_DOT_CLASSES[panel]
               }`}
-              title={isClosed ? `Closed ${wc.closed_date}` : isInWallet ? 'In Wallet' : 'On Deck'}
+              title={isClosed ? `Closed ${wc.closed_date}` : PANEL_LABELS[panel]}
             />
             <p className={`text-sm font-medium ${isClosed ? 'text-slate-400 line-through' : 'text-white'}`}>
               {wc.card_name ?? `Card #${wc.card_id}`}
             </p>
-            {wc.transfer_enabler && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-sky-900/50 text-sky-300 border border-sky-700/50" title="Enables partner transfers for this currency ecosystem">
-                Transfer
-              </span>
-            )}
             {wc.acquisition_type === 'product_change' && (
               <span className="text-[10px] font-medium bg-violet-900/60 text-violet-300 border border-violet-700/50 rounded px-1.5 py-0.5">
                 PC
@@ -96,12 +111,7 @@ function CardItem({
           <p className="text-xs text-slate-400 mt-0.5">
             {wc.acquisition_type === 'product_change' ? 'PC Date:' : 'Opening Date: '} {wc.added_date}
           </p>
-          {isInWallet && wc.sub_earned_date && (
-            <p className="text-xs text-slate-500 mt-0.5">
-              SUB Earned: {wc.sub_earned_date}
-            </p>
-          )}
-          {isInWallet && !wc.sub_earned_date && wc.sub_projected_earn_date && (
+          {isFuture && wc.sub_projected_earn_date && (
             <p className="text-xs text-slate-500 mt-0.5">
               SUB Projected: {wc.sub_projected_earn_date}
             </p>
@@ -224,19 +234,22 @@ export function CardsListPanel({
   onAddCard,
 }: Props) {
   const walletCards = wallet.wallet_cards ?? []
-  const onDeckCards = walletCards
-    .filter((wc) => wc.panel === 'on_deck' && !wc.closed_date)
-    .sort(compareWalletCardsByOpeningNewestFirst)
   const inWalletCards = walletCards
     .filter((wc) => wc.panel === 'in_wallet' && !wc.closed_date)
+    .sort(compareWalletCardsByOpeningNewestFirst)
+  const futureCards = walletCards
+    .filter((wc) => wc.panel === 'future' && !wc.closed_date)
+    .sort(compareWalletCardsByOpeningNewestFirst)
+  const consideringCards = walletCards
+    .filter((wc) => wc.panel === 'considering' && !wc.closed_date)
     .sort(compareWalletCardsByOpeningNewestFirst)
   const closedCards = walletCards
     .filter((wc) => !!wc.closed_date)
     .sort(compareWalletCardsByOpeningNewestFirst)
 
-  const [dragOverPanel, setDragOverPanel] = useState<'on_deck' | 'in_wallet' | null>(null)
+  const [dragOverPanel, setDragOverPanel] = useState<WalletCardPanel | null>(null)
 
-  function handleDrop(targetPanel: 'on_deck' | 'in_wallet', e: React.DragEvent) {
+  function handleDrop(targetPanel: WalletCardPanel, e: React.DragEvent) {
     e.preventDefault()
     setDragOverPanel(null)
     const cardId = Number(e.dataTransfer.getData('text/plain'))
@@ -246,13 +259,13 @@ export function CardsListPanel({
     onUpdateCard(cardId, { panel: targetPanel })
   }
 
-  function handleDragOver(targetPanel: 'on_deck' | 'in_wallet', e: React.DragEvent) {
+  function handleDragOver(targetPanel: WalletCardPanel, e: React.DragEvent) {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
     if (dragOverPanel !== targetPanel) setDragOverPanel(targetPanel)
   }
 
-  function handleDragLeave(targetPanel: 'on_deck' | 'in_wallet', e: React.DragEvent) {
+  function handleDragLeave(targetPanel: WalletCardPanel, e: React.DragEvent) {
     if (e.currentTarget.contains(e.relatedTarget as Node)) return
     if (dragOverPanel === targetPanel) setDragOverPanel(null)
   }
@@ -271,7 +284,9 @@ export function CardsListPanel({
 
   return (
     <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 min-w-0 min-h-0 h-full flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between mb-3 shrink-0">
+      {/* h-7 matches the Wallet Summary header so the In Wallet panel top
+          lines up with the top of the summary statistics row. */}
+      <div className="h-7 flex items-center justify-between mb-3 shrink-0">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-slate-200">Cards</h2>
           {roadmap && (
@@ -310,78 +325,56 @@ export function CardsListPanel({
         </button>
       </div>
       <div className="min-h-0 overflow-y-auto flex-1 flex flex-col gap-4">
-        {/* In Wallet panel */}
-        <div
-          className={`rounded-lg border transition-colors ${
-            dragOverPanel === 'in_wallet'
-              ? 'border-emerald-500 bg-emerald-950/20'
-              : 'border-slate-700/50'
-          }`}
-          onDragOver={(e) => handleDragOver('in_wallet', e)}
-          onDragLeave={(e) => handleDragLeave('in_wallet', e)}
-          onDrop={(e) => handleDrop('in_wallet', e)}
-        >
-          <div className="px-3 pt-2 pb-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">In Wallet</p>
+        {(
+          [
+            ['in_wallet', inWalletCards],
+            ['future', futureCards],
+            ['considering', consideringCards],
+          ] as const
+        ).map(([panel, cards]) => (
+          <div
+            key={panel}
+            className={`rounded-lg border transition-colors ${
+              dragOverPanel === panel ? PANEL_DRAG_CLASSES[panel] : 'border-slate-700/50'
+            }`}
+            onDragOver={(e) => handleDragOver(panel, e)}
+            onDragLeave={(e) => handleDragLeave(panel, e)}
+            onDrop={(e) => handleDrop(panel, e)}
+          >
+            <div className="px-3 pt-2 pb-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                {PANEL_LABELS[panel]}
+              </p>
+            </div>
+            <ul className="space-y-2 px-2 pb-2">
+              {cards.length === 0 && (
+                <li className="text-slate-600 text-xs py-2 text-center">No Cards Added</li>
+              )}
+              {cards.map((wc) => (
+                <CardItem
+                  key={wc.id}
+                  wc={wc}
+                  panel={panel}
+                  draggable
+                  {...sharedCardProps}
+                />
+              ))}
+            </ul>
           </div>
-          <ul className="space-y-2 px-2 pb-2">
-            {inWalletCards.length === 0 && (
-              <li className="text-slate-600 text-xs py-2 text-center">No Cards Added</li>
-            )}
-            {inWalletCards.map((wc) => (
-              <CardItem
-                key={wc.id}
-                wc={wc}
-                isInWallet
-                draggable
-                {...sharedCardProps}
-              />
-            ))}
-          </ul>
-        </div>
-
-        {/* On Deck panel */}
-        <div
-          className={`rounded-lg border transition-colors ${
-            dragOverPanel === 'on_deck'
-              ? 'border-indigo-500 bg-indigo-950/20'
-              : 'border-slate-700/50'
-          }`}
-          onDragOver={(e) => handleDragOver('on_deck', e)}
-          onDragLeave={(e) => handleDragLeave('on_deck', e)}
-          onDrop={(e) => handleDrop('on_deck', e)}
-        >
-          <div className="px-3 pt-2 pb-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">On Deck</p>
-          </div>
-          <ul className="space-y-2 px-2 pb-2">
-            {onDeckCards.length === 0 && (
-              <li className="text-slate-600 text-xs py-2 text-center">No Cards Added</li>
-            )}
-            {onDeckCards.map((wc) => (
-              <CardItem
-                key={wc.id}
-                wc={wc}
-                isInWallet={false}
-                draggable
-                {...sharedCardProps}
-              />
-            ))}
-          </ul>
-        </div>
+        ))}
 
         {/* Closed Cards panel */}
         {closedCards.length > 0 && (
           <div className="rounded-lg border border-slate-700/50">
             <div className="px-3 pt-2 pb-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Closed Cards</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Closed</p>
             </div>
             <ul className="space-y-2 px-2 pb-2">
               {closedCards.map((wc) => (
                 <CardItem
                   key={wc.id}
                   wc={wc}
-                  isInWallet={wc.panel === 'in_wallet'}
+                  panel={wc.panel}
                   draggable={false}
                   {...sharedCardProps}
                 />

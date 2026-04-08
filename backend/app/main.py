@@ -855,7 +855,7 @@ def _wc_read(wc: WalletCard, card: Card) -> WalletCardRead:
         sub_projected_earn_date=wc.sub_projected_earn_date,
         closed_date=wc.closed_date,
         acquisition_type=cast(Literal["opened", "product_change"], wc.acquisition_type),
-        panel=cast(Literal["on_deck", "in_wallet"], wc.panel),
+        panel=cast(Literal["in_wallet", "future", "considering"], wc.panel),
     )
 
 
@@ -1636,7 +1636,7 @@ async def _effective_earn_currency_ids_for_wallet(
     """
     Currency IDs this wallet's in-wallet cards effectively earn (upgrade rule
     matches calculator: e.g. UR Cash → UR when a UR card is also in the wallet).
-    On-deck cards are excluded — only cards actively in the wallet count.
+    Considering cards are excluded — only in_wallet and future cards count.
     """
     result = await db.execute(
         select(WalletCard)
@@ -1645,7 +1645,10 @@ async def _effective_earn_currency_ids_for_wallet(
             .selectinload(Card.currency_obj)
             .selectinload(Currency.converts_to_currency),
         )
-        .where(WalletCard.wallet_id == wallet_id, WalletCard.panel == "in_wallet")
+        .where(
+            WalletCard.wallet_id == wallet_id,
+            WalletCard.panel.in_(("in_wallet", "future")),
+        )
     )
     wcs = list(result.scalars().all())
     if not wcs:
@@ -1851,10 +1854,12 @@ async def wallet_results(
     # The calculator still models the chosen window at wallet level, but cards opened
     # later in that window must not be excluded entirely or only the earliest card(s)
     # contribute to projected balances and value.
+    # "in_wallet" = currently held; "future" = committed but not yet acquired.
+    # Both contribute to projections; "considering" cards are excluded.
     active_wallet_cards = [
         wc
         for wc in wallet.wallet_cards
-        if wc.panel == "in_wallet"
+        if wc.panel in ("in_wallet", "future")
         and wc.added_date < window_end
         and (wc.closed_date is None or wc.closed_date >= ref_date)
     ]
@@ -1929,11 +1934,20 @@ async def wallet_results(
     selected_card_data = [c for c in modified_cards if c.id in card_ids_sel]
     wcids = {c.currency.id for c in selected_card_data}
 
+    # In-wallet cards are excluded from all SUB modeling: the calculation window
+    # starts at the current date, so any SUB on a card already in the wallet is
+    # historical and must not be projected, planned, or counted toward totals.
+    in_wallet_panel_card_ids = {
+        wc.card_id for wc in active_wallet_cards if wc.panel == "in_wallet"
+    }
+
     # Cards whose SUB has already been earned (user toggled in UI) need no
     # spend allocation — exclude them from priority/planning entirely.
     sub_already_earned_ids = {wc.card_id for wc in active_wallet_cards if wc.sub_earned_date}
 
     def _has_sub_window(cd: "CardData") -> bool:
+        if cd.id in in_wallet_panel_card_ids:
+            return False
         if cd.id in sub_already_earned_ids:
             return False
         if not cd.sub or not cd.sub_min_spend or not cd.wallet_added_date:
@@ -1967,38 +1981,53 @@ async def wallet_results(
     plan_earn_dates: dict[int, date] = {s.card_id: s.projected_earn_date for s in sub_plan.schedules}
     projected_dates: dict[int, Optional[date]] = {}
     for wc in active_wallet_cards:
-        lib = library_cards_by_id.get(wc.card_id)
-        eff_min = wc.sub_min_spend if wc.sub_min_spend is not None else (lib.sub_min_spend if lib else None)
-        eff_months = wc.sub_months if wc.sub_months is not None else (lib.sub_months if lib else None)
-        eff_sub = wc.sub if wc.sub is not None else (lib.sub if lib else None)
-        if wc.card_id in plan_earn_dates:
-            proj = plan_earn_dates[wc.card_id]
-        elif not eff_sub or not eff_min:
-            proj = None
+        # In-wallet cards (currently held) don't get auto-projections — the user
+        # manages SUB state via the sub_earned_date toggle. Only future cards
+        # (committed but not yet acquired) get a projected earn date.
+        if wc.panel == "in_wallet":
+            proj: Optional[date] = None
         else:
-            daily_rate = card_daily_rates.get(wc.card_id, 0.0)
-            proj = _projected_sub_earn_date(wc.added_date, eff_min, eff_months, daily_rate)
+            lib = library_cards_by_id.get(wc.card_id)
+            eff_min = wc.sub_min_spend if wc.sub_min_spend is not None else (lib.sub_min_spend if lib else None)
+            eff_months = wc.sub_months if wc.sub_months is not None else (lib.sub_months if lib else None)
+            eff_sub = wc.sub if wc.sub is not None else (lib.sub if lib else None)
+            if wc.card_id in plan_earn_dates:
+                proj = plan_earn_dates[wc.card_id]
+            elif not eff_sub or not eff_min:
+                proj = None
+            else:
+                daily_rate = card_daily_rates.get(wc.card_id, 0.0)
+                proj = _projected_sub_earn_date(wc.added_date, eff_min, eff_months, daily_rate)
         projected_dates[wc.card_id] = proj
         if wc.sub_projected_earn_date != proj:
             wc.sub_projected_earn_date = proj
 
     # Patch sub_earnable, sub_already_earned, and sub_projected_earn_date onto
-    # each CardData.  Cards whose SUB was already earned keep sub_earnable=True
-    # (the bonus still counts) and sub_already_earned=True (no spend redirection).
-    # Cards in the plan get sub_earnable from plan membership.  Others use the
-    # per-card spend rate check.
+    # each CardData.  In-wallet cards get sub_earnable=False unconditionally so
+    # the SUB bonus, sub_spend_earn, and SUB opportunity cost are all excluded
+    # from totals — calc starts at the current date so any SUB on a held card
+    # is historical and must not contribute. Cards whose SUB was already earned
+    # keep sub_earnable=True (the bonus still counts) and sub_already_earned=True
+    # (no spend redirection). Cards in the plan get sub_earnable from plan
+    # membership. Others use the per-card spend rate check.
     plan_card_ids = {s.card_id for s in sub_plan.schedules}
     modified_cards = [
         dataclasses.replace(
             c,
-            sub_already_earned=c.id in sub_already_earned_ids,
+            sub_already_earned=(
+                False if c.id in in_wallet_panel_card_ids else c.id in sub_already_earned_ids
+            ),
             sub_earnable=(
-                True
-                if c.id in sub_already_earned_ids
+                False
+                if c.id in in_wallet_panel_card_ids
                 else (
-                    (c.id in plan_card_ids)
-                    if c.id in sub_priority_card_ids
-                    else _is_sub_earnable(c.sub_min_spend, c.sub_months, card_daily_rates.get(c.id, 0.0))
+                    True
+                    if c.id in sub_already_earned_ids
+                    else (
+                        (c.id in plan_card_ids)
+                        if c.id in sub_priority_card_ids
+                        else _is_sub_earnable(c.sub_min_spend, c.sub_months, card_daily_rates.get(c.id, 0.0))
+                    )
                 )
             ),
             sub_projected_earn_date=projected_dates.get(c.id, c.sub_projected_earn_date),
@@ -2080,7 +2109,9 @@ async def wallet_roadmap(
     personal_cards_24mo: list[str] = []
     cutoff_24mo = today - timedelta(days=730)
 
-    in_wallet_cards = [wc for wc in wallet.wallet_cards if wc.panel == "in_wallet"]
+    in_wallet_cards = [
+        wc for wc in wallet.wallet_cards if wc.panel in ("in_wallet", "future")
+    ]
 
     for wc in in_wallet_cards:
         card = wc.card
@@ -2095,9 +2126,16 @@ async def wallet_roadmap(
         eff_sub_months = wc.sub_months if wc.sub_months is not None else card.sub_months
         eff_sub_min = wc.sub_min_spend if wc.sub_min_spend is not None else card.sub_min_spend
 
-        # Auto-compute projected earn date for display (uses stored value if already set)
+        # Auto-compute projected earn date for display (uses stored value if already set).
+        # In-wallet cards (currently held) skip projection — only future cards get one.
         sub_projected = wc.sub_projected_earn_date
-        if sub_projected is None and eff_sub and eff_sub_min and not wc.sub_earned_date:
+        if (
+            sub_projected is None
+            and eff_sub
+            and eff_sub_min
+            and not wc.sub_earned_date
+            and wc.panel != "in_wallet"
+        ):
             sub_projected = _projected_sub_earn_date(wc.added_date, eff_sub_min, eff_sub_months, roadmap_daily_rate)
 
         # Determine SUB status

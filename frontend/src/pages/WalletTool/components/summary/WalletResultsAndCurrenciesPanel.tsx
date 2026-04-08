@@ -224,14 +224,16 @@ export function WalletResultsAndCurrenciesPanel({
       )}
 
       <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden">
-      <div className="shrink-0 flex items-center justify-between mb-3">
+      {/* h-7 keeps this header the same height as the Cards panel header so the
+          top of the summary statistics row lines up with the top of the In Wallet panel. */}
+      <div className="shrink-0 h-7 flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-slate-200">Wallet Summary</h2>
         {walletId != null && (
           <div className="flex items-center gap-6">
             <LabeledToggle
-              leftLabel="No SUBs"
-              rightLabel="SUBs"
-              isRight={includeSubs}
+              leftLabel="SUBs"
+              rightLabel="No SUBs"
+              isRight={!includeSubs}
               onToggle={() => setIncludeSubs((v) => !v)}
               activeColor="emerald"
               ariaLabel="Toggle SUB inclusion"
@@ -352,11 +354,18 @@ export function WalletResultsAndCurrenciesPanel({
                   const isCash = rk === 'cash'
                   const estValue = b.balance > 0 ? (b.balance * cpp) / 100 : 0
                   const cards = cardsByCurrency[b.currency_name] ?? []
-                  const currencyTotalPoints = cards.reduce((s, c) => s + adjustedCardPoints(c), 0)
-                  const currencyTotalCashDollars = cards.reduce(
-                    (s, c) => s + (adjustedCardPoints(c) * c.cents_per_point) / 100,
-                    0
-                  )
+                  // Initial balance is a one-time, static amount; scale it the
+                  // same way as projection earn so the header total stays
+                  // consistent across the Annual/Total toggle
+                  // (Total = initial + projected; Annual = (initial + projected) / years).
+                  const initialBalanceScaled = b.initial_balance * pointsMultiplier
+                  const currencyTotalPoints =
+                    cards.reduce((s, c) => s + adjustedCardPoints(c), 0) + initialBalanceScaled
+                  const currencyTotalCashDollars =
+                    cards.reduce(
+                      (s, c) => s + (adjustedCardPoints(c) * c.cents_per_point) / 100,
+                      0
+                    ) + (initialBalanceScaled * cpp) / 100
                   const hasResultData = result != null && cards.length > 0
 
                   return (

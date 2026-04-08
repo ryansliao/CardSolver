@@ -2433,6 +2433,13 @@ def compute_wallet(
                 cat_earn = list(cat_earn) + [("SUB Spend", float(card.sub_spend_earn))]
                 cat_earn.sort(key=lambda x: x[1], reverse=True)
 
+        # Surface only the SUB values that were actually counted in totals.
+        # When sub_earnable is False (e.g. in-wallet cards whose SUB is historical
+        # or cards the user can't reach the min spend on), the calculator already
+        # excluded these from total_points and effective_annual_fee — reporting
+        # the raw library values here would let the UI double-subtract them.
+        reported_sub = card.sub if card.sub_earnable else 0
+        reported_sub_spend_earn = card.sub_spend_earn if card.sub_earnable else 0
         card_results.append(
             CardResult(
                 card_id=card.id,
@@ -2444,10 +2451,10 @@ def compute_wallet(
                 credit_valuation=round(credit_val, 2),
                 annual_fee=card.annual_fee,
                 first_year_fee=card.first_year_fee,
-                sub=card.sub,
+                sub=reported_sub,
                 annual_bonus=card.annual_bonus,
                 sub_extra_spend=round(sub_extra, 2),
-                sub_spend_earn=card.sub_spend_earn,
+                sub_spend_earn=reported_sub_spend_earn,
                 sub_opp_cost_dollars=net_opp,
                 sub_opp_cost_gross_dollars=gross_opp,
                 avg_spend_multiplier=round(avg_mult, 4),
