@@ -1,0 +1,50 @@
+"""Card library endpoints."""
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..database import get_db
+from ..helpers import card_404, card_load_opts
+from ..models import Card
+from ..schemas import CardRead, UpdateCardLibraryPayload
+
+router = APIRouter(tags=["cards"])
+
+_CARD_LIBRARY_PATCH_FIELDS = frozenset(
+    {"sub", "sub_min_spend", "sub_months", "annual_fee", "first_year_fee", "transfer_enabler"}
+)
+
+
+@router.get("/cards", response_model=list[CardRead])
+async def list_cards(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Card).options(*card_load_opts()))
+    return result.scalars().all()
+
+
+@router.patch("/cards/{card_id}", response_model=CardRead)
+async def update_card_library(
+    card_id: int,
+    payload: UpdateCardLibraryPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update editable card library fields (SUB, min spend, months, fees)."""
+    result = await db.execute(select(Card).where(Card.id == card_id))
+    card = result.scalar_one_or_none()
+    if not card:
+        raise card_404(card_id)
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No fields to update",
+        )
+    for key, value in data.items():
+        if key not in _CARD_LIBRARY_PATCH_FIELDS:
+            continue
+        setattr(card, key, value)
+    await db.commit()
+    refreshed = await db.execute(
+        select(Card).where(Card.id == card_id).options(*card_load_opts())
+    )
+    return refreshed.scalar_one()

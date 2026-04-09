@@ -206,13 +206,34 @@ frontend/src/
 
 ```
 backend/app/
+  main.py            # FastAPI app creation, lifespan, middleware, router includes, SPA serving
   constants.py       # DEFAULT_USER_ID, ALL_OTHER_CATEGORY, ALLOCATION_SUM_TOLERANCE
-  main.py            # FastAPI app, all endpoints, spend category seed
   models.py          # SQLAlchemy ORM models
   schemas.py         # Pydantic v2 request/response schemas
   calculator.py      # Pure calculation engine (no DB dependency)
   db_helpers.py      # DB → calculator bridge: load_card_data, load_spend, etc.
   database.py        # Engine setup, session factory, idempotent migrations
+  helpers.py         # Shared endpoint helpers (404 factories, selectinload builders, SUB date math, schema conversion)
+  seed.py            # Startup seed logic (rotating cards, portal premiums, credits, travel portals)
+  date_utils.py      # Pure date utility functions
+  routers/
+    __init__.py
+    issuers.py         # GET /issuers, GET /issuers/application-rules
+    currencies.py      # GET /currencies
+    cards.py           # GET /cards, PATCH /cards/{id}
+    credits.py         # GET /credits, POST/PATCH/DELETE /admin/credits
+    spend.py           # GET /spend, GET /app-spend-categories
+    travel_portals.py  # GET /travel-portals, POST/PUT/DELETE /admin/travel-portals
+    wallets.py         # Wallet CRUD, add/update/remove wallet cards
+    wallet_spend.py    # Wallet spend categories (legacy) and spend items (current)
+    wallet_currencies.py # Currency balances and CPP overrides
+    wallet_credits.py  # Wallet card credit overrides
+    wallet_multipliers.py # Wallet card multiplier overrides
+    wallet_groups.py   # Wallet card group category selections
+    wallet_rotations.py # Wallet card rotation overrides
+    wallet_portals.py  # Wallet portal shares
+    wallet_results.py  # GET /wallets/{id}/results, GET /wallets/{id}/roadmap
+    admin.py           # Admin CRUD: issuers, currencies, spend categories, cards, multipliers, groups, rotating history
 ```
 
 ## Known Conventions
