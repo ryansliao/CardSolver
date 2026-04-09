@@ -18,51 +18,9 @@ function formatDuration(years: number, months: number): string {
   return `${y} yr ${m} mo`
 }
 
-interface LabeledToggleProps {
-  leftLabel: string
-  rightLabel: string
-  isRight: boolean
-  onToggle: () => void
-  activeColor: 'emerald' | 'indigo'
-  ariaLabel: string
-  title?: string
-}
-
-function LabeledToggle({
-  leftLabel,
-  rightLabel,
-  isRight,
-  onToggle,
-  activeColor,
-  ariaLabel,
-  title,
-}: LabeledToggleProps) {
-  const activeText = activeColor === 'emerald' ? 'text-emerald-300' : 'text-indigo-300'
-  const knobColor = activeColor === 'emerald' ? 'bg-emerald-400' : 'bg-indigo-400'
-  return (
-    <div className="flex items-center gap-1.5 text-xs select-none" title={title}>
-      <span className={!isRight ? `${activeText} font-medium` : 'text-slate-500'}>
-        {leftLabel}
-      </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={isRight}
-        aria-label={ariaLabel}
-        onClick={onToggle}
-        className="relative w-8 h-4 rounded-full bg-slate-700 hover:bg-slate-600 transition-colors"
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full ${knobColor} transition-transform ${
-            isRight ? 'translate-x-4' : 'translate-x-0'
-          }`}
-        />
-      </button>
-      <span className={isRight ? `${activeText} font-medium` : 'text-slate-500'}>
-        {rightLabel}
-      </span>
-    </div>
-  )
+/** Annual point income for a card (excludes SUB points). */
+function cardAnnualPointIncome(c: CardResult, totalYears: number): number {
+  return (c.total_points - c.sub - c.sub_spend_earn) / totalYears
 }
 
 interface Props {
@@ -93,8 +51,6 @@ export function WalletResultsAndCurrenciesPanel({
   const [editingCurrencyId, setEditingCurrencyId] = useState<number | null>(null)
   const [activeTab, setActiveTab] = useState<WalletSummaryTab>('summary')
   const [showDurationSlider, setShowDurationSlider] = useState(false)
-  const [includeSubs, setIncludeSubs] = useState(true)
-  const [calcMode, setCalcMode] = useState<'annual' | 'total'>('annual')
 
   const { data: currencies = [], isLoading: currenciesLoading } = useQuery({
     queryKey: queryKeys.walletCurrencies(walletId),
@@ -127,31 +83,14 @@ export function WalletResultsAndCurrenciesPanel({
   }
 
   const totalYears = Math.max(durationYears + durationMonths / 12, 1 / 12)
-  const isTotal = calcMode === 'total'
-  // Multipliers convert calculator outputs to the requested mode.
-  // - effective_annual_fee and annual_fee are per-year → ×totalYears for Total
-  // - total_points is already total over the duration → ÷totalYears for Annual
-  const feeMultiplier = isTotal ? totalYears : 1
-  const pointsMultiplier = isTotal ? 1 : 1 / totalYears
-  const subDollarsAnnualized = (c: CardResult) =>
-    ((c.sub + c.sub_spend_earn) * c.cents_per_point) / 100 / totalYears
-  const adjustedEffectiveAF = (c: CardResult) =>
-    (c.effective_annual_fee + (includeSubs ? 0 : subDollarsAnnualized(c))) * feeMultiplier
-  const adjustedCardPoints = (c: CardResult) => {
-    const subPts = includeSubs ? 0 : c.sub + c.sub_spend_earn
-    return (c.total_points - subPts) * pointsMultiplier
-  }
 
   const selectedCards = result?.card_results.filter((c) => c.selected) ?? []
-  const totalAnnualFees = selectedCards.reduce((s, c) => s + c.annual_fee * feeMultiplier, 0)
-  const totalEffectiveAF = selectedCards.reduce((s, c) => s + adjustedEffectiveAF(c), 0)
-  const totalWalletPoints = selectedCards.reduce((s, c) => s + adjustedCardPoints(c), 0)
-
-  const eafLabel = isTotal ? 'Total Expected Value' : 'Effective Annual Fee'
-  const totalEafDisplay = isTotal ? -totalEffectiveAF : totalEffectiveAF
-  const pointsLabel = isTotal ? 'Total Points' : 'Annual Points'
-  const feesLabel = isTotal ? 'Total Fees' : 'Total Annual Fees'
-  const cardEafLabel = isTotal ? 'Eff. Total Fee' : 'Eff. Annual Fee'
+  const totalAnnualFees = selectedCards.reduce((s, c) => s + c.annual_fee, 0)
+  const totalEffectiveAF = selectedCards.reduce((s, c) => s + c.effective_annual_fee, 0)
+  const totalAnnualPoints = selectedCards.reduce(
+    (s, c) => s + cardAnnualPointIncome(c, totalYears),
+    0
+  )
 
   const cardsByCurrency = useMemo(() => {
     if (!result) return {} as Record<string, CardResult[]>
@@ -230,24 +169,6 @@ export function WalletResultsAndCurrenciesPanel({
         <h2 className="text-sm font-semibold text-slate-200">Wallet Summary</h2>
         {walletId != null && (
           <div className="flex items-center gap-6">
-            <LabeledToggle
-              leftLabel="SUBs"
-              rightLabel="No SUBs"
-              isRight={!includeSubs}
-              onToggle={() => setIncludeSubs((v) => !v)}
-              activeColor="emerald"
-              ariaLabel="Toggle SUB inclusion"
-              title={includeSubs ? 'SUBs included in totals' : 'SUBs excluded from totals'}
-            />
-            <LabeledToggle
-              leftLabel="Annual"
-              rightLabel="Total"
-              isRight={isTotal}
-              onToggle={() => setCalcMode((m) => (m === 'annual' ? 'total' : 'annual'))}
-              activeColor="indigo"
-              ariaLabel="Toggle annual vs total"
-              title={isTotal ? `Showing totals over ${formatDuration(durationYears, durationMonths)}` : 'Showing per-year values'}
-            />
             <button
               type="button"
               onClick={() => setShowDurationSlider((v) => !v)}
@@ -319,15 +240,15 @@ export function WalletResultsAndCurrenciesPanel({
               {result ? (
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-indigo-900/40 border border-indigo-700 rounded-xl p-3 text-center">
-                    <p className="text-[10px] text-indigo-300 uppercase tracking-wider">{eafLabel}</p>
-                    <p className="text-xl font-bold text-indigo-100 mt-0.5">{formatMoney(totalEafDisplay)}</p>
+                    <p className="text-[10px] text-indigo-300 uppercase tracking-wider">Effective Annual Fee</p>
+                    <p className="text-xl font-bold text-indigo-100 mt-0.5">{formatMoney(totalEffectiveAF)}</p>
                   </div>
                   <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 text-center">
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">{pointsLabel}</p>
-                    <p className="text-xl font-bold text-white mt-0.5">{formatPoints(Math.round(totalWalletPoints))}</p>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">Annual Point Income</p>
+                    <p className="text-xl font-bold text-white mt-0.5">{formatPoints(Math.round(totalAnnualPoints))}</p>
                   </div>
                   <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 text-center">
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">{feesLabel}</p>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">Total Annual Fees</p>
                     <p className="text-xl font-bold text-white mt-0.5">{formatMoney(totalAnnualFees)}</p>
                   </div>
                 </div>
@@ -354,18 +275,10 @@ export function WalletResultsAndCurrenciesPanel({
                   const isCash = rk === 'cash'
                   const estValue = b.balance > 0 ? (b.balance * cpp) / 100 : 0
                   const cards = cardsByCurrency[b.currency_name] ?? []
-                  // Initial balance is a one-time, static amount; scale it the
-                  // same way as projection earn so the header total stays
-                  // consistent across the Annual/Total toggle
-                  // (Total = initial + projected; Annual = (initial + projected) / years).
-                  const initialBalanceScaled = b.initial_balance * pointsMultiplier
-                  const currencyTotalPoints =
-                    cards.reduce((s, c) => s + adjustedCardPoints(c), 0) + initialBalanceScaled
-                  const currencyTotalCashDollars =
-                    cards.reduce(
-                      (s, c) => s + (adjustedCardPoints(c) * c.cents_per_point) / 100,
-                      0
-                    ) + (initialBalanceScaled * cpp) / 100
+                  const currencyAnnualPts = cards.reduce(
+                    (s, c) => s + cardAnnualPointIncome(c, totalYears),
+                    0
+                  )
                   const hasResultData = result != null && cards.length > 0
 
                   return (
@@ -379,15 +292,18 @@ export function WalletResultsAndCurrenciesPanel({
                           >
                             {b.currency_name}
                           </span>
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex items-center gap-3 shrink-0">
+                            {hasResultData && (
+                              <span className="text-xs text-slate-500 tabular-nums">
+                                {isCash
+                                  ? `+${formatMoney((currencyAnnualPts * cpp) / 100)}/Year`
+                                  : `+${formatPoints(Math.round(currencyAnnualPts))}/Year`}
+                              </span>
+                            )}
                             <span className="text-sm font-semibold text-slate-300 tabular-nums">
-                              {hasResultData
-                                ? isCash
-                                  ? formatMoney(currencyTotalCashDollars)
-                                  : `${formatPoints(Math.round(currencyTotalPoints))} Pts`
-                                : isCash
-                                  ? formatCashRewardUnits(b.balance, cpp)
-                                  : `${formatPoints(b.balance)} Pts`}
+                              {isCash
+                                ? formatCashRewardUnits(b.balance, cpp)
+                                : `${formatPoints(b.balance)} Pts`}
                             </span>
                             <button
                               type="button"
@@ -427,14 +343,14 @@ export function WalletResultsAndCurrenciesPanel({
                       {cards.length > 0 && (
                         <div className="border-t border-slate-700/60">
                           {cards.map((card, idx) => {
-                            const cardEffectiveAF = adjustedEffectiveAF(card)
+                            const cardEffectiveAF = card.effective_annual_fee
                             const isLast = idx === cards.length - 1
                             const cardIsCash = (card.effective_reward_kind ?? 'points') === 'cash'
-                            const cardTotalPts = adjustedCardPoints(card)
-                            const totalEarnNumber = cardIsCash
-                              ? formatMoney((cardTotalPts * card.cents_per_point) / 100)
-                              : formatPoints(Math.round(cardTotalPts))
-                            const totalEarnUnit = cardIsCash ? 'Cash' : 'Pts'
+                            const annualPts = cardAnnualPointIncome(card, totalYears)
+                            const annualPtsDisplay = cardIsCash
+                              ? `+${formatMoney((annualPts * card.cents_per_point) / 100)}`
+                              : `+${formatPoints(Math.round(annualPts))}`
+                            const annualPtsUnit = cardIsCash ? '/Year' : ' Pts/Year'
                             return (
                               <div
                                 key={card.card_id}
@@ -450,12 +366,14 @@ export function WalletResultsAndCurrenciesPanel({
                                       {card.card_name}
                                     </p>
                                     <p className="text-xs text-slate-500 mt-0.5">
-                                      {totalEarnNumber} {totalEarnUnit}
+                                      {annualPtsDisplay}{annualPtsUnit}
+                                      <span className="text-slate-600 mx-1">·</span>
+                                      <span>{formatMoney(card.annual_fee)} Annual Fee</span>
                                       {card.credit_valuation !== 0 && (
-                                        <span className="text-slate-600 mx-1">·</span>
-                                      )}
-                                      {card.credit_valuation !== 0 && (
-                                        <span>{formatMoney(card.credit_valuation)} Credit Value</span>
+                                        <>
+                                          <span className="text-slate-600 mx-1">·</span>
+                                          <span>{formatMoney(card.credit_valuation)} Credit Value</span>
+                                        </>
                                       )}
                                     </p>
                                   </div>
@@ -465,7 +383,7 @@ export function WalletResultsAndCurrenciesPanel({
                                     >
                                       {formatMoney(cardEffectiveAF)}
                                     </p>
-                                    <p className="text-xs text-slate-500">{cardEafLabel}</p>
+                                    <p className="text-xs text-slate-500">Eff. Annual Fee</p>
                                   </div>
                                 </div>
                               </div>
@@ -490,7 +408,7 @@ export function WalletResultsAndCurrenciesPanel({
               <SpendTabContent
                 walletId={walletId}
                 selectedCards={selectedCards}
-                isTotal={isTotal}
+                isTotal={false}
                 totalYears={totalYears}
                 onSpendChange={onSpendChange}
               />
