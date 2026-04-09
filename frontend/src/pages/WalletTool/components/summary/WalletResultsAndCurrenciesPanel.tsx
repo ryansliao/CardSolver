@@ -292,13 +292,16 @@ export function WalletResultsAndCurrenciesPanel({
                           >
                             {b.currency_name}
                           </span>
-                          <div className="flex items-center gap-3 shrink-0">
+                          <div className="flex items-center shrink-0">
                             {hasResultData && (
-                              <span className="text-xs text-slate-500 tabular-nums">
-                                {isCash
-                                  ? `+${formatMoney((currencyAnnualPts * cpp) / 100)}/Year`
-                                  : `+${formatPoints(Math.round(currencyAnnualPts))}/Year`}
-                              </span>
+                              <>
+                                <span className="text-xs text-slate-500 tabular-nums">
+                                  {isCash
+                                    ? `+${formatMoney((currencyAnnualPts * cpp) / 100)}/Year`
+                                    : `+${formatPoints(Math.round(currencyAnnualPts))}/Year`}
+                                </span>
+                                <span className="text-slate-600 mx-2">·</span>
+                              </>
                             )}
                             <span className="text-sm font-semibold text-slate-300 tabular-nums">
                               {isCash
@@ -308,6 +311,7 @@ export function WalletResultsAndCurrenciesPanel({
                             <button
                               type="button"
                               onClick={() => setEditingCurrencyId(b.currency_id)}
+                              style={{ marginLeft: '0.5rem' }}
                               className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-700 transition-colors"
                               aria-label="Edit currency"
                               title="Edit"
@@ -350,7 +354,7 @@ export function WalletResultsAndCurrenciesPanel({
                             const annualPtsDisplay = cardIsCash
                               ? `+${formatMoney((annualPts * card.cents_per_point) / 100)}`
                               : `+${formatPoints(Math.round(annualPts))}`
-                            const annualPtsUnit = cardIsCash ? '/Year' : ' Pts/Year'
+                            const annualPtsUnit = '/Year'
                             return (
                               <div
                                 key={card.card_id}
@@ -366,9 +370,7 @@ export function WalletResultsAndCurrenciesPanel({
                                       {card.card_name}
                                     </p>
                                     <p className="text-xs text-slate-500 mt-0.5">
-                                      {annualPtsDisplay}{annualPtsUnit}
-                                      <span className="text-slate-600 mx-1">·</span>
-                                      <span>{formatMoney(card.annual_fee)} Annual Fee</span>
+                                      {formatMoney(card.annual_fee)} Annual Fee
                                       {card.credit_valuation !== 0 && (
                                         <>
                                           <span className="text-slate-600 mx-1">·</span>
@@ -377,13 +379,14 @@ export function WalletResultsAndCurrenciesPanel({
                                       )}
                                     </p>
                                   </div>
-                                  <div className="text-right shrink-0">
-                                    <p
-                                      className={`text-sm font-semibold tabular-nums ${cardEffectiveAF <= 0 ? 'text-emerald-400' : 'text-slate-200'}`}
-                                    >
-                                      {formatMoney(cardEffectiveAF)}
+                                  <div className="flex items-center shrink-0">
+                                    <span className="text-xs text-slate-500 tabular-nums">
+                                      {annualPtsDisplay}{annualPtsUnit}
+                                    </span>
+                                    <span className="text-slate-600 mx-2">·</span>
+                                    <p className={`text-sm font-semibold tabular-nums ${cardEffectiveAF <= 0 ? 'text-emerald-400' : 'text-slate-200'}`}>
+                                      {formatMoney(cardEffectiveAF)} <span className="text-xs font-normal text-slate-500">EAF</span>
                                     </p>
-                                    <p className="text-xs text-slate-500">Eff. Annual Fee</p>
                                   </div>
                                 </div>
                               </div>
