@@ -15,7 +15,7 @@ function formatDuration(years: number, months: number): string {
   const m = total % 12
   if (y === 0) return `${m} Months`
   if (m === 0) return `${y} Years`
-  return `${y} yr ${m} mo`
+  return `${y} Years, ${m} Months`
 }
 
 /** Annual point income for a card (excludes SUB points). */

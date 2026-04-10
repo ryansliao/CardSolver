@@ -785,6 +785,34 @@ def _effective_annual_earn(
     return calc_annual_point_earn(card, spend) * _conversion_rate(card, wallet_currency_ids)
 
 
+def _secondary_currency_comparison_bonus(
+    card: CardData,
+    wallet_currency_ids: set[int],
+    for_balance: bool = False,
+) -> float:
+    """
+    Cents-per-dollar bonus from the secondary currency for allocation scoring.
+
+    Returns the additional value (in cents) that each dollar spent on this card
+    generates via the secondary currency. This is added to the primary
+    ``multiplier × CPP`` score so allocation accounts for the secondary earn.
+
+    Assumes the conversion cap is not binding (optimistic; the real cap is
+    enforced when computing dollar values after allocation).
+    """
+    if card.secondary_currency is None or card.secondary_currency_rate <= 0:
+        return 0.0
+    sec = card.secondary_currency
+    # secondary_currency_rate is a fraction (e.g. 0.04 for 4%).
+    # Per dollar: earn rate * 100 secondary pts (cash cents).
+    # Value those pts via conversion or CPP.
+    if sec.converts_to_currency:
+        target_cpp = sec.converts_to_currency.comparison_cpp if for_balance else sec.converts_to_currency.cents_per_point
+        return card.secondary_currency_rate * 100 * sec.converts_at_rate * target_cpp
+    cpp = sec.comparison_cpp if for_balance else sec.cents_per_point
+    return card.secondary_currency_rate * 100 * cpp
+
+
 def _tied_cards_for_category(
     selected_cards: list[CardData],
     spend: dict[str, float],
@@ -817,7 +845,11 @@ def _tied_cards_for_category(
     for c in candidates:
         m = _multiplier_for_category(c, category, spend)
         cpp = _comparison_cpp(c, wallet_currency_ids, for_balance=for_balance)
-        scored.append((m * cpp * c.earn_bonus_factor, c))
+        # Secondary currency adds a flat value per dollar to the comparison score.
+        # This ensures cards earning a secondary currency (e.g. Bilt Cash → Bilt Points)
+        # compete at their true effective value, not just the primary multiplier.
+        sec_bonus = _secondary_currency_comparison_bonus(c, wallet_currency_ids, for_balance=for_balance)
+        scored.append((m * cpp * c.earn_bonus_factor + sec_bonus, c))
     if not scored:
         return []
     best = max(t[0] for t in scored)
@@ -2111,8 +2143,9 @@ def _solve_segment_allocation_lp(
             mult = card_mult[k_idx].get(cat_lower, card_all_other[k_idx])
         else:
             mult = bonus_mult.get((k_idx, cat_lower), card_all_other[k_idx])
-        # Effective $ earned per $ spent.
-        rate = mult * cpp / 100.0
+        # Effective $ earned per $ spent (primary earn + secondary currency bonus).
+        sec_bonus = _secondary_currency_comparison_bonus(competing[k_idx], seg_currency_ids, for_balance=for_balance)
+        rate = mult * cpp / 100.0 + sec_bonus / 100.0
         obj_c[i] = -rate
 
     # Equality constraints: per category, Σ_k (e + b) = d_C
