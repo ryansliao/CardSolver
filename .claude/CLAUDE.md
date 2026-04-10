@@ -17,7 +17,7 @@ user-defined time horizon (1–5 years).
 - **Frontend**: React 18 + TypeScript + Tailwind CSS, React Query
 - **Reference Data**: Cards, currencies, categories, multipliers, and credits are managed
   directly in the DB via admin endpoints (`/admin/*`). There is no startup seeding.
-- **Single-tenant**: `DEFAULT_USER_ID = 1` defined in `backend/app/constants.py`; no authentication
+- **Authentication**: Google OAuth sign-in; `AuthProvider` + `useAuth()` in `auth/AuthContext.tsx`
 
 ## Core Concepts
 
@@ -176,15 +176,20 @@ and surfaced as `sub_opp_cost_dollars` / `sub_opp_cost_gross_dollars` on `CardRe
 
 ```
 frontend/src/
-  App.tsx                            # Root: ErrorBoundary, QueryClient, Router
+  App.tsx                            # Root: ErrorBoundary, QueryClient, Router, Nav, SignInDropdown, AuthGate
   main.tsx                           # Entry point
   api/client.ts                      # Typed API client (all endpoints)
+  auth/
+    AuthContext.tsx                   # Google OAuth provider, useAuth() hook
   components/
     ModalBackdrop.tsx                # Shared modal backdrop (Escape key, backdrop click)
   utils/
     format.ts                        # formatMoney(), formatMoneyExact(), formatPoints(), formatPointsExact(), today()
-  pages/WalletTool/
-    index.tsx                        # Main page (wallet selector, layout, tabs)
+  pages/
+    Home.tsx                         # Landing page (public)
+    Profile.tsx                      # Profile settings page (authenticated)
+    WalletTool/
+      index.tsx                      # Main page (wallet selector, layout, tabs)
     constants.ts                     # DEFAULT_USER_ID, LOCKED_USER_SPEND_CATEGORY_NAME
     hooks/
       useCardLibrary.ts              # Card library query
@@ -245,6 +250,17 @@ backend/app/
     admin.py           # Admin CRUD: issuers, currencies, spend categories, cards, multipliers, groups, rotating history
 ```
 
+## Frontend Routing
+
+- `/` — Public landing page (`Home.tsx`)
+- `/profile` — Profile settings, redirects to `/` if unauthenticated (`Profile.tsx`)
+- `/roadmap-tool` — Wallet tool, auto-selects most recent wallet (`WalletTool/index.tsx`)
+- `/roadmap-tool/wallets/:walletId` — Wallet tool with specific wallet selected
+- `*` — Catch-all redirects to `/`
+
+Protected routes use `AuthGate` which redirects unauthenticated users to `/`. Sign-in is
+handled via a navbar dropdown (`SignInDropdown` in `App.tsx`), not a dedicated page.
+
 ## Known Pitfalls
 
 **SQL migrations must be a single statement** — the migration runner uses
@@ -282,7 +298,6 @@ there rather than re-defining in `main.py`, `schemas.py`, etc.
 - No xlsx import — data.xlsx and xlsx_loader.py have been removed
 - No side-by-side wallet comparison view
 - No optimization/recommendation engine (best card for each category)
-- No multi-user support or authentication
 - No export (CSV/PDF)
 
 ## What This Project Is NOT

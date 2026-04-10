@@ -44,10 +44,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export interface AuthUser {
   id: number
+  username: string | null
   name: string
   email: string
   picture: string | null
   token?: string | null
+  needs_username?: boolean
 }
 
 export const authApi = {
@@ -55,6 +57,21 @@ export const authApi = {
     request<AuthUser>('/auth/google', {
       method: 'POST',
       body: JSON.stringify({ credential }),
+    }),
+  register: (username: string, email: string, password: string) =>
+    request<AuthUser>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, email, password }),
+    }),
+  login: (email: string, password: string) =>
+    request<AuthUser>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
+  setUsername: (username: string) =>
+    request<AuthUser>('/auth/username', {
+      method: 'PATCH',
+      body: JSON.stringify({ username }),
     }),
   me: () => request<AuthUser>('/auth/me'),
 }

@@ -34,10 +34,11 @@ A personal finance tool for evaluating credit card wallet combinations. Configur
 cp .env.example .env
 ```
 
-Edit `.env` and set `DATABASE_URL`:
+Edit `.env` and set:
 
 ```ini
 DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/creditcards
+VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id
 ```
 
 ### Set Up PostgreSQL (one-time)
@@ -119,19 +120,24 @@ backend/app/
   routers/             # FastAPI route modules
 
 frontend/src/
+  App.tsx              # Router, Nav, SignInDropdown, AuthGate
   api/client.ts        # Typed API client
+  auth/AuthContext.tsx  # Google OAuth provider, useAuth() hook
   utils/format.ts      # Shared formatting utilities
-  pages/WalletTool/    # Main application UI
-    hooks/             # Shared React Query hooks
-    lib/               # Query keys, form utilities
-    components/        # Cards, spend, summary, wallet, roadmap panels
+  pages/
+    Home.tsx           # Public landing page
+    Profile.tsx        # Profile settings (authenticated)
+    WalletTool/        # Main application UI
+      hooks/           # Shared React Query hooks
+      lib/             # Query keys, form utilities
+      components/      # Cards, spend, summary, wallet, roadmap panels
 ```
 
 ---
 
 ## Architecture Notes
 
-- **Single-tenant** — no authentication; a single default user
+- **Authentication** — Google OAuth sign-in via navbar dropdown; protected routes redirect to the landing page
 - **Reference data** — cards, issuers, currencies, multipliers, and credits are managed via `/admin/*` endpoints; no seed files or xlsx import
 - **Calculation engine** — `calculator.py` is a pure function layer with no DB access; all data is loaded and passed in by `db_helpers.py`
 - **SPA serving** — in production, FastAPI serves the built frontend from `frontend/dist/`

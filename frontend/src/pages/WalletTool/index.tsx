@@ -31,8 +31,8 @@ export default function WalletToolPage() {
   const { walletId: walletIdParam } = useParams<{ walletId: string }>()
   const selectedWalletId = walletIdParam ? Number(walletIdParam) : null
   const setSelectedWalletId = (id: number | null) => {
-    if (id == null) navigate('/')
-    else navigate(`/wallets/${id}`)
+    if (id == null) navigate('/roadmap-tool')
+    else navigate(`/roadmap-tool/wallets/${id}`)
   }
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [walletCardModal, setWalletCardModal] = useState<WalletCardModalOpen | null>(null)
@@ -52,6 +52,14 @@ export default function WalletToolPage() {
     queryKey: queryKeys.wallets(),
     queryFn: () => walletsApi.list(),
   })
+
+  // Default to the most recent wallet when none is selected
+  useEffect(() => {
+    if (selectedWalletId == null && wallets && wallets.length > 0) {
+      const latest = wallets[wallets.length - 1]
+      navigate(`/roadmap-tool/wallets/${latest.id}`, { replace: true })
+    }
+  }, [wallets, selectedWalletId, navigate])
 
   // Warm the global credit library cache so the credits picker inside
   // WalletCardModal renders instantly when a card is opened.
@@ -182,7 +190,7 @@ export default function WalletToolPage() {
         },
       })
     }
-  }, [selectedWalletId])
+  }, [selectedWalletId, selectedWallet?.id])
 
   function runCalculation(years = durationYears, months = durationMonths) {
     if (selectedWalletId == null) return

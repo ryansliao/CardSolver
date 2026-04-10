@@ -1,15 +1,17 @@
-"""Google Sign-In authentication: token verification, JWT sessions, and FastAPI dependencies."""
+"""Authentication: Google Sign-In, local credentials, JWT sessions, and FastAPI dependencies."""
 
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +25,21 @@ JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_DAYS = 30
 
+USERNAME_RE = re.compile(r"^[a-zA-Z0-9_]{3,30}$")
+
+
+# ---------------------------------------------------------------------------
+# Password helpers
+# ---------------------------------------------------------------------------
+
+
+def _hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def _verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
+
 
 # ---------------------------------------------------------------------------
 # Schemas
@@ -33,12 +50,29 @@ class GoogleSignInRequest(BaseModel):
     credential: str
 
 
+class LocalRegisterRequest(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+
+
+class LocalLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class SetUsernameRequest(BaseModel):
+    username: str
+
+
 class AuthUserResponse(BaseModel):
     id: int
+    username: str | None = None
     name: str
     email: str
     picture: str | None = None
     token: str | None = None
+    needs_username: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -116,31 +150,42 @@ async def google_sign_in(body: GoogleSignInRequest, db: AsyncSession = Depends(g
     name = idinfo.get("name", email)
     picture = idinfo.get("picture")
 
-    # Find existing user by google_id
+    # 1. Find existing user by google_id
     result = await db.execute(select(User).where(User.google_id == google_id))
     user = result.scalar_one_or_none()
 
     if not user:
-        # Adopt legacy user if exactly one exists with a placeholder google_id
-        legacy_result = await db.execute(
-            select(User).where(User.google_id.like("legacy_%"))
-        )
-        legacy_user = legacy_result.scalar_one_or_none()
-        if legacy_user:
-            legacy_user.google_id = google_id
-            legacy_user.email = email
-            legacy_user.name = name
-            legacy_user.picture = picture
-            user = legacy_user
+        # 2. Check if a user with this email already exists (local account) — link it
+        email_result = await db.execute(select(User).where(User.email == email))
+        existing_by_email = email_result.scalar_one_or_none()
+
+        if existing_by_email:
+            existing_by_email.google_id = google_id
+            existing_by_email.name = name
+            existing_by_email.picture = picture
+            user = existing_by_email
         else:
-            user = User(
-                google_id=google_id,
-                email=email,
-                name=name,
-                picture=picture,
+            # 3. Adopt legacy user if exactly one exists with a placeholder google_id
+            legacy_result = await db.execute(
+                select(User).where(User.google_id.like("legacy_%"))
             )
-            db.add(user)
-            await db.flush()
+            legacy_user = legacy_result.scalar_one_or_none()
+            if legacy_user:
+                legacy_user.google_id = google_id
+                legacy_user.email = email
+                legacy_user.name = name
+                legacy_user.picture = picture
+                user = legacy_user
+            else:
+                # 4. Create brand-new user
+                user = User(
+                    google_id=google_id,
+                    email=email,
+                    name=name,
+                    picture=picture,
+                )
+                db.add(user)
+                await db.flush()
 
     else:
         # Update profile fields on each sign-in
@@ -154,10 +199,115 @@ async def google_sign_in(body: GoogleSignInRequest, db: AsyncSession = Depends(g
     token = _create_jwt(user.id, user.email)
     return AuthUserResponse(
         id=user.id,
+        username=user.username,
         name=user.name,
         email=user.email,
         picture=user.picture,
         token=token,
+        needs_username=user.username is None,
+    )
+
+
+@router.post("/auth/register", response_model=AuthUserResponse)
+async def local_register(body: LocalRegisterRequest, db: AsyncSession = Depends(get_db)):
+    """Register a new user with username, email, and password."""
+    if not JWT_SECRET:
+        raise HTTPException(status_code=500, detail="JWT_SECRET not configured")
+
+    if not USERNAME_RE.match(body.username):
+        raise HTTPException(
+            status_code=400,
+            detail="Username must be 3-30 characters: letters, numbers, underscores only",
+        )
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    # Check email uniqueness
+    existing = await db.execute(select(User).where(User.email == body.email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Email already in use")
+
+    # Check username uniqueness
+    existing = await db.execute(select(User).where(User.username == body.username))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Username already taken")
+
+    user = User(
+        username=body.username,
+        name=body.username,
+        email=body.email,
+        password_hash=_hash_password(body.password),
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    token = _create_jwt(user.id, user.email)
+    return AuthUserResponse(
+        id=user.id,
+        username=user.username,
+        name=user.name,
+        email=user.email,
+        picture=user.picture,
+        token=token,
+    )
+
+
+@router.post("/auth/login", response_model=AuthUserResponse)
+async def local_login(body: LocalLoginRequest, db: AsyncSession = Depends(get_db)):
+    """Sign in with email and password."""
+    if not JWT_SECRET:
+        raise HTTPException(status_code=500, detail="JWT_SECRET not configured")
+
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.password_hash:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not _verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = _create_jwt(user.id, user.email)
+    return AuthUserResponse(
+        id=user.id,
+        username=user.username,
+        name=user.name,
+        email=user.email,
+        picture=user.picture,
+        token=token,
+    )
+
+
+@router.patch("/auth/username", response_model=AuthUserResponse)
+async def set_username(
+    body: SetUsernameRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set or update the username for the current user."""
+    if not USERNAME_RE.match(body.username):
+        raise HTTPException(
+            status_code=400,
+            detail="Username must be 3-30 characters: letters, numbers, underscores only",
+        )
+
+    existing = await db.execute(
+        select(User).where(User.username == body.username, User.id != user.id)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Username already taken")
+
+    user.username = body.username
+    await db.commit()
+    await db.refresh(user)
+
+    return AuthUserResponse(
+        id=user.id,
+        username=user.username,
+        name=user.name,
+        email=user.email,
+        picture=user.picture,
     )
 
 
@@ -166,7 +316,9 @@ async def get_me(user: User = Depends(get_current_user)):
     """Return the currently authenticated user (validates the JWT)."""
     return AuthUserResponse(
         id=user.id,
+        username=user.username,
         name=user.name,
         email=user.email,
         picture=user.picture,
+        needs_username=user.username is None,
     )
