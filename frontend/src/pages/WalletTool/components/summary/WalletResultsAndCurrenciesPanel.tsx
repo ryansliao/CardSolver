@@ -237,23 +237,39 @@ export function WalletResultsAndCurrenciesPanel({
                   {resultsError.message}
                 </div>
               )}
-              {result ? (
+              {result || isCalculating ? (
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-indigo-900/40 border border-indigo-700 rounded-xl p-3 text-center">
                     <p className="text-[10px] text-indigo-300 uppercase tracking-wider">Effective Annual Fee</p>
-                    <p className="text-xl font-bold text-indigo-100 mt-0.5">{formatMoney(totalEffectiveAF)}</p>
+                    {result ? (
+                      <p className="text-xl font-bold text-indigo-100 mt-0.5">{formatMoney(totalEffectiveAF)}</p>
+                    ) : (
+                      <div className="h-7 mt-0.5 flex items-center justify-center">
+                        <div className="h-4 w-16 bg-indigo-800/50 rounded animate-pulse" />
+                      </div>
+                    )}
                   </div>
                   <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 text-center">
                     <p className="text-[10px] text-slate-400 uppercase tracking-wider">Annual Point Income</p>
-                    <p className="text-xl font-bold text-white mt-0.5">{formatPoints(Math.round(totalAnnualPoints))}</p>
+                    {result ? (
+                      <p className="text-xl font-bold text-white mt-0.5">{formatPoints(Math.round(totalAnnualPoints))}</p>
+                    ) : (
+                      <div className="h-7 mt-0.5 flex items-center justify-center">
+                        <div className="h-4 w-16 bg-slate-700/50 rounded animate-pulse" />
+                      </div>
+                    )}
                   </div>
                   <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 text-center">
                     <p className="text-[10px] text-slate-400 uppercase tracking-wider">Total Annual Fees</p>
-                    <p className="text-xl font-bold text-white mt-0.5">{formatMoney(totalAnnualFees)}</p>
+                    {result ? (
+                      <p className="text-xl font-bold text-white mt-0.5">{formatMoney(totalAnnualFees)}</p>
+                    ) : (
+                      <div className="h-7 mt-0.5 flex items-center justify-center">
+                        <div className="h-4 w-16 bg-slate-700/50 rounded animate-pulse" />
+                      </div>
+                    )}
                   </div>
                 </div>
-              ) : isCalculating ? (
-                <div className="text-slate-500 text-xs text-center py-2">Calculating…</div>
               ) : (
                 <div className="text-slate-500 text-xs text-center py-2">
                   Add cards to see effective annual fee (credits, SUB and fees amortised over your projection).

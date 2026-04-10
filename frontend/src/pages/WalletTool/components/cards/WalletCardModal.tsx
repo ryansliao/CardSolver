@@ -104,7 +104,7 @@ export function WalletCardModal({
   })
 
   // Existing wallet-card credit selections (edit mode only)
-  const { data: existingCreditOverrides } = useQuery({
+  const { data: existingCreditOverrides, isLoading: creditOverridesLoading } = useQuery({
     queryKey: queryKeys.walletCardCredits(walletCard?.wallet_id ?? null, walletCard?.card_id ?? null),
     queryFn: () => walletCardCreditApi.list(walletCard!.wallet_id, walletCard!.card_id),
     enabled: mode === 'edit' && walletCard != null,
@@ -648,7 +648,7 @@ export function WalletCardModal({
                   </button>
                   {creditsExpanded && (
                     <div className="border-t border-slate-700">
-                      {creditLibraryLoading ? (
+                      {creditLibraryLoading || creditOverridesLoading ? (
                         <div className="flex items-center gap-2 px-3 py-3 text-xs text-slate-400">
                           <svg
                             className="w-3.5 h-3.5 animate-spin text-indigo-400"
