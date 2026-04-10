@@ -215,7 +215,14 @@ async def wallet_results(
                 return False
         return True
 
-    sub_priority_card_ids = {cd.id for cd in selected_card_data if _has_sub_window(cd)}
+    sub_priority_card_ids = {
+        cd.id for cd in selected_card_data
+        if _has_sub_window(cd)
+        and (
+            not cd.sub_min_spend
+            or calc_annual_allocated_spend(cd, selected_card_data, spend, wcids) < cd.sub_min_spend
+        )
+    }
 
     sub_cards_for_plan = [cd for cd in selected_card_data if _has_sub_window(cd)]
     sub_plan = plan_sub_targeting(sub_cards_for_plan, spend, ref_date, wcids)

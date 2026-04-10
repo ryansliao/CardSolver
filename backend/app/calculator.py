@@ -936,7 +936,7 @@ def _segmented_category_earn_breakdown(
             continue
         seg_days = (seg_end - seg_start).days
         seg_currency_ids = {c.currency.id for c in active}
-        sub_prio = _sub_priority_ids_for_segment(active, seg_start)
+        sub_prio = _sub_priority_ids_for_segment(active, seg_start, spend, seg_currency_ids)
         if precomputed_seg_alloc is not None:
             seg_cat_pts = precomputed_seg_alloc[seg_idx].get(card.id, {})
         else:
@@ -2176,12 +2176,27 @@ def _is_sub_active_in_segment(card: CardData, seg_start: date) -> bool:
 def _sub_priority_ids_for_segment(
     active_cards: list[CardData],
     seg_start: date,
+    spend: dict[str, float] | None = None,
+    wallet_currency_ids: set[int] | None = None,
 ) -> set[int]:
     """
-    Return the set of card IDs that have active SUB windows in this segment.
-    These cards get absolute priority in category allocation.
+    Return the set of card IDs that have active SUB windows in this segment
+    AND whose natural allocated spend (without priority) is insufficient to
+    meet the SUB minimum. Cards that can hit the SUB naturally don't need
+    the allocation boost.
     """
-    return {c.id for c in active_cards if _is_sub_active_in_segment(c, seg_start)}
+    candidates = {c.id for c in active_cards if _is_sub_active_in_segment(c, seg_start)}
+    if not candidates or spend is None or wallet_currency_ids is None:
+        return candidates
+    result = set()
+    for c in active_cards:
+        if c.id not in candidates:
+            continue
+        natural_spend = calc_annual_allocated_spend(c, active_cards, spend, wallet_currency_ids)
+        if c.sub_min_spend and natural_spend >= c.sub_min_spend:
+            continue
+        result.add(c.id)
+    return result
 
 
 def _time_weighted_annual_earn(
@@ -2213,7 +2228,7 @@ def _time_weighted_annual_earn(
             continue
         seg_fraction = (seg_end - seg_start).days / total_days
         seg_currency_ids = {c.currency.id for c in active}
-        sub_prio = _sub_priority_ids_for_segment(active, seg_start)
+        sub_prio = _sub_priority_ids_for_segment(active, seg_start, spend, seg_currency_ids)
         earn = _effective_annual_earn_allocated(
             card, spend, active, seg_currency_ids, sub_priority_card_ids=sub_prio, for_balance=for_balance
         )
@@ -2296,7 +2311,7 @@ def _segmented_card_net_per_year(
         card_ever_active = True
         seg_days = (seg_end - seg_start).days
         seg_currency_ids = {c.currency.id for c in active}
-        sub_prio = _sub_priority_ids_for_segment(active, seg_start)
+        sub_prio = _sub_priority_ids_for_segment(active, seg_start, spend, seg_currency_ids)
 
         if precomputed_seg_alloc is not None:
             cat_pts = precomputed_seg_alloc[seg_idx].get(card.id, {})
@@ -2479,7 +2494,7 @@ def compute_wallet(
                     for c in active
                 ]
             seg_currency_ids = {c.currency.id for c in active}
-            sub_prio = _sub_priority_ids_for_segment(active, seg_start)
+            sub_prio = _sub_priority_ids_for_segment(active, seg_start, spend, seg_currency_ids)
             seg_alloc_cache.append(
                 _solve_segment_allocation_lp(
                     active, spend, seg_currency_ids, sub_prio,

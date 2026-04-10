@@ -297,8 +297,8 @@ export function WalletResultsAndCurrenciesPanel({
                               <>
                                 <span className="text-xs text-slate-500 tabular-nums">
                                   {isCash
-                                    ? `+${formatMoney((currencyAnnualPts * cpp) / 100)}/Year`
-                                    : `+${formatPoints(Math.round(currencyAnnualPts))}/Year`}
+                                    ? `+${formatMoney((currencyAnnualPts * cpp) / 100)} /Year`
+                                    : `+${formatPoints(Math.round(currencyAnnualPts))} Pts/Year`}
                                 </span>
                                 <span className="text-slate-600 mx-2">·</span>
                               </>
@@ -354,7 +354,7 @@ export function WalletResultsAndCurrenciesPanel({
                             const annualPtsDisplay = cardIsCash
                               ? `+${formatMoney((annualPts * card.cents_per_point) / 100)}`
                               : `+${formatPoints(Math.round(annualPts))}`
-                            const annualPtsUnit = '/Year'
+                            const annualPtsUnit = cardIsCash ? ' /Year' : ' Pts/Year'
                             return (
                               <div
                                 key={card.card_id}

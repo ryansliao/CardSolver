@@ -200,9 +200,9 @@ export default function WalletToolPage() {
     <div className="max-w-screen-xl mx-auto w-full flex flex-col flex-1 min-h-0">
       <header className="mb-6 shrink-0 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-white">Wallet Tool</h1>
+          <h1 className="text-2xl font-bold text-white">Wallet Roadmap Tool</h1>
           <p className="text-slate-400 text-sm mt-1">
-            Manage wallets, add cards with sign-up bonus and min spend. Calculations update automatically.
+            Add cards to your future wallet and see how much value they will add.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
