@@ -4,7 +4,7 @@ import type { CardResult, WalletResult } from '../../../../api/client'
 import { walletCppApi, walletsApi } from '../../../../api/client'
 import { formatCashRewardUnits, formatMoney, formatPoints } from '../../../../utils/format'
 import { queryKeys } from '../../lib/queryKeys'
-import { CurrencySettingsModal } from '../summary/CurrencySettingsModal'
+import { CurrencySettingsDropdown } from '../summary/CurrencySettingsDropdown'
 import { SpendTabContent } from '../spend/SpendTabContent'
 import { InfoIconButton, InfoPopover } from '../../../../components/InfoPopover'
 
@@ -112,8 +112,6 @@ export function WalletResultsAndCurrenciesPanel({
     return grouped
   }, [result])
 
-  const editingBalance = balances.find((b) => b.currency_id === editingCurrencyId) ?? null
-  const editingCurrency = currencies.find((c) => c.id === editingCurrencyId) ?? null
 
   const isLoading = currenciesLoading || (walletId != null && balancesLoading)
 
@@ -274,6 +272,8 @@ export function WalletResultsAndCurrenciesPanel({
                     0
                   )
                   const hasResultData = result != null && cards.length > 0
+                  const isEditing = editingCurrencyId === b.currency_id
+                  const rowCurrency = currencies.find((c) => c.id === b.currency_id) ?? null
 
                   return (
                     <li key={b.id} className="bg-slate-800/80 rounded-lg overflow-hidden">
@@ -304,10 +304,17 @@ export function WalletResultsAndCurrenciesPanel({
                             </span>
                             <button
                               type="button"
-                              onClick={() => setEditingCurrencyId(b.currency_id)}
+                              onClick={() =>
+                                setEditingCurrencyId(isEditing ? null : b.currency_id)
+                              }
                               style={{ marginLeft: '0.5rem' }}
-                              className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+                              className={`p-1 rounded transition-colors ${
+                                isEditing
+                                  ? 'text-indigo-300 bg-slate-700'
+                                  : 'text-slate-500 hover:text-slate-200 hover:bg-slate-700'
+                              }`}
                               aria-label="Edit currency"
+                              aria-expanded={isEditing}
                               title="Edit"
                             >
                               <svg
@@ -319,9 +326,9 @@ export function WalletResultsAndCurrenciesPanel({
                                 strokeWidth="2"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
+                                className={`transition-transform ${isEditing ? 'rotate-180' : ''}`}
                               >
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                <polyline points="6 9 12 15 18 9" />
                               </svg>
                             </button>
                           </div>
@@ -371,6 +378,16 @@ export function WalletResultsAndCurrenciesPanel({
                           )
                         })()}
                       </div>
+
+                      {/* Inline currency settings dropdown */}
+                      {isEditing && rowCurrency != null && (
+                        <CurrencySettingsDropdown
+                          walletId={walletId}
+                          currency={rowCurrency}
+                          balance={b}
+                          onCppChange={onCppChange}
+                        />
+                      )}
 
                       {/* Nested card rows */}
                       {cards.length > 0 && (
@@ -462,18 +479,6 @@ export function WalletResultsAndCurrenciesPanel({
       </div>
 
       </div>
-
-      {editingCurrencyId != null && editingCurrency != null && (
-        <CurrencySettingsModal
-          walletId={walletId}
-          currency={editingCurrency}
-          balance={editingBalance}
-          onClose={() => setEditingCurrencyId(null)}
-          onCppChange={() => {
-            onCppChange()
-          }}
-        />
-      )}
 
       {showBiltCashInfo && (
         <InfoPopover title="How Bilt Cash is Calculated" onClose={() => setShowBiltCashInfo(false)} zIndex="z-50">
