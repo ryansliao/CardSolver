@@ -103,7 +103,7 @@ def wc_read(wc: WalletCard, card: Card) -> WalletCardRead:
         sub_projected_earn_date=wc.sub_projected_earn_date,
         closed_date=wc.closed_date,
         acquisition_type=cast(Literal["opened", "product_change"], wc.acquisition_type),
-        panel=cast(Literal["in_wallet", "future", "considering"], wc.panel),
+        panel=cast(Literal["in_wallet", "future_cards", "considering"], wc.panel),
     )
 
 
@@ -212,7 +212,7 @@ async def effective_earn_currency_ids_for_wallet(
         )
         .where(
             WalletCard.wallet_id == wallet_id,
-            WalletCard.panel.in_(("in_wallet", "future")),
+            WalletCard.panel.in_(("in_wallet", "future_cards")),
         )
     )
     wcs = list(result.scalars().all())

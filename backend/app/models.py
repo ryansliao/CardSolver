@@ -645,9 +645,9 @@ class WalletCard(Base):
     acquisition_type: Mapped[str] = mapped_column(String(20), nullable=False, default="opened")
 
     # Panel placement:
-    #   "in_wallet"   = currently held; included in calculations
-    #   "future"      = not yet held but committed (added_date in the future); included in calculations
-    #   "considering" = candidate, not committed; excluded from calculations
+    #   "in_wallet"    = currently held; included in calculations
+    #   "future_cards" = not yet held but committed (added_date in the future); included in calculations
+    #   "considering"  = candidate, not committed; excluded from calculations
     # Closed state is derived from `closed_date` and is not stored in this column.
     panel: Mapped[str] = mapped_column(String(16), nullable=False, default="considering")
 

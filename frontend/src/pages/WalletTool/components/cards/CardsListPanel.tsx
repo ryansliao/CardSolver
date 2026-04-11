@@ -10,19 +10,19 @@ import { today } from '../../../../utils/format'
 
 const PANEL_LABELS: Record<WalletCardPanel, string> = {
   in_wallet: 'In Wallet',
-  future: 'Future',
+  future_cards: 'Future Cards',
   considering: 'Considering',
 }
 
 const PANEL_DRAG_CLASSES: Record<WalletCardPanel, string> = {
   in_wallet: 'border-emerald-500 bg-emerald-950/20',
-  future: 'border-sky-500 bg-sky-950/20',
+  future_cards: 'border-sky-500 bg-sky-950/20',
   considering: 'border-indigo-500 bg-indigo-950/20',
 }
 
 const PANEL_DOT_CLASSES: Record<WalletCardPanel, string> = {
   in_wallet: 'bg-emerald-400',
-  future: 'bg-sky-400',
+  future_cards: 'bg-sky-400',
   considering: 'bg-amber-400',
 }
 
@@ -79,7 +79,7 @@ function CardItem({
   draggable: boolean
 }) {
   const isClosed = !!wc.closed_date
-  const isFuture = panel === 'future'
+  const isFuture = panel === 'future_cards'
 
   return (
     <li
@@ -95,7 +95,7 @@ function CardItem({
           <div className="flex items-center gap-2 flex-wrap">
             <span
               className={`inline-block w-2 h-2 rounded-full shrink-0 ${
-                isClosed ? 'bg-slate-500' : PANEL_DOT_CLASSES[panel]
+                isClosed ? 'bg-red-500' : PANEL_DOT_CLASSES[panel]
               }`}
               title={isClosed ? `Closed ${wc.closed_date}` : PANEL_LABELS[panel]}
             />
@@ -238,16 +238,13 @@ export function CardsListPanel({
 }: Props) {
   const walletCards = wallet.wallet_cards ?? []
   const inWalletCards = walletCards
-    .filter((wc) => wc.panel === 'in_wallet' && !wc.closed_date)
+    .filter((wc) => wc.panel === 'in_wallet')
     .sort(compareWalletCardsByOpeningNewestFirst)
   const futureCards = walletCards
-    .filter((wc) => wc.panel === 'future' && !wc.closed_date)
+    .filter((wc) => wc.panel === 'future_cards')
     .sort(compareWalletCardsByOpeningNewestFirst)
   const consideringCards = walletCards
-    .filter((wc) => wc.panel === 'considering' && !wc.closed_date)
-    .sort(compareWalletCardsByOpeningNewestFirst)
-  const closedCards = walletCards
-    .filter((wc) => !!wc.closed_date)
+    .filter((wc) => wc.panel === 'considering')
     .sort(compareWalletCardsByOpeningNewestFirst)
 
   const [dragOverPanel, setDragOverPanel] = useState<WalletCardPanel | null>(null)
@@ -330,9 +327,9 @@ export function CardsListPanel({
       <div className="min-h-0 overflow-y-auto flex-1 flex flex-col gap-4">
         {(
           [
-            ['in_wallet', inWalletCards],
-            ['future', futureCards],
             ['considering', consideringCards],
+            ['future_cards', futureCards],
+            ['in_wallet', inWalletCards],
           ] as const
         ).map(([panel, cards]) => (
           <div
@@ -365,26 +362,6 @@ export function CardsListPanel({
             </ul>
           </div>
         ))}
-
-        {/* Closed Cards panel */}
-        {closedCards.length > 0 && (
-          <div className="rounded-lg border border-slate-700/50">
-            <div className="px-3 pt-2 pb-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Closed</p>
-            </div>
-            <ul className="space-y-2 px-2 pb-2">
-              {closedCards.map((wc) => (
-                <CardItem
-                  key={wc.id}
-                  wc={wc}
-                  panel={wc.panel}
-                  draggable={false}
-                  {...sharedCardProps}
-                />
-              ))}
-            </ul>
-          </div>
-        )}
       </div>
     </div>
   )

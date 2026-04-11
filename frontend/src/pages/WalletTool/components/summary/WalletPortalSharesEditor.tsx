@@ -56,7 +56,7 @@ export function WalletPortalSharesEditor({
     if (!cards || walletCards.length === 0 || travelPortals.length === 0) return []
     const inWalletCardIds = new Set(
       walletCards
-        .filter((wc) => wc.panel === 'in_wallet' || wc.panel === 'future')
+        .filter((wc) => wc.panel === 'in_wallet' || wc.panel === 'future_cards')
         .map((wc) => wc.card_id),
     )
     const cardsById = new Map(cards.map((c) => [c.id, c]))

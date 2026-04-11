@@ -152,7 +152,7 @@ export function WalletResultsAndCurrenciesPanel({
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`p-2 rounded-l-md border border-r-0 transition-colors ${
+                className={`px-2 py-3 rounded-l-md border border-r-0 transition-colors ${
                   isActive
                     ? 'bg-slate-900 text-indigo-300 border-slate-700 -mr-px'
                     : 'bg-slate-800/70 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-800'

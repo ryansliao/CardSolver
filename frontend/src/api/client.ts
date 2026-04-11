@@ -303,7 +303,7 @@ export interface WalletResult {
 }
 
 export type WalletCardAcquisitionType = 'opened' | 'product_change'
-export type WalletCardPanel = 'in_wallet' | 'future' | 'considering'
+export type WalletCardPanel = 'in_wallet' | 'future_cards' | 'considering'
 
 export interface WalletCard {
   id: number

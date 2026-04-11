@@ -136,7 +136,7 @@ async def wallet_results(
     active_wallet_cards = [
         wc
         for wc in wallet.wallet_cards
-        if wc.panel in ("in_wallet", "future")
+        if wc.panel in ("in_wallet", "future_cards")
         and wc.added_date < window_end
         and (wc.closed_date is None or wc.closed_date >= ref_date)
     ]
@@ -369,7 +369,7 @@ async def wallet_roadmap(
     cutoff_24mo = today - timedelta(days=730)
 
     in_wallet_cards = [
-        wc for wc in wallet.wallet_cards if wc.panel in ("in_wallet", "future")
+        wc for wc in wallet.wallet_cards if wc.panel in ("in_wallet", "future_cards")
     ]
 
     for wc in in_wallet_cards:
