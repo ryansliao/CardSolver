@@ -36,6 +36,7 @@ from .multipliers import (
     _first_year_pct_bonus,
     _segment_earn_bonus_factor,
 )
+from .housing_tiered import apply_bilt_2_housing_mode
 from .secondary import _average_annual_net_dollars, _calc_secondary_currency
 from .segment_lp import _solve_segment_allocation_lp
 from .segmented_ev import _segmented_card_net_per_year
@@ -251,6 +252,21 @@ def compute_wallet(
         s for cat, s in spend.items() if not _is_housing(cat) and s > 0
     )
 
+    # Bilt 2.0: for cards with the tiered-housing option enabled, pick
+    # whichever of (tiered housing multiplier) or (Bilt Cash secondary earn)
+    # yields higher dollar value, and patch the card's multipliers /
+    # secondary-currency fields before the main compute pipeline runs.
+    all_cards = apply_bilt_2_housing_mode(
+        all_cards,
+        selected_ids,
+        spend,
+        active_wallet_currency_ids,
+        housing_spend_total,
+        _housing_names,
+        FOREIGN_CAT_PREFIX,
+    )
+    selected_cards = [c for c in all_cards if c.id in selected_ids]
+
     # Secondary-currency scoring adjustment for cards with a cap_rate > 0.
     # Without this the LP sees e.g. Bilt's full 4% Bilt Cash bonus on every
     # dollar and over-allocates bonus categories (Dining, Groceries) to Bilt,
@@ -447,8 +463,13 @@ def compute_wallet(
         reported_sub = card.sub_points if card.sub_earnable else 0
         reported_sub_spend_earn = card.sub_spend_earn if card.sub_earnable else 0
 
-        # Secondary currency result for this card
-        sec_alloc = calc_annual_allocated_spend(card, selected_cards, spend, active_wallet_currency_ids)
+        # Secondary currency result for this card. Exclude categories the
+        # card marks as ineligible for secondary earn (e.g. Bilt 2.0 in Bilt
+        # Cash mode excludes Rent/Mortgage).
+        sec_alloc = calc_annual_allocated_spend(
+            card, selected_cards, spend, active_wallet_currency_ids,
+            exclude_categories=card.secondary_ineligible_categories or None,
+        )
         sec = _calc_secondary_currency(card, sec_alloc, active_wallet_currency_ids, housing_spend=housing_spend_total)
         sec_cur_name = card.secondary_currency.name if card.secondary_currency else ""
         sec_cur_id = card.secondary_currency.id if card.secondary_currency else 0

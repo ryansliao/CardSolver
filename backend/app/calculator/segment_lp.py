@@ -296,7 +296,7 @@ def _solve_segment_allocation_lp(
         else:
             mult = bonus_mult.get((k_idx, cat_lower), card_all_other[k_idx])
         # Effective $ earned per $ spent (primary earn + secondary currency bonus).
-        sec_bonus = _secondary_currency_comparison_bonus(competing[k_idx], for_balance=for_balance)
+        sec_bonus = _secondary_currency_comparison_bonus(competing[k_idx], category=cat_name, for_balance=for_balance)
         rate = mult * cpp / 100.0 + sec_bonus / 100.0
         obj_c[i] = -rate
 

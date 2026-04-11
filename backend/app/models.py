@@ -234,6 +234,15 @@ class Card(Base):
     accelerator_bonus_multiplier: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     accelerator_max_activations: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
+    # Bilt 2.0: when true, the card's housing (Rent/Mortgage) earn rate is
+    # computed from the ratio of non-housing to housing spend allocated to
+    # the card (<25% → flat 250 pts/mo floor, 25/50/75/100% → 0.5/0.75/1.0/1.25x).
+    # Mutually exclusive with the Bilt Cash secondary-currency mode — the
+    # calculator evaluates both per card and picks the higher-value option.
+    housing_tiered_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
+
     # True when the card charges a foreign transaction fee (typically ~3%).
     # False = no FTF (preferred for international spend).
     foreign_transaction_fee: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

@@ -208,15 +208,22 @@ def _segmented_card_net_per_year(
         total_fee = fee / 365.25 * active_days
 
     # Secondary currency: flat-rate earn prorated to the card's active window.
-    # Use the full annual allocated spend scaled by active fraction of the window.
+    # ``active_years`` is the count of years the card was active in the window
+    # (active_days / 365.25). The total secondary dollars earned across the
+    # window is ``dollar_value_annual × active_years``; the outer
+    # ``total_net / total_years`` at the end of this function converts the
+    # total to an average-annual figure.
     if card.secondary_currency and card.secondary_currency_rate > 0 and card_ever_active:
-        annual_alloc = calc_annual_allocated_spend(card, selected_cards, spend, active_wallet_currency_ids)
-        active_fraction = active_days / 365.25 if active_days > 0 else 0.0
+        annual_alloc = calc_annual_allocated_spend(
+            card, selected_cards, spend, active_wallet_currency_ids,
+            exclude_categories=card.secondary_ineligible_categories or None,
+        )
+        active_years = active_days / 365.25 if active_days > 0 else 0.0
         sec = _calc_secondary_currency(card, annual_alloc, active_wallet_currency_ids, housing_spend=housing_spend)
-        total_earn_dollars += sec.dollar_value_annual * active_fraction * total_years
+        total_earn_dollars += sec.dollar_value_annual * active_years
         # Accelerator bonus: extra primary pts valued at primary CPP
         eff_currency_sec = _effective_currency(card, active_wallet_currency_ids)
-        total_earn_dollars += sec.bonus_pts_annual * eff_currency_sec.cents_per_point / 100.0 * active_fraction * total_years
+        total_earn_dollars += sec.bonus_pts_annual * eff_currency_sec.cents_per_point / 100.0 * active_years
 
     total_net = total_earn_dollars + total_credits - total_fee
     return total_net / total_years, annualized_earn_pts, annualized_earn_pts_for_balance

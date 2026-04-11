@@ -58,7 +58,7 @@ def _tied_cards_for_category(
         # Secondary currency adds a flat value per dollar to the comparison score.
         # This ensures cards earning a secondary currency (e.g. Bilt Cash → Bilt Points)
         # compete at their true effective value, not just the primary multiplier.
-        sec_bonus = _secondary_currency_comparison_bonus(c, for_balance=for_balance)
+        sec_bonus = _secondary_currency_comparison_bonus(c, category=category, for_balance=for_balance)
         scored.append((m * cpp * c.earn_bonus_factor + sec_bonus, c))
     if not scored:
         return []
@@ -124,16 +124,26 @@ def calc_annual_allocated_spend(
     spend: dict[str, float],
     wallet_currency_ids: set[int],
     sub_priority_card_ids: set[int] | None = None,
+    exclude_categories: set[str] | None = None,
 ) -> float:
     """
     Total annual spend dollars allocated to this card by the category allocation logic.
     Mirrors calc_annual_point_earn_allocated but sums dollars instead of points.
+
+    ``exclude_categories``: lowercase category names (and/or ``__foreign__``
+    variants) to skip entirely — used by the secondary currency earn path so
+    cards like Bilt 2.0 in Bilt Cash mode don't earn Bilt Cash on housing.
     """
+    def _excluded(cat: str) -> bool:
+        if not exclude_categories:
+            return False
+        return cat.lower() in exclude_categories
+
     if len(selected_cards) <= 1:
-        return sum(s for s in spend.values() if s > 0)
+        return sum(s for cat, s in spend.items() if s > 0 and not _excluded(cat))
     total = 0.0
     for cat, s in spend.items():
-        if s <= 0:
+        if s <= 0 or _excluded(cat):
             continue
         tied = _tied_cards_for_category(selected_cards, spend, cat, wallet_currency_ids, sub_priority_card_ids)
         if not tied or card.id not in {c.id for c in tied}:

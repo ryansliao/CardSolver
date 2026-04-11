@@ -389,6 +389,7 @@ async def load_card_data(
                 accelerator_spend_limit=float(card.accelerator_spend_limit) if card.accelerator_spend_limit else 0.0,
                 accelerator_bonus_multiplier=float(card.accelerator_bonus_multiplier) if card.accelerator_bonus_multiplier else 0.0,
                 accelerator_max_activations=card.accelerator_max_activations or 0,
+                housing_tiered_enabled=bool(getattr(card, "housing_tiered_enabled", False)),
                 has_foreign_transaction_fee=bool(getattr(card, "foreign_transaction_fee", False)),
                 network_name=_network_name,
                 foreign_multiplier_bonus=multipliers.get("Foreign Transactions", 0.0),

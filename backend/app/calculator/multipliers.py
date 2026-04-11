@@ -49,8 +49,8 @@ def _build_effective_multipliers(card: CardData, spend: dict[str, float]) -> dic
     all_other = _all_other_multiplier(effective)
 
     for (
-        _group_mult, group_cats, top_n, group_id,
-        _cap_amt, _cap_months, _is_rot, _rot_weights, _is_add,
+        group_mult, group_cats, top_n, group_id,
+        _cap_amt, _cap_months, is_rotating, _rot_weights, _is_add,
     ) in card.multiplier_groups:
         if top_n is None or top_n <= 0:
             continue
@@ -70,14 +70,23 @@ def _build_effective_multipliers(card: CardData, spend: dict[str, float]) -> dic
             key = cat.strip() if cat else ""
             if not key:
                 continue
-            if key not in top_set:
-                # Overwrite multiplier for this category (match key in effective case-insensitively)
-                for ek in list(effective):
-                    if (ek or "").strip().lower() == key.lower():
-                        effective[ek] = all_other
-                        break
-                else:
-                    effective[key] = all_other
+            # Promotion only applies to non-rotating top-N groups (e.g. Bilt
+            # Obsidian's "Dining or Groceries" choice). Rotating groups are
+            # EV-blended by the segmented path via rotation_weights; the
+            # simple path doesn't attempt to model them accurately.
+            if key in top_set:
+                if is_rotating:
+                    continue  # leave whatever is in effective unchanged
+                target_rate = group_mult
+            else:
+                target_rate = all_other
+            # Upsert by case-insensitive match; only create a new key if none exists.
+            for ek in list(effective):
+                if (ek or "").strip().lower() == key.lower():
+                    effective[ek] = target_rate
+                    break
+            else:
+                effective[key] = target_rate
 
     return effective
 

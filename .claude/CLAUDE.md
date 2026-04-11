@@ -124,6 +124,49 @@ in **raw** currency units (conversion rate not applied), while
 applied). For wallets with currency upgrades, the two are in different
 units — the category breakdown will sum to more than `annual_point_earn`.
 
+**Bilt 2.0 housing** (`housing_tiered_enabled` on Card,
+`app.calculator.housing_tiered`): when set, the card offers two mutually
+exclusive earning modes and `compute_wallet` picks whichever yields more
+per-card dollar value. The two paths are evaluated as fully isolated
+candidate card states — each candidate gets its own non-housing allocation
+estimate so neither path's parameters leak into the other's comparison.
+
+**Tiered housing mode**: points directly on Rent/Mortgage scaled by the
+non-housing/housing ratio of spend allocated to the card. Tier table:
+`<25% → 0x + 3000 pt/yr floor`, `25–50% → 0.5x`, `50–75% → 0.75x`,
+`75–100% → 1.0x`, `≥100% → 1.25x`. Floor is applied as an `annual_bonus`
+addition sized to make total housing earn at least 3,000 pts. Secondary
+currency (Bilt Cash) earn and the Point Accelerator are fully disabled.
+
+**Bilt Cash mode**: non-housing spend earns the card's base category
+multiplier plus a three-tier Bilt Cash → Bilt Points bonus (housing
+earns 0 direct points — the 1x base is "locked" and its value is already
+baked into the Tier 1 effective rate):
+
+- **Tier 1** — first `0.75 × housing_spend` dollars of non-housing.
+  Earns `secondary_currency_rate × 100 × (1000/3000)` BP per dollar
+  (Palladium: 2x base + 1.333x Bilt Cash bonus = **3.33x effective**).
+  Models the Bilt Cash → Bilt Points conversion redeemed at housing
+  payment time; 3,000 Bilt Cash pts (= $30) unlock 1,000 Bilt Points.
+- **Tier 2** — next `accelerator_max_activations × accelerator_spend_limit`
+  dollars of non-housing when the Point Accelerator is configured on the
+  card. Earns `accelerator_bonus_multiplier` BP per dollar (Palladium:
+  2x base + 1x accelerator = **3x effective**). Activations are
+  self-funded: each $5,000 of Tier 2 spend earns $200 in Bilt Cash which
+  exactly covers the cost of one activation.
+- **Tier 3** — remaining non-housing. Base category multiplier only
+  (Palladium: **2x**). Extra Bilt Cash earned here has no redemption path
+  under the current model and is valued at 0.
+
+In Bilt Cash mode the card is patched with the three-tier bonus as a
+single lump-sum `annual_bonus` in Bilt Points; the legacy
+`secondary_currency` / `accelerator_*` fields are zeroed so the flat-rate
+secondary-currency pipeline doesn't double-count on top of the lump sum.
+
+`apply_bilt_2_housing_mode` runs once per compute before `_scoring_factor`,
+the LP, and the simple-path earn, so both code paths see the resolved
+mode. See `backend/app/calculator/housing_tiered.py`.
+
 **SUB tracking**: Two separate concepts control SUB handling:
 
 - `sub_earned_date` (DB/UI only): a toggle on owned cards in the cards panel.

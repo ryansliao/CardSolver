@@ -163,6 +163,7 @@ def _conversion_rate(card: CardData, wallet_currency_ids: set[int]) -> float:
 
 def _secondary_currency_comparison_bonus(
     card: CardData,
+    category: str = "",
     for_balance: bool = False,
 ) -> float:
     """
@@ -176,9 +177,15 @@ def _secondary_currency_comparison_bonus(
     for the convertibility cap (cap_rate × housing_spend) so cards like Bilt
     don't get credited with the full 4% bonus on every dollar when only a
     portion of their winnings can actually convert to value.
+
+    When ``category`` is in ``card.secondary_ineligible_categories`` the bonus
+    is zero — e.g. Bilt 2.0 in Bilt Cash mode earns nothing on Rent/Mortgage.
     """
     if card.secondary_currency is None or card.secondary_currency_rate <= 0:
         return 0.0
+    if category and card.secondary_ineligible_categories:
+        if category.lower() in card.secondary_ineligible_categories:
+            return 0.0
     sec = card.secondary_currency
     # secondary_currency_rate is a fraction (e.g. 0.04 for 4%).
     # Per dollar: earn rate * 100 secondary pts (cash cents).

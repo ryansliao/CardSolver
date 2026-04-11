@@ -162,6 +162,7 @@ class UpdateCardLibraryPayload(BaseModel):
     accelerator_spend_limit: Optional[float] = Field(default=None, ge=0)
     accelerator_bonus_multiplier: Optional[float] = Field(default=None, ge=0)
     accelerator_max_activations: Optional[int] = Field(default=None, ge=0)
+    housing_tiered_enabled: Optional[bool] = None
     foreign_transaction_fee: Optional[bool] = None
 
 
@@ -315,6 +316,7 @@ class CardRead(BaseModel):
     accelerator_spend_limit: Optional[float] = None
     accelerator_bonus_multiplier: Optional[float] = None
     accelerator_max_activations: Optional[int] = None
+    housing_tiered_enabled: bool = False
     foreign_transaction_fee: bool = False
     sub_recurrence_months: Optional[int] = None
     sub_family: Optional[str] = None
@@ -553,6 +555,7 @@ class AdminCreateCardPayload(BaseModel):
     accelerator_spend_limit: Optional[float] = Field(default=None, ge=0)
     accelerator_bonus_multiplier: Optional[float] = Field(default=None, ge=0)
     accelerator_max_activations: Optional[int] = Field(default=None, ge=0)
+    housing_tiered_enabled: bool = False
     foreign_transaction_fee: bool = False
     sub_recurrence_months: Optional[int] = Field(default=None, ge=1)
     sub_family: Optional[str] = Field(default=None, max_length=80)

@@ -185,7 +185,10 @@ def _average_annual_net_dollars(
     # Secondary currency: flat-rate earn on allocated spend + accelerator net value.
     # dollar_value_annual covers the net secondary currency earn (gross minus accelerator cost).
     # bonus_pts_annual covers extra primary currency pts earned via the accelerator.
-    allocated_spend = calc_annual_allocated_spend(card, selected_cards, spend, wallet_currency_ids)
+    allocated_spend = calc_annual_allocated_spend(
+        card, selected_cards, spend, wallet_currency_ids,
+        exclude_categories=card.secondary_ineligible_categories or None,
+    )
     sec = _calc_secondary_currency(card, allocated_spend, wallet_currency_ids, housing_spend=housing_spend)
     # Accelerator bonus points are primary currency points; value them at primary CPP.
     accel_bonus_dollars_annual = sec.bonus_pts_annual * cpp / 100.0

@@ -162,6 +162,12 @@ class CardData:
     # Conversion cap: secondary currency can only convert to points when non-housing
     # spend on this card ≤ cap_rate × housing spend. 0 = no cap. (e.g. 0.75 for Bilt)
     secondary_currency_cap_rate: float = 0.0
+    # Spend category names (lowercase; may include ``__foreign__`` prefix) on
+    # which the secondary currency earns *nothing* — neither points nor the
+    # scoring bonus. Bilt 2.0 in Bilt Cash mode populates this with Rent /
+    # Mortgage so housing spend doesn't wrongly get 4% Bilt Cash or win
+    # allocation via the secondary comparison bonus.
+    secondary_ineligible_categories: frozenset[str] = field(default_factory=frozenset)
 
     # Point accelerator: spend secondary currency to earn bonus primary points
     # (e.g. Bilt: $200 Bilt Cash for +1x on next $5,000, up to 5x/year)
@@ -169,6 +175,14 @@ class CardData:
     accelerator_spend_limit: float = 0.0  # spend cap per activation in dollars
     accelerator_bonus_multiplier: float = 0.0  # extra primary multiplier per activation
     accelerator_max_activations: int = 0  # max activations per year
+
+    # Bilt 2.0: when true, the card has two mutually exclusive housing
+    # earning modes — direct tiered points on Rent/Mortgage scaled by the
+    # non-housing:housing spend ratio on this card, OR the secondary-currency
+    # (Bilt Cash) path. ``compute_wallet`` picks whichever produces higher
+    # per-card net value and patches the card's effective multipliers /
+    # secondary-currency rate accordingly before running the main compute.
+    housing_tiered_enabled: bool = False
 
     # Wallet-specific date context (None = active for the full calculation window)
     wallet_added_date: Optional[date] = None
