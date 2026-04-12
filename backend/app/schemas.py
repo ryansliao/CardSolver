@@ -164,6 +164,7 @@ class UpdateCardLibraryPayload(BaseModel):
     accelerator_max_activations: Optional[int] = Field(default=None, ge=0)
     housing_tiered_enabled: Optional[bool] = None
     foreign_transaction_fee: Optional[bool] = None
+    housing_fee_waived: Optional[bool] = None
 
 
 class CardMultiplierSchema(BaseModel):
@@ -318,6 +319,7 @@ class CardRead(BaseModel):
     accelerator_max_activations: Optional[int] = None
     housing_tiered_enabled: bool = False
     foreign_transaction_fee: bool = False
+    housing_fee_waived: bool = False
     sub_recurrence_months: Optional[int] = None
     sub_family: Optional[str] = None
 
@@ -557,6 +559,7 @@ class AdminCreateCardPayload(BaseModel):
     accelerator_max_activations: Optional[int] = Field(default=None, ge=0)
     housing_tiered_enabled: bool = False
     foreign_transaction_fee: bool = False
+    housing_fee_waived: bool = False
     sub_recurrence_months: Optional[int] = Field(default=None, ge=1)
     sub_family: Optional[str] = Field(default=None, max_length=80)
 

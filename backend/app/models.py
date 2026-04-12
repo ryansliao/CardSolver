@@ -249,6 +249,11 @@ class Card(Base):
     # False = no FTF (preferred for international spend).
     foreign_transaction_fee: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
+    # True when the card can pay rent/mortgage without the ~2.5-3% processing
+    # fee that payment platforms typically charge for credit card housing
+    # payments.  Only Bilt cards waive this fee via their built-in platform.
+    housing_fee_waived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
     # Roadmap: how many months before the SUB can be earned again (e.g. 48 for Sapphire family)
     sub_recurrence_months: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Roadmap: SUB eligibility family (cards in same family share a cooldown, e.g. "sapphire")

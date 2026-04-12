@@ -392,6 +392,7 @@ async def load_card_data(
                 accelerator_max_activations=card.accelerator_max_activations or 0,
                 housing_tiered_enabled=bool(getattr(card, "housing_tiered_enabled", False)),
                 has_foreign_transaction_fee=bool(getattr(card, "foreign_transaction_fee", False)),
+                housing_fee_waived=bool(getattr(card, "housing_fee_waived", False)),
                 network_name=_network_name,
                 foreign_multiplier_bonus=multipliers.get("Foreign Transactions", 0.0),
             )

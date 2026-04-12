@@ -176,7 +176,8 @@ export function SpendTabContent({
   }, [selectedCards])
 
   function formatCardEarn(card: CardResult, points: number): string {
-    const adjusted = points * (isTotal ? totalYears : 1)
+    const cardYears = card.card_active_years || totalYears
+    const adjusted = isTotal ? points * totalYears : points * totalYears / cardYears
     if ((card.effective_reward_kind ?? 'points') === 'cash') {
       return formatMoneyExact((adjusted * card.cents_per_point) / 100)
     }

@@ -17,3 +17,9 @@ FOREIGN_TRANSACTION_FEE_PERCENT: float = 3.0
 
 # Network names considered preferred for foreign spend (no-FTF tier).
 PREFERRED_FOREIGN_NETWORKS: frozenset[str] = frozenset({"Visa", "Mastercard"})
+
+# Typical processing fee (%) charged by rent/mortgage payment platforms when
+# the cardholder uses a credit card.  Cards with housing_fee_waived=True
+# (e.g. Bilt) skip this fee; all others incur it as a cost that reduces the
+# net value of earning points on housing spend.
+HOUSING_PROCESSING_FEE_PERCENT: float = 3.0

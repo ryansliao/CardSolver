@@ -17,7 +17,7 @@ _CARD_LIBRARY_PATCH_FIELDS = frozenset(
      "secondary_currency_id", "secondary_currency_rate", "secondary_currency_cap_rate",
      "accelerator_cost", "accelerator_spend_limit", "accelerator_bonus_multiplier",
      "accelerator_max_activations", "housing_tiered_enabled",
-     "foreign_transaction_fee", "sub_secondary_points"}
+     "foreign_transaction_fee", "housing_fee_waived", "sub_secondary_points"}
 )
 
 

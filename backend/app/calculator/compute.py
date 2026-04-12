@@ -12,7 +12,7 @@ from dataclasses import replace
 from datetime import date
 from typing import Optional
 
-from ..constants import PREFERRED_FOREIGN_NETWORKS
+from ..constants import HOUSING_PROCESSING_FEE_PERCENT, PREFERRED_FOREIGN_NETWORKS
 from .allocation import (
     FOREIGN_CAT_PREFIX,
     _effective_annual_earn_allocated,
@@ -264,6 +264,47 @@ def compute_wallet(
         FOREIGN_CAT_PREFIX,
     )
     selected_cards = [c for c in all_cards if c.id in selected_ids]
+
+    # Housing processing fee: cards without housing_fee_waived incur a ~3%
+    # payment platform fee when used for rent/mortgage.  Reduce their housing
+    # category multipliers so allocation and earn reflect the net value after
+    # the fee.  The penalty in multiplier units is fee% / (CPP/100) — e.g. at
+    # 2.0 cpp the 3% fee costs 1.5x worth of points per dollar.
+    if housing_spend_total > 0 and _housing_names:
+        fee_rate = HOUSING_PROCESSING_FEE_PERCENT / 100.0  # 0.03
+        any_waived = any(
+            c.housing_fee_waived for c in selected_cards
+        )
+        if any_waived:
+            new_cards: list[CardData] = []
+            for c in all_cards:
+                if c.housing_fee_waived or c.id not in selected_ids:
+                    new_cards.append(c)
+                    continue
+                eff_cur = _effective_currency(c, active_wallet_currency_ids)
+                cpp = eff_cur.cents_per_point
+                if cpp <= 0:
+                    new_cards.append(c)
+                    continue
+                fee_mult_penalty = fee_rate / (cpp / 100.0)
+                new_mults = dict(c.multipliers)
+                changed = False
+                for name in _housing_names:
+                    for key in (name, f"{FOREIGN_CAT_PREFIX}{name}"):
+                        if key in new_mults:
+                            new_mults[key] = max(0.0, new_mults[key] - fee_mult_penalty)
+                            changed = True
+                        else:
+                            # Category falls through to All Other; apply penalty
+                            ao = _all_other_multiplier(new_mults)
+                            new_mults[key] = max(0.0, ao - fee_mult_penalty)
+                            changed = True
+                if changed:
+                    new_cards.append(replace(c, multipliers=new_mults))
+                else:
+                    new_cards.append(c)
+            all_cards = new_cards
+            selected_cards = [c for c in all_cards if c.id in selected_ids]
 
     # Secondary-currency scoring adjustment for cards with a cap_rate > 0.
     # Without this the LP sees e.g. Bilt's full 4% Bilt Cash bonus on every

@@ -147,6 +147,9 @@ class CardData:
     network_name: Optional[str] = None
     # Bonus multiplier from a "Foreign Transactions" category (e.g. Summit 5x foreign)
     foreign_multiplier_bonus: float = 0.0
+    # True when the card waives the ~3% housing payment processing fee
+    # (e.g. Bilt's built-in rent/mortgage platform).
+    housing_fee_waived: bool = False
 
     # Secondary currency earned at a flat rate on all allocated spend
     # (e.g. Bilt Cash at 4% alongside Bilt Points via multipliers)

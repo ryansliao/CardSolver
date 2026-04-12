@@ -241,7 +241,7 @@ async def wallet_results(
     }
 
     sub_cards_for_plan = [cd for cd in selected_card_data if _has_sub_window(cd)]
-    sub_plan = plan_sub_targeting(sub_cards_for_plan, spend, ref_date, wcids)
+    sub_plan = plan_sub_targeting(sub_cards_for_plan, spend, ref_date, wcids, housing_category_names=housing_names)
 
     plan_rates: dict[int, float] = {s.card_id: s.daily_spend_allocated for s in sub_plan.schedules}
     card_daily_rates: dict[int, float] = {}

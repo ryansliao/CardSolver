@@ -22,6 +22,7 @@ def plan_sub_targeting(
     spend: dict[str, float],
     window_start: date,
     wallet_currency_ids: set[int] | None = None,
+    housing_category_names: set[str] | None = None,
 ) -> SubSpendPlan:
     """
     Determine whether all active SUB minimums can be met and how to split
@@ -135,7 +136,7 @@ def plan_sub_targeting(
     # i.e. overlapping SUB windows whose combined need doesn't exceed budget.
     # For staggered windows with no true overlap, the sequential fallback
     # handles it correctly.
-    parallel_plan = _try_parallel_category_split(needs, spend, total_daily, wallet_currency_ids)
+    parallel_plan = _try_parallel_category_split(needs, spend, total_daily, wallet_currency_ids, housing_category_names)
     if parallel_plan is not None:
         return parallel_plan
 
@@ -159,11 +160,18 @@ def plan_sub_targeting(
     return SubSpendPlan(feasible=True, parallel=False, schedules=schedules)
 
 
+def _is_housing_category(cat: str, housing_names_lower: set[str]) -> bool:
+    """Check if a category is housing, stripping any foreign prefix."""
+    base = cat[len("__foreign__"):] if cat.startswith("__foreign__") else cat
+    return base.lower() in housing_names_lower
+
+
 def _try_parallel_category_split(
     needs: list,  # list of _Need (can't type the nested dataclass)
     spend: dict[str, float],
     total_daily: float,
     wallet_currency_ids: set[int],
+    housing_category_names: set[str] | None = None,
 ) -> SubSpendPlan | None:
     """
     Try to split categories among SUB cards so all can be satisfied in parallel.
@@ -178,6 +186,10 @@ def _try_parallel_category_split(
         return None
 
     # EV-optimal category assignment: each category → best-earning SUB card.
+    # Housing-tiered cards (Bilt 2.0) earn 0 on housing categories after mode
+    # selection, so the planner must reflect that to avoid misallocating housing
+    # spend and producing inaccurate projected earn dates.
+    housing_lower = {n.lower() for n in housing_category_names} if housing_category_names else set()
     card_by_id = {n.card.id: n.card for n in needs}
     cat_assignment: dict[str, int] = {}
     for cat, s in spend.items():
@@ -186,7 +198,10 @@ def _try_parallel_category_split(
         best_id = needs[0].card.id
         best_rate = -1.0
         for n in needs:
-            rate = _card_category_earn_rate(n.card, cat, spend, wallet_currency_ids)
+            if n.card.housing_tiered_enabled and housing_lower and _is_housing_category(cat, housing_lower):
+                rate = 0.0
+            else:
+                rate = _card_category_earn_rate(n.card, cat, spend, wallet_currency_ids)
             if rate > best_rate:
                 best_rate = rate
                 best_id = n.card.id
@@ -222,10 +237,15 @@ def _try_parallel_category_split(
                     continue
                 if _donor_surplus(donor_id) <= 1e-9:
                     continue
-                donor_rate = _card_category_earn_rate(
-                    card_by_id[donor_id], cat, spend, wallet_currency_ids
-                )
-                my_rate = _card_category_earn_rate(n.card, cat, spend, wallet_currency_ids)
+                donor_card = card_by_id[donor_id]
+                if donor_card.housing_tiered_enabled and housing_lower and _is_housing_category(cat, housing_lower):
+                    donor_rate = 0.0
+                else:
+                    donor_rate = _card_category_earn_rate(donor_card, cat, spend, wallet_currency_ids)
+                if n.card.housing_tiered_enabled and housing_lower and _is_housing_category(cat, housing_lower):
+                    my_rate = 0.0
+                else:
+                    my_rate = _card_category_earn_rate(n.card, cat, spend, wallet_currency_ids)
                 candidates.append((donor_rate - my_rate, cat, donor_id))
 
         candidates.sort(key=lambda t: t[0])
@@ -249,6 +269,14 @@ def _try_parallel_category_split(
             return None  # can't satisfy this card even after rebalancing
 
     # Build schedules from the allocation.
+    # Projected earn dates use total_daily (= wallet's full daily spend budget)
+    # rather than the per-card category-derived rate.  The category split is an
+    # EV optimisation; the actual SUB progress depends on the user directing
+    # their full daily spend to whichever card needs it.  Using total_daily
+    # keeps projected dates stable when unrelated spend categories are added
+    # (e.g. housing spend that won't be earned by any SUB card after Bilt 2.0
+    # mode patching).  The EDF feasibility gate already proved that sequential
+    # allocation at total_daily meets every deadline.
     schedules: list[SubCardSchedule] = []
     for n in needs:
         daily = _assigned_daily(n.card.id)
@@ -258,7 +286,7 @@ def _try_parallel_category_split(
             for cid, share in owners.items()
             if cid == n.card.id and share > 0.01
         }
-        days_to_earn = math.ceil(n.min_spend / daily) if daily > 0 else n.remaining_days
+        days_to_earn = math.ceil(n.min_spend / total_daily) if total_daily > 0 else n.remaining_days
         schedules.append(SubCardSchedule(
             card_id=n.card.id,
             start_date=n.spend_start,

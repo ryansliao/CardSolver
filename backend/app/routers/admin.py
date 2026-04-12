@@ -172,6 +172,7 @@ async def admin_create_card(
         accelerator_bonus_multiplier=payload.accelerator_bonus_multiplier,
         accelerator_max_activations=payload.accelerator_max_activations,
         housing_tiered_enabled=payload.housing_tiered_enabled,
+        housing_fee_waived=getattr(payload, "housing_fee_waived", False),
         sub_recurrence_months=payload.sub_recurrence_months,
         sub_family=payload.sub_family,
     )
