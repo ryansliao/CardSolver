@@ -261,6 +261,8 @@ export interface CardResult {
   card_name: string
   selected: boolean
   effective_annual_fee: number
+  card_effective_annual_fee: number
+  card_active_years: number
   total_points: number
   annual_point_earn: number
   credit_valuation: number

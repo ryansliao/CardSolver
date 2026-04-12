@@ -216,6 +216,14 @@ class CardResult:
     selected: bool
     # Net annual cost after credits, amortised SUB/fees, and wallet-allocated category earn (at CPP).
     effective_annual_fee: float = 0.0
+    # Per-card EAF using the card's own active duration (wallet_added_date to
+    # wallet_closed_date) instead of the wallet window. For per-card display only;
+    # wallet/currency totals use effective_annual_fee (wallet years).
+    card_effective_annual_fee: float = 0.0
+    # The card's own active duration in years within the wallet window
+    # (from wallet_added_date to wallet_closed_date). Used by the frontend
+    # for per-card income display; wallet/currency totals use wallet years.
+    card_active_years: float = 0.0
     total_points: float = 0.0
     annual_point_earn: float = 0.0
     credit_valuation: float = 0.0

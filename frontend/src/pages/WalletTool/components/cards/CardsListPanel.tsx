@@ -104,7 +104,7 @@ function CardItem({
             </p>
             {wc.acquisition_type === 'product_change' && (
               <span className="text-[10px] font-medium bg-violet-900/60 text-violet-300 border border-violet-700/50 rounded px-1.5 py-0.5">
-                PC
+                Product Change
               </span>
             )}
           </div>

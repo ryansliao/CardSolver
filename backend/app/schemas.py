@@ -882,6 +882,8 @@ class CardResultSchema(BaseModel):
     card_name: str
     selected: bool
     effective_annual_fee: float = 0.0
+    card_effective_annual_fee: float = 0.0
+    card_active_years: float = 0.0
     total_points: float = 0.0
     annual_point_earn: float = 0.0
     credit_valuation: float = 0.0

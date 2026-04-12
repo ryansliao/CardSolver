@@ -384,6 +384,15 @@ def compute_wallet(
 
         eff_currency = _effective_currency(card, active_wallet_currency_ids)
 
+        # Card's own active duration in years within the wallet window.
+        if use_segmentation and window_start is not None and window_end is not None:
+            _card_start = max(card.wallet_added_date or window_start, window_start)
+            _card_end = min(card.wallet_closed_date or window_end, window_end)
+            _card_active_days = max(0, (_card_end - _card_start).days)
+            card_active_years = max(_card_active_days / 365.25, 1 / 12)
+        else:
+            card_active_years = float(years)
+
         if use_segmentation:
             net_annual, annual_point_earn, annual_point_earn_for_balance = _segmented_card_net_per_year(
                 card, selected_cards, spend,
@@ -393,10 +402,14 @@ def compute_wallet(
                 housing_spend=housing_spend_total,
             )
             effective_annual_fee = round(-net_annual, 4)
+            # Per-card EAF: re-annualize using the card's own active years.
+            # net_annual = total_net / wallet_years, so total_net = net_annual * wallet_years.
+            total_years_window = (window_end - window_start).days / 365.25  # type: ignore[operator]
+            card_net_annual = net_annual * total_years_window / card_active_years
+            card_effective_annual_fee = round(-card_net_annual, 4)
             # total_points: annualized earn × total window years + one-time SUB bonus.
             # Uses the wallet's CPP overrides for allocation (same view as the EV path).
             # sub_spend_earn and net_opp are excluded (already captured in segment earn).
-            total_years_window = (window_end - window_start).days / 365.25  # type: ignore[operator]
             sub_earnable_pts = card.sub_points if card.sub_earnable else 0
             total_points = annual_point_earn_for_balance * total_years_window + sub_earnable_pts
         else:
@@ -414,6 +427,7 @@ def compute_wallet(
                 housing_spend=housing_spend_total,
             )
             effective_annual_fee = round(-net_annual, 4)
+            card_effective_annual_fee = effective_annual_fee
             total_points = calc_total_points(
                 card, selected_cards, spend, years, active_wallet_currency_ids,
                 precomputed_earn=annual_point_earn_for_balance,
@@ -490,6 +504,8 @@ def compute_wallet(
                 card_name=card.name,
                 selected=True,
                 effective_annual_fee=effective_annual_fee,
+                card_effective_annual_fee=card_effective_annual_fee,
+                card_active_years=round(card_active_years, 4),
                 total_points=round(total_points, 2),
                 annual_point_earn=round(annual_point_earn, 2),
                 credit_valuation=round(credit_val, 2),

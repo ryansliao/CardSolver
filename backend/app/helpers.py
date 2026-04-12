@@ -385,6 +385,8 @@ def wallet_to_schema(wallet) -> WalletResultSchema:
             card_name=cr.card_name,
             selected=cr.selected,
             effective_annual_fee=cr.effective_annual_fee,
+            card_effective_annual_fee=cr.card_effective_annual_fee,
+            card_active_years=cr.card_active_years,
             total_points=cr.total_points,
             annual_point_earn=cr.annual_point_earn,
             credit_valuation=cr.credit_valuation,
@@ -407,6 +409,14 @@ def wallet_to_schema(wallet) -> WalletResultSchema:
                 CategoryEarnItem(category=cat, points=pts)
                 for cat, pts in cr.category_earn
             ],
+            secondary_currency_earn=cr.secondary_currency_earn,
+            secondary_currency_name=cr.secondary_currency_name,
+            secondary_currency_id=cr.secondary_currency_id,
+            accelerator_activations=cr.accelerator_activations,
+            accelerator_bonus_points=cr.accelerator_bonus_points,
+            accelerator_cost_points=cr.accelerator_cost_points,
+            secondary_currency_net_earn=cr.secondary_currency_net_earn,
+            secondary_currency_value_dollars=cr.secondary_currency_value_dollars,
         )
         for cr in wallet.card_results
     ]

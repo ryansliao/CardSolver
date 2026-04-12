@@ -397,10 +397,11 @@ export function WalletResultsAndCurrenciesPanel({
                       {cards.length > 0 && (
                         <div className="border-t border-slate-700/60">
                           {cards.map((card, idx) => {
-                            const cardEffectiveAF = card.effective_annual_fee
+                            const cardYears = card.card_active_years || totalYears
+                            const cardEffectiveAF = card.card_effective_annual_fee
                             const isLast = idx === cards.length - 1
                             const cardIsCash = (card.effective_reward_kind ?? 'points') === 'cash'
-                            const annualPts = cardAnnualPointIncome(card, totalYears)
+                            const annualPts = cardAnnualPointIncome(card, cardYears)
                             const annualPtsDisplay = cardIsCash
                               ? `+${formatMoney((annualPts * card.cents_per_point) / 100)}`
                               : `+${formatPoints(Math.round(annualPts))}`
@@ -430,9 +431,9 @@ export function WalletResultsAndCurrenciesPanel({
                                     </p>
                                     {card.secondary_currency_name && card.secondary_currency_net_earn > 0 && (
                                       <p className="text-xs text-indigo-400/70 mt-0.5">
-                                        {formatPoints(Math.round(card.secondary_currency_net_earn / totalYears))} {card.secondary_currency_name}/Year
+                                        {formatPoints(Math.round(card.secondary_currency_net_earn / cardYears))} {card.secondary_currency_name}/Year
                                         {card.secondary_currency_value_dollars > 0 && (
-                                          <span className="text-slate-500"> ≈ {formatMoney(card.secondary_currency_value_dollars / totalYears)}/Year</span>
+                                          <span className="text-slate-500"> ≈ {formatMoney(card.secondary_currency_value_dollars / cardYears)}/Year</span>
                                         )}
                                         {card.accelerator_activations > 0 && (
                                           <span className="text-slate-500"> · {card.accelerator_activations}x Accelerator</span>
