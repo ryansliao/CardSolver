@@ -370,7 +370,6 @@ export function WalletCardModal({
           library_credit_id: Number(id),
           value,
         })),
-        priority_category_ids: priorityCategoryIds.size > 0 ? Array.from(priorityCategoryIds) : undefined,
       })
       return
     }
@@ -1041,7 +1040,7 @@ export function WalletCardModal({
                   Pins one or more wallet spend categories to this card so
                   the calculator always routes that spend here. A category
                   already claimed by another wallet card is disabled. */}
-              {lib && (
+              {lib && mode === 'edit' && (
                 <div className="-mx-6 border-t border-slate-700">
                   <button
                     type="button"
