@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import (
@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     Date,
+    DateTime,
     Float,
     ForeignKey,
     Integer,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -252,6 +254,9 @@ class Card(Base):
     # Roadmap: SUB eligibility family (cards in same family share a cooldown, e.g. "sapphire")
     sub_family: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
 
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
     issuer: Mapped["Issuer"] = relationship(
         back_populates="cards", foreign_keys=[issuer_id]
     )
@@ -399,6 +404,9 @@ class CardCategoryMultiplier(Base):
         ForeignKey("card_multiplier_groups.id", ondelete="CASCADE"), nullable=True
     )
 
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
     card: Mapped["Card"] = relationship(back_populates="multipliers")
     spend_category: Mapped["SpendCategory"] = relationship(back_populates="card_multipliers")
     multiplier_group: Mapped[Optional["CardMultiplierGroup"]] = relationship(
@@ -473,6 +481,9 @@ class Credit(Base):
     credit_currency_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("currencies.id", ondelete="SET NULL"), nullable=True
     )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     wallet_credit_overrides: Mapped[list["WalletCardCredit"]] = relationship(
         back_populates="library_credit", cascade="all, delete-orphan"
@@ -553,9 +564,6 @@ class SpendCategory(Base):
     card_multipliers: Mapped[list["CardCategoryMultiplier"]] = relationship(
         back_populates="spend_category"
     )
-    wallet_spend_mappings: Mapped[list["WalletSpendCategoryMapping"]] = relationship(
-        back_populates="spend_category"
-    )
     wallet_card_multipliers: Mapped[list["WalletCardMultiplier"]] = relationship(
         back_populates="spend_category"
     )
@@ -590,15 +598,15 @@ class Wallet(Base):
     # Percentage of total spend that occurs as foreign transactions (0–100).
     foreign_spend_percent: Mapped[float] = mapped_column(Float, default=0, server_default="0")
 
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
     user: Mapped["User"] = relationship(back_populates="wallets")
     wallet_cards: Mapped[list["WalletCard"]] = relationship(
         back_populates="wallet", cascade="all, delete-orphan"
     )
     currency_balances: Mapped[list["WalletCurrencyBalance"]] = relationship(
         "WalletCurrencyBalance", back_populates="wallet", cascade="all, delete-orphan"
-    )
-    spend_categories: Mapped[list["WalletSpendCategory"]] = relationship(
-        back_populates="wallet", cascade="all, delete-orphan"
     )
     spend_items: Mapped[list["WalletSpendItem"]] = relationship(
         back_populates="wallet", cascade="all, delete-orphan"
@@ -666,6 +674,9 @@ class WalletCard(Base):
     #   "considering"  = candidate, not committed; excluded from calculations
     # Closed state is derived from `closed_date` and is not stored in this column.
     panel: Mapped[str] = mapped_column(String(16), nullable=False, default="considering")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     wallet: Mapped["Wallet"] = relationship(back_populates="wallet_cards")
     card: Mapped["Card"] = relationship(back_populates="wallet_cards")
@@ -740,6 +751,9 @@ class IssuerApplicationRule(Base):
     personal_only: Mapped[bool] = mapped_column(Boolean, default=False)
     scope_all_issuers: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
     issuer: Mapped[Optional["Issuer"]] = relationship(back_populates="application_rules")
 
     def __repr__(self) -> str:
@@ -770,6 +784,9 @@ class WalletCardCredit(Base):
         ForeignKey("credits.id", ondelete="CASCADE"), nullable=False
     )
     value: Mapped[float] = mapped_column(Float, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     wallet_card: Mapped["WalletCard"] = relationship(back_populates="credit_overrides_rows")
     library_credit: Mapped["Credit"] = relationship(back_populates="wallet_credit_overrides")
@@ -907,63 +924,14 @@ class WalletCurrencyCpp(Base):
     )
     cents_per_point: Mapped[float] = mapped_column(Float, nullable=False)
 
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
     wallet: Mapped["Wallet"] = relationship(back_populates="cpp_overrides")
     currency: Mapped["Currency"] = relationship(back_populates="wallet_cpp_overrides")
 
     def __repr__(self) -> str:
         return f"<WalletCurrencyCpp wallet={self.wallet_id} currency={self.currency_id} cpp={self.cents_per_point}>"
-
-
-class WalletSpendCategory(Base):
-    """
-    Wallet-scoped spend bucket (e.g. 'Travel', 'Dining Out').
-    Each wallet has its own spend profile.
-    """
-
-    __tablename__ = "wallet_spend_categories"
-    __table_args__ = (UniqueConstraint("wallet_id", "name"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    wallet_id: Mapped[int] = mapped_column(
-        ForeignKey("wallets.id", ondelete="CASCADE"), nullable=False
-    )
-    name: Mapped[str] = mapped_column(String(80), nullable=False)
-    amount: Mapped[float] = mapped_column(Float, default=0.0)
-
-    wallet: Mapped["Wallet"] = relationship(back_populates="spend_categories")
-    mappings: Mapped[list["WalletSpendCategoryMapping"]] = relationship(
-        back_populates="wallet_spend_category", cascade="all, delete-orphan"
-    )
-
-    def __repr__(self) -> str:
-        return f"<WalletSpendCategory wallet={self.wallet_id} name={self.name!r} amount={self.amount}>"
-
-
-class WalletSpendCategoryMapping(Base):
-    """
-    Allocates part of a WalletSpendCategory bucket (annual $) to a global SpendCategory.
-    """
-
-    __tablename__ = "wallet_spend_category_mappings"
-    __table_args__ = (UniqueConstraint("wallet_spend_category_id", "spend_category_id"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    wallet_spend_category_id: Mapped[int] = mapped_column(
-        ForeignKey("wallet_spend_categories.id", ondelete="CASCADE"), nullable=False
-    )
-    spend_category_id: Mapped[int] = mapped_column(
-        ForeignKey("spend_categories.id", ondelete="RESTRICT"), nullable=False
-    )
-    allocation: Mapped[float] = mapped_column(Float, default=0.0)
-
-    wallet_spend_category: Mapped["WalletSpendCategory"] = relationship(back_populates="mappings")
-    spend_category: Mapped["SpendCategory"] = relationship(back_populates="wallet_spend_mappings")
-
-    def __repr__(self) -> str:
-        return (
-            f"<WalletSpendCategoryMapping wsc={self.wallet_spend_category_id} "
-            f"sc={self.spend_category_id} alloc={self.allocation}>"
-        )
 
 
 class WalletCardMultiplier(Base):
@@ -987,6 +955,9 @@ class WalletCardMultiplier(Base):
     )
     multiplier: Mapped[float] = mapped_column(Float, nullable=False)
 
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
     wallet: Mapped["Wallet"] = relationship(back_populates="card_multipliers")
     card: Mapped["Card"] = relationship(back_populates="wallet_multipliers")
     spend_category: Mapped["SpendCategory"] = relationship(back_populates="wallet_card_multipliers")
@@ -1002,7 +973,6 @@ class WalletCardMultiplier(Base):
 class WalletSpendItem(Base):
     """
     Per-wallet spend item: how much a user spends annually in a given SpendCategory.
-    Replaces WalletSpendCategory + WalletSpendCategoryMapping.
     The SpendCategory itself is both the card multiplier category and the user-facing name.
     """
 
@@ -1017,6 +987,9 @@ class WalletSpendItem(Base):
         ForeignKey("spend_categories.id", ondelete="RESTRICT"), nullable=False
     )
     amount: Mapped[float] = mapped_column(Float, default=0.0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     wallet: Mapped["Wallet"] = relationship(back_populates="spend_items")
     spend_category: Mapped["SpendCategory"] = relationship(
