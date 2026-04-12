@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   walletsApi,
+  walletCardCategoryPriorityApi,
   type AddCardToWalletPayload,
   type RoadmapResponse,
   type RoadmapRuleStatus,
@@ -84,11 +85,16 @@ export default function WalletToolPage() {
   const addCardMutation = useMutation({
     mutationFn: ({ walletId, payload }: { walletId: number; payload: AddCardToWalletPayload }) =>
       walletsApi.addCard(walletId, payload),
-    onSuccess: async (_data, { walletId }) => {
+    onSuccess: async (_data, { walletId, payload }) => {
       const prev = queryClient.getQueryData<RoadmapResponse>(queryKeys.roadmap(walletId))
       const prevViolatedIds = new Set(
         (prev?.rule_statuses ?? []).filter((r) => r.is_violated).map((r) => r.rule_id)
       )
+
+      if (payload.priority_category_ids && payload.priority_category_ids.length > 0) {
+        await walletCardCategoryPriorityApi.set(walletId, payload.card_id, payload.priority_category_ids)
+        queryClient.invalidateQueries({ queryKey: queryKeys.walletCategoryPriorities(walletId) })
+      }
 
       queryClient.invalidateQueries({ queryKey: queryKeys.wallets() })
       queryClient.invalidateQueries({ queryKey: queryKeys.walletCurrencyBalances(walletId) })

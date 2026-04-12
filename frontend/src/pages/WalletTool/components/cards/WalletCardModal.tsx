@@ -372,6 +372,7 @@ export function WalletCardModal({
           library_credit_id: Number(id),
           value,
         })),
+        priority_category_ids: priorityCategoryIds.size > 0 ? Array.from(priorityCategoryIds) : undefined,
       })
       return
     }
@@ -476,11 +477,12 @@ export function WalletCardModal({
         </div>
 
         {/* ── Body ── */}
-        <div className="px-6 py-4 overflow-y-auto flex-1 min-h-0">
+        <div className="px-6 pt-4 pb-0 overflow-y-auto flex-1 min-h-0">
           {mode === 'edit' && !lib ? (
             <p className="text-sm text-slate-400 py-8 text-center">Loading card…</p>
           ) : (
-            <div className="space-y-3">
+            <div>
+              <div className="space-y-3">
               {/* Acquisition type (left) | Opening date (right) */}
               <div className="grid grid-cols-2 gap-3 items-start">
                 <div>
@@ -697,13 +699,16 @@ export function WalletCardModal({
                 </div>
               )}
 
+              </div>{/* end space-y-3 */}
+              <div className="h-3" />
+
               {/* Statement Credits inline collapsible */}
               {lib && (
-                <div className="border border-slate-600 rounded-lg overflow-hidden">
+                <div className="-mx-6 border-t border-slate-700">
                   <button
                     type="button"
                     onClick={() => setCreditsExpanded((prev) => !prev)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-slate-300 hover:bg-slate-700/40"
+                    className="w-full flex items-center justify-between px-6 py-3 text-sm text-slate-300 hover:bg-slate-700/40"
                   >
                     <span>
                       Statement Credits
@@ -728,7 +733,7 @@ export function WalletCardModal({
                   {creditsExpanded && (
                     <div className="border-t border-slate-700">
                       {creditLibraryLoading || creditOverridesLoading ? (
-                        <div className="flex items-center gap-2 px-3 py-3 text-xs text-slate-400">
+                        <div className="flex items-center gap-2 px-6 py-3 text-xs text-slate-400">
                           <svg
                             className="w-3.5 h-3.5 animate-spin text-indigo-400"
                             fill="none"
@@ -751,7 +756,7 @@ export function WalletCardModal({
                           Loading credits…
                         </div>
                       ) : Object.keys(selectedCredits).length === 0 ? (
-                        <p className="text-xs text-slate-500 px-3 py-3">
+                        <p className="text-xs text-slate-500 px-6 py-3">
                           No credits selected. Add credits this card grants from the picker below.
                         </p>
                       ) : (
@@ -762,7 +767,7 @@ export function WalletCardModal({
                             const isExpanded = creditOptionsOpen === libId
                             return (
                               <li key={libId}>
-                                <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                                <div className="flex items-center justify-between gap-2 px-6 py-2 text-sm">
                                   {/* Expand arrow */}
                                   <button
                                     type="button"
@@ -834,61 +839,55 @@ export function WalletCardModal({
                                     </button>
                                   </div>
                                 </div>
-                                {/* Expanded options row */}
                                 {isExpanded && (
-                                  <div className="flex items-center justify-between px-3 pb-2 pl-8 text-xs">
-                                    <div className="flex flex-col gap-1">
-                                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                                        <input
-                                          type="checkbox"
-                                          checked={lc?.excludes_first_year ?? false}
-                                          onChange={() => {
-                                            if (!lc) return
-                                            creditsApi.update(lc.id, { excludes_first_year: !lc.excludes_first_year })
-                                              .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.credits() }))
-                                          }}
-                                          className="accent-amber-500 w-3 h-3"
-                                        />
-                                        <span className="text-slate-400">After Year 1</span>
-                                      </label>
-                                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                                        <input
-                                          type="checkbox"
-                                          checked={lc?.is_one_time ?? false}
-                                          onChange={() => {
-                                            if (!lc) return
-                                            creditsApi.update(lc.id, { is_one_time: !lc.is_one_time })
-                                              .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.credits() }))
-                                          }}
-                                          className="accent-indigo-500 w-3 h-3"
-                                        />
-                                        <span className="text-slate-400">One-Time</span>
-                                      </label>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-slate-500 whitespace-nowrap">Currency</span>
-                                      <select
-                                        value={lc?.credit_currency_id ?? 'null'}
-                                        onChange={(e) => {
+                                  <div className="flex items-center gap-3 px-6 pb-2.5 pt-0.5 text-xs text-slate-400">
+                                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={lc?.excludes_first_year ?? false}
+                                        onChange={() => {
                                           if (!lc) return
-                                          const cid = e.target.value === 'null' ? null : Number(e.target.value)
-                                          creditsApi.update(lc.id, { credit_currency_id: cid })
+                                          creditsApi.update(lc.id, { excludes_first_year: !lc.excludes_first_year })
                                             .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.credits() }))
                                         }}
-                                        className="bg-slate-700 border border-slate-600 text-white text-xs px-1.5 py-0.5 rounded outline-none focus:border-indigo-500 max-w-[160px]"
-                                      >
-                                        {(currencies ?? []).filter((cur) => {
-                                          // Show Cash + currencies in the wallet + the selected card's currency
-                                          if (cur.reward_kind === 'cash') return true
-                                          if (walletCurrencyIds.has(cur.id)) return true
-                                          const selectedCard = cardId ? cards?.find((c) => c.id === cardId) : null
-                                          if (selectedCard && cur.id === selectedCard.currency_id) return true
-                                          return false
-                                        }).map((cur) => (
-                                          <option key={cur.id} value={cur.id}>{cur.name}</option>
-                                        ))}
-                                      </select>
-                                    </div>
+                                        className="accent-amber-500 w-3 h-3"
+                                      />
+                                      <span>After Year 1</span>
+                                    </label>
+                                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={lc?.is_one_time ?? false}
+                                        onChange={() => {
+                                          if (!lc) return
+                                          creditsApi.update(lc.id, { is_one_time: !lc.is_one_time })
+                                            .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.credits() }))
+                                        }}
+                                        className="accent-indigo-500 w-3 h-3"
+                                      />
+                                      <span>One-Time</span>
+                                    </label>
+                                    <div className="flex-1" />
+                                    <select
+                                      value={lc?.credit_currency_id ?? 'null'}
+                                      onChange={(e) => {
+                                        if (!lc) return
+                                        const cid = e.target.value === 'null' ? null : Number(e.target.value)
+                                        creditsApi.update(lc.id, { credit_currency_id: cid })
+                                          .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.credits() }))
+                                      }}
+                                      className="bg-slate-700 border border-slate-600 text-white text-xs px-2 py-1 rounded outline-none focus:border-indigo-500"
+                                    >
+                                      {(currencies ?? []).filter((cur) => {
+                                        if (cur.reward_kind === 'cash') return true
+                                        if (walletCurrencyIds.has(cur.id)) return true
+                                        const selectedCard = cardId ? cards?.find((c) => c.id === cardId) : null
+                                        if (selectedCard && cur.id === selectedCard.currency_id) return true
+                                        return false
+                                      }).map((cur) => (
+                                        <option key={cur.id} value={cur.id}>{cur.name}</option>
+                                      ))}
+                                    </select>
                                   </div>
                                 )}
                               </li>
@@ -896,103 +895,79 @@ export function WalletCardModal({
                           })}
                         </ul>
                       )}
-                      <div className="px-3 py-2 border-t border-slate-700/60">
-                        {!creditPickerOpen ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCreditPickerOpen(true)
-                              setCreditSearch('')
-                            }}
-                            className="text-xs text-indigo-400 hover:text-indigo-300 font-medium"
-                          >
-                            + Add credit
-                          </button>
-                        ) : (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="search"
-                                autoFocus
-                                value={creditSearch}
-                                onChange={(e) => setCreditSearch(e.target.value)}
-                                placeholder="Search credits…"
-                                className="flex-1 bg-slate-700 border border-slate-600 text-white text-xs px-2 py-1.5 rounded outline-none focus:border-indigo-500"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setCreditPickerOpen(false)
-                                  setCreditSearch('')
-                                }}
-                                className="text-xs text-slate-400 hover:text-white px-2 py-1.5"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                            {(() => {
-                              const trimmed = creditSearch.trim()
-                              const q = trimmed.toLowerCase()
-                              const matches = (creditLibrary ?? [])
-                                .filter((c) => !(c.id in selectedCredits))
-                                .filter((c) => !q || c.credit_name.toLowerCase().includes(q))
-                              const exactExists = (creditLibrary ?? []).some(
-                                (c) => c.credit_name.toLowerCase() === q,
-                              )
-                              const canCreate = trimmed.length > 0 && !exactExists
-                              if (matches.length === 0 && !canCreate) {
-                                return (
-                                  <p className="text-[11px] text-slate-500 px-1 py-1">
-                                    No matching credits.
-                                  </p>
-                                )
-                              }
-                              return (
-                                <ul className="max-h-40 overflow-y-auto rounded border border-slate-700 divide-y divide-slate-700/60">
-                                  {matches.map((c) => (
-                                    <li key={c.id}>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const cardVal = cardId ? (c.card_values[cardId] ?? c.value ?? 0) : (c.value ?? 0)
-                                          setSelectedCredits((prev) => ({
-                                            ...prev,
-                                            [c.id]: cardVal,
-                                          }))
-                                          setCreditPickerOpen(false)
-                                          setCreditSearch('')
-                                        }}
-                                        className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-xs text-slate-200 hover:bg-slate-700/60"
-                                      >
-                                        <span className="truncate min-w-0">{c.credit_name}</span>
-                                        <span className="text-slate-500 tabular-nums shrink-0">
-                                          {formatMoney(cardId ? (c.card_values[cardId] ?? c.value ?? 0) : (c.value ?? 0))}
-                                        </span>
-                                      </button>
-                                    </li>
-                                  ))}
-                                  {canCreate && (
-                                    <li>
-                                      <button
-                                        type="button"
-                                        disabled={createCreditMutation.isPending}
-                                        onClick={() => createCreditMutation.mutate(trimmed)}
-                                        className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-indigo-300 hover:bg-slate-700/60 disabled:opacity-50"
-                                      >
-                                        <span className="shrink-0">+</span>
-                                        <span className="truncate min-w-0">
-                                          {createCreditMutation.isPending
-                                            ? `Creating "${trimmed}"…`
-                                            : `Create "${trimmed}"`}
-                                        </span>
-                                      </button>
-                                    </li>
-                                  )}
-                                </ul>
-                              )
-                            })()}
-                          </div>
-                        )}
+                      <div className="px-6 py-2 border-t border-slate-700/60 space-y-1.5">
+                        <input
+                          type="search"
+                          value={creditSearch}
+                          onChange={(e) => {
+                            setCreditSearch(e.target.value)
+                            setCreditPickerOpen(true)
+                          }}
+                          onFocus={() => setCreditPickerOpen(true)}
+                          placeholder="Search credits…"
+                          className="w-full bg-slate-700 border border-slate-600 text-white text-xs px-2 py-1.5 rounded outline-none focus:border-indigo-500"
+                        />
+                        {(() => {
+                          const trimmed = creditSearch.trim()
+                          const q = trimmed.toLowerCase()
+                          const matches = (creditLibrary ?? [])
+                            .filter((c) => !(c.id in selectedCredits))
+                            .filter((c) => !q || c.credit_name.toLowerCase().includes(q))
+                          const exactExists = (creditLibrary ?? []).some(
+                            (c) => c.credit_name.toLowerCase() === q,
+                          )
+                          const canCreate = trimmed.length > 0 && !exactExists
+                          if (matches.length === 0 && !canCreate) {
+                            return (
+                              <p className="text-[11px] text-slate-500 px-1 py-1">
+                                No matching credits.
+                              </p>
+                            )
+                          }
+                          return (
+                            <ul className="max-h-40 overflow-y-auto rounded border border-slate-700 divide-y divide-slate-700/60">
+                              {matches.map((c) => (
+                                <li key={c.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const cardVal = cardId ? (c.card_values[cardId] ?? c.value ?? 0) : (c.value ?? 0)
+                                      setSelectedCredits((prev) => ({
+                                        ...prev,
+                                        [c.id]: cardVal,
+                                      }))
+                                      setCreditPickerOpen(false)
+                                      setCreditSearch('')
+                                    }}
+                                    className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-xs text-slate-200 hover:bg-slate-700/60"
+                                  >
+                                    <span className="truncate min-w-0">{c.credit_name}</span>
+                                    <span className="text-slate-500 tabular-nums shrink-0">
+                                      {formatMoney(cardId ? (c.card_values[cardId] ?? c.value ?? 0) : (c.value ?? 0))}
+                                    </span>
+                                  </button>
+                                </li>
+                              ))}
+                              {canCreate && (
+                                <li>
+                                  <button
+                                    type="button"
+                                    disabled={createCreditMutation.isPending}
+                                    onClick={() => createCreditMutation.mutate(trimmed)}
+                                    className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-indigo-300 hover:bg-slate-700/60 disabled:opacity-50"
+                                  >
+                                    <span className="shrink-0">+</span>
+                                    <span className="truncate min-w-0">
+                                      {createCreditMutation.isPending
+                                        ? `Creating "${trimmed}"…`
+                                        : `Create "${trimmed}"`}
+                                    </span>
+                                  </button>
+                                </li>
+                              )}
+                            </ul>
+                          )
+                        })()}
                       </div>
                     </div>
                   )}
@@ -1001,11 +976,11 @@ export function WalletCardModal({
 
               {/* Bonus Category Selections inline collapsible */}
               {topNGroups.length > 0 && (
-                <div className="border border-slate-600 rounded-lg overflow-hidden">
+                <div className="-mx-6 border-t border-slate-700">
                   <button
                     type="button"
                     onClick={() => setGroupSelectionsExpanded((prev) => !prev)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-slate-300 hover:bg-slate-700/40"
+                    className="w-full flex items-center justify-between px-6 py-3 text-sm text-slate-300 hover:bg-slate-700/40"
                   >
                     <span>Bonus Category Selections</span>
                     <svg
@@ -1019,7 +994,7 @@ export function WalletCardModal({
                     </svg>
                   </button>
                   {groupSelectionsExpanded && (
-                    <div className="border-t border-slate-700 px-3 py-3 space-y-4">
+                    <div className="border-t border-slate-700 px-6 py-3 space-y-4">
                       {topNGroups.map((g) => {
                         const topN = g.top_n_categories ?? 1
                         const picks = groupSelections[g.id] ?? []
@@ -1071,12 +1046,12 @@ export function WalletCardModal({
                   Pins one or more wallet spend categories to this card so
                   the calculator always routes that spend here. A category
                   already claimed by another wallet card is disabled. */}
-              {lib && mode === 'edit' && (
-                <div className="border border-slate-600 rounded-lg overflow-hidden">
+              {lib && (
+                <div className="-mx-6 border-t border-slate-700">
                   <button
                     type="button"
                     onClick={() => setPriorityExpanded((prev) => !prev)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-slate-300 hover:bg-slate-700/40"
+                    className="w-full flex items-center justify-between px-6 py-3 text-sm text-slate-300 hover:bg-slate-700/40"
                   >
                     <span>
                       Spend Category Priority
@@ -1097,17 +1072,16 @@ export function WalletCardModal({
                     </svg>
                   </button>
                   {priorityExpanded && (
-                    <div className="border-t border-slate-700 px-3 py-3">
+                    <div className="border-t border-slate-700 px-6 py-3">
                       <p className="text-[11px] text-slate-500 mb-2">
-                        Checked categories always route to this card. Each can
-                        only be pinned to one card in the wallet.
+                        Force category spend onto this card only.
                       </p>
                       {!walletSpendItems || walletSpendItems.length === 0 ? (
                         <p className="text-xs text-slate-500 py-1">
                           No wallet spend categories yet.
                         </p>
                       ) : (
-                        <ul className="space-y-1 max-h-56 overflow-y-auto">
+                        <ul className="space-y-1 max-h-56 overflow-y-auto border border-slate-600 rounded-lg p-2">
                           {[...walletSpendItems]
                             .sort((a, b) =>
                               a.spend_category.category.localeCompare(
@@ -1149,7 +1123,7 @@ export function WalletCardModal({
                                     </span>
                                     {disabled && (
                                       <span className="text-[10px] text-slate-600 shrink-0">
-                                        Claimed
+                                        Claimed By Another Card
                                       </span>
                                     )}
                                   </label>
@@ -1164,7 +1138,7 @@ export function WalletCardModal({
               )}
 
               {formError && (
-                <p className="text-xs text-red-400 bg-red-950/40 border border-red-900/50 rounded-lg px-3 py-2">
+                <p className="text-xs text-red-400 bg-red-950/40 border border-red-900/50 rounded-lg mx-0 mt-3 px-3 py-2">
                   {formError}
                 </p>
               )}

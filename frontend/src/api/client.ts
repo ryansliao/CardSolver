@@ -399,6 +399,7 @@ export interface AddCardToWalletPayload {
   acquisition_type?: WalletCardAcquisitionType
   panel?: WalletCardPanel
   credits?: InitialWalletCardCredit[]
+  priority_category_ids?: number[]
 }
 
 export interface WalletCurrencyBalance {
