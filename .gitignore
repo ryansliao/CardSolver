@@ -8,12 +8,23 @@ build/
 .eggs/
 backend/migrations/
 
-# Frontend build output — committed so Azure App Service can serve it
-# frontend/dist/
+# Frontend build output
+frontend/dist/
+frontend/node_modules/
 
 # Environment & secrets
 .env
+.env.*
+!.env.example
 secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cert
+service-account*.json
+*credentials*.json
 
 # OS
 .DS_Store
@@ -27,3 +38,6 @@ Thumbs.db
 
 # Alembic
 alembic/__pycache__/
+
+# Deployment artifacts
+deploy.zip
