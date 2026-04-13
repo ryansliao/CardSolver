@@ -114,6 +114,8 @@ _FRONTEND_DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
 
 if _FRONTEND_DIST.exists():
     app.mount("/assets", StaticFiles(directory=_FRONTEND_DIST / "assets"), name="assets")
+    if (_FRONTEND_DIST / "photos").exists():
+        app.mount("/photos", StaticFiles(directory=_FRONTEND_DIST / "photos"), name="photos")
 
 
 @app.get("/{full_path:path}", include_in_schema=False)
