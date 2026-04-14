@@ -28,7 +28,7 @@ orjson>=3.10.0                 # Fast JSON serializer; FastAPI uses it automatic
                                # when installed (significant speedup for large responses)
 
 # ── Authentication ────────────────────────────────────────────────────────────
-google-auth>=2.29.0            # Verify Google OAuth2 ID tokens server-side
+google-auth[requests]>=2.29.0  # Verify Google OAuth2 ID tokens server-side
 PyJWT>=2.8.0                   # Issue/verify stateless JWT session tokens
 bcrypt>=4.0.0                  # Password hashing for local auth
 email-validator>=2.0.0         # Pydantic EmailStr validation
