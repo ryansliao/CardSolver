@@ -29,7 +29,15 @@ elif DATABASE_URL.startswith("sqlserver://"):
 elif DATABASE_URL.startswith("mssql+pyodbc://"):
     DATABASE_URL = DATABASE_URL.replace("mssql+pyodbc://", "mssql+aioodbc://", 1)
 
-engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    future=True,
+    pool_size=10,
+    max_overflow=5,
+    pool_recycle=300,   # recycle connections idle >5 min (prevents MSSQL stale connections)
+    pool_pre_ping=True, # test connection before reuse to avoid stale connection errors
+)
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
