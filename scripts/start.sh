@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Railway start command.
-# Set this in Railway service settings → Start Command:
-#   bash scripts/railway_start.sh
-
 set -euo pipefail
 
 cd backend

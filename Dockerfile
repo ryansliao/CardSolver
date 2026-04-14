@@ -26,4 +26,4 @@ COPY scripts/ ./scripts/
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 RUN pip install --no-cache-dir -r backend/requirements.txt
 EXPOSE 8000
-CMD ["bash", "scripts/railway_start.sh"]
+CMD ["bash", "scripts/start.sh"]
