@@ -118,6 +118,11 @@ if _FRONTEND_DIST.exists():
         app.mount("/photos", StaticFiles(directory=_FRONTEND_DIST / "photos"), name="photos")
 
 
+@app.get("/api/health", include_in_schema=False)
+async def health_check():
+    return {"status": "ok"}
+
+
 @app.get("/{full_path:path}", include_in_schema=False)
 async def serve_spa(full_path: str):
     index = _FRONTEND_DIST / "index.html"
