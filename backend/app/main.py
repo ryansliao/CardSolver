@@ -19,14 +19,16 @@ from fastapi.staticfiles import StaticFiles
 
 from .database import create_tables
 from .auth import router as auth_router
-from .routers import (
-    admin,
+from .routers import admin
+from .routers.reference import (
     cards,
     credits,
     currencies,
     issuers,
     spend,
     travel_portals,
+)
+from .routers.wallet import (
     wallet_category_priorities,
     wallet_credits,
     wallet_currencies,

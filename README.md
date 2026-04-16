@@ -124,12 +124,14 @@ backend/
       segment_lp.py      #   scipy LP + greedy fallback
       segmented_ev.py    #   time-weighted per-card net value
       compute.py         #   foreign split + compute_wallet orchestrator
-    db_helpers.py        # DB -> calculator bridge
-    models.py            # SQLAlchemy ORM models
-    schemas.py           # Pydantic v2 request/response schemas
+    card_data_transforms.py # Pure CardData transforms (apply_* wallet overrides)
+    models.py            # Re-export shim over the dal/ package
+    dal/                 # SQLAlchemy ORM models organised by domain
+    schemas/             # Pydantic v2 request/response schemas (by domain, mirrors dal/)
     database.py          # Engine setup, session factory, migrations
-    helpers.py           # Shared endpoint helpers
-    routers/             # FastAPI route modules
+    date_utils.py        # Date utilities + SUB-window math
+    services/            # Data access layer (CalculatorDataService, …)
+    routers/             # FastAPI route modules (admin/, reference/, wallet/)
   migrations/            # Idempotent SQL migrations (run on startup)
   tests/                 # pytest snapshot tests against the calculator
   docs/                  # Backend design docs
@@ -154,6 +156,6 @@ frontend/src/
 
 - **Authentication** — Google OAuth sign-in via navbar dropdown; protected routes redirect to the landing page
 - **Reference data** — cards, issuers, currencies, multipliers, and credits are managed via `/admin/*` endpoints; no seed files or xlsx import
-- **Calculation engine** — `app.calculator` is a pure subpackage with no DB access; data is loaded and passed in by `db_helpers.py`. Public surface (`compute_wallet`, `CardData`, …) is re-exported from `calculator/__init__.py` so callers import it as `from app.calculator import X`. See `backend/docs/calculator-refactor.md` for the module boundaries.
+- **Calculation engine** — `app.calculator` is a pure subpackage with no DB access; data is loaded by `CalculatorDataService` and then shaped by the pure `apply_*` transforms in `card_data_transforms.py` before being handed to the calculator. Public surface (`compute_wallet`, `CardData`, …) is re-exported from `calculator/__init__.py` so callers import it as `from app.calculator import X`. See `backend/docs/calculator-refactor.md` for the module boundaries.
 - **Regression test** — `backend/tests/test_calculator_snapshot.py` pins `compute_wallet` output for Wallet 1 against a committed JSON fixture; run with `cd backend && pytest tests/` before shipping any calculator change, and with `--snapshot-update` to intentionally refresh the fixture.
 - **SPA serving** — in production, FastAPI serves the built frontend from `frontend/dist/`

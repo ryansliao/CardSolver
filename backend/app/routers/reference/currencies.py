@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, Depends
 
-from ..schemas import CurrencyRead
-from ..services import CurrencyService, get_currency_service
+from ...schemas import CurrencyRead
+from ...services import CurrencyService, get_currency_service
 
 router = APIRouter(tags=["currencies"])
 

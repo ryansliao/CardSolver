@@ -3,9 +3,9 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import get_db
-from ..schemas import CardCreditRead, CreateCreditPayload, UpdateCreditPayload
-from ..services import CreditService, get_credit_service
+from ...database import get_db
+from ...schemas import CardCreditRead, CreateCreditPayload, UpdateCreditPayload
+from ...services import CreditService, get_credit_service
 
 router = APIRouter(tags=["credits"])
 

@@ -1,7 +1,7 @@
 """Calculator data loading service.
 
 Wraps all database loading functions needed for EV calculations.
-Pure transform functions (apply_*) remain in db_helpers.py.
+Pure transform functions (apply_*) live in ``app.card_data_transforms``.
 """
 
 from __future__ import annotations

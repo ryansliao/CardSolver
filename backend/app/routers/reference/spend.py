@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, Depends
 
-from ..schemas import SpendCategoryRead
-from ..services import SpendCategoryService, get_spend_category_service
+from ...schemas import SpendCategoryRead
+from ...services import SpendCategoryService, get_spend_category_service
 
 router = APIRouter(tags=["spend"])
 

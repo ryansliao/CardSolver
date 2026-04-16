@@ -3,11 +3,11 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import get_current_user
-from ..database import get_db
-from ..models import User
-from ..schemas import WalletPortalSharePayload, WalletPortalShareRead
-from ..services import (
+from ...auth import get_current_user
+from ...database import get_db
+from ...models import User
+from ...schemas import WalletPortalSharePayload, WalletPortalShareRead
+from ...services import (
     WalletService,
     WalletPortalService,
     get_wallet_service,

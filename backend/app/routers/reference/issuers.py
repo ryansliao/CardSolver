@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, Depends
 
-from ..schemas import IssuerRead, IssuerApplicationRuleRead
-from ..services import IssuerService, get_issuer_service
+from ...schemas import IssuerRead, IssuerApplicationRuleRead
+from ...services import IssuerService, get_issuer_service
 
 router = APIRouter(tags=["issuers"])
 

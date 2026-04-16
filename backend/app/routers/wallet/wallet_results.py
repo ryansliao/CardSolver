@@ -10,25 +10,25 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import get_current_user
-from ..calculator import calc_annual_allocated_spend, compute_wallet, plan_sub_targeting
-from ..database import get_db
-from ..date_utils import add_months
-from ..db_helpers import (
+from ...auth import get_current_user
+from ...calculator import calc_annual_allocated_spend, compute_wallet, plan_sub_targeting
+from ...database import get_db
+from ...card_data_transforms import (
     apply_wallet_card_category_priorities,
     apply_wallet_card_group_selections,
     apply_wallet_card_multiplier_overrides,
     apply_wallet_card_overrides,
     apply_wallet_portal_shares,
 )
-from ..helpers import (
+from ...date_utils import (
+    add_months,
     is_sub_earnable,
     months_in_half_open_interval,
     projected_sub_earn_date,
-    wallet_to_schema,
     years_counted_from_total_months,
 )
-from ..services import (
+from ...schemas import wallet_to_schema
+from ...services import (
     WalletService,
     WalletCurrencyService,
     CalculatorDataService,
@@ -38,8 +38,8 @@ from ..services import (
     get_calculator_data_service,
     get_issuer_service,
 )
-from ..models import User
-from ..schemas import (
+from ...models import User
+from ...schemas import (
     RoadmapCardStatus,
     RoadmapResponse,
     RoadmapRuleStatus,
@@ -174,7 +174,7 @@ async def wallet_results(
     currency_defaults = await calc_data_service.load_currency_defaults()
     currency_kinds = await calc_data_service.load_currency_kinds()
     modified_cards = apply_wallet_card_overrides(
-        all_cards, active_wallet_cards, library_cards_by_id, wallet_credit_rows,
+        all_cards, active_wallet_cards, wallet_credit_rows,
         cpp_overrides=cpp_overrides, currency_defaults=currency_defaults,
         currency_kinds=currency_kinds,
     )

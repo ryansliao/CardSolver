@@ -3,13 +3,13 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import get_db
-from ..schemas import (
+from ...database import get_db
+from ...schemas import (
     AdminCreateTravelPortalPayload,
     AdminUpdateTravelPortalPayload,
     TravelPortalRead,
 )
-from ..services import TravelPortalService, get_travel_portal_service
+from ...services import TravelPortalService, get_travel_portal_service
 
 router = APIRouter()
 
