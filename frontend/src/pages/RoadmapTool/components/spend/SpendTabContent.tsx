@@ -150,6 +150,10 @@ export function SpendTabContent({
 
   const existingCategoryIds = new Set(spendItems.map((i) => i.spend_category_id))
 
+  // View mode toggle: per-card (cycle through cards, show earn) vs
+  // top-multiplier (highest multiplier card in each category).
+  const [viewMode, setViewMode] = useState<'per-card' | 'top-mult'>('per-card')
+
   // Cycling through cards in the third column. Index is clamped to the
   // current card list so removing a card doesn't leave a stale index.
   const [cardCursor, setCardCursor] = useState(0)
@@ -160,6 +164,39 @@ export function SpendTabContent({
   function cycleCard(delta: number) {
     if (cardCount === 0) return
     setCardCursor((c) => (c + delta + cardCount) % cardCount)
+  }
+
+  function getMultForCard(card: CardResult, catName: string): number {
+    const mults = card.category_multipliers ?? {}
+    const lower = catName.trim().toLowerCase()
+    let allOther = 1.0
+    for (const [k, v] of Object.entries(mults)) {
+      const kl = k.trim().toLowerCase()
+      if (kl === lower) return v
+      if (kl === 'all other') allOther = v
+    }
+    return allOther
+  }
+
+  function topCardsForCategory(catName: string): { cards: CardResult[]; mult: number } {
+    if (selectedCards.length === 0) return { cards: [], mult: 0 }
+    let best = -Infinity
+    let bestCards: CardResult[] = []
+    for (const card of selectedCards) {
+      const m = getMultForCard(card, catName)
+      if (m > best + 1e-9) {
+        best = m
+        bestCards = [card]
+      } else if (Math.abs(m - best) <= 1e-9) {
+        bestCards.push(card)
+      }
+    }
+    return { cards: bestCards, mult: best }
+  }
+
+  function formatMult(m: number): string {
+    if (Number.isInteger(m)) return `${m}x`
+    return `${m.toFixed(2).replace(/\.?0+$/, '')}x`
   }
 
   // Build a category × card lookup of points (in raw effective-currency units, per-year).
@@ -186,6 +223,32 @@ export function SpendTabContent({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 min-w-0 pt-3">
+      <div className="shrink-0 flex items-center justify-start mb-2">
+        <div className="inline-flex rounded-lg border border-slate-700 overflow-hidden text-xs">
+          <button
+            type="button"
+            onClick={() => setViewMode('per-card')}
+            className={`px-2.5 py-1 transition-colors ${
+              viewMode === 'per-card'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-900 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            Per-Card Earn
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('top-mult')}
+            className={`px-2.5 py-1 border-l border-slate-700 transition-colors ${
+              viewMode === 'top-mult'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-900 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            Top Multiplier
+          </button>
+        </div>
+      </div>
       {isLoading ? (
         <div className="text-slate-500 text-sm">Loading…</div>
       ) : (
@@ -205,36 +268,40 @@ export function SpendTabContent({
                   Annual Spend
                 </th>
                 <th className="text-center text-sm font-semibold text-slate-300 px-3 py-2.5 border-b border-slate-800">
-                  <div className="flex items-center justify-between gap-2 w-full">
-                    <button
-                      type="button"
-                      onClick={() => cycleCard(-1)}
-                      disabled={cardCount < 2}
-                      className="shrink-0 p-0.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:hover:text-slate-500 disabled:hover:bg-transparent"
-                      aria-label="Previous card"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="15 18 9 12 15 6" />
-                      </svg>
-                    </button>
-                    <span
-                      className="flex-1 min-w-0 truncate text-center"
-                      title={currentCard?.card_name ?? 'Card'}
-                    >
-                      {currentCard?.card_name ?? 'Card'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => cycleCard(1)}
-                      disabled={cardCount < 2}
-                      className="shrink-0 p-0.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:hover:text-slate-500 disabled:hover:bg-transparent"
-                      aria-label="Next card"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="9 18 15 12 9 6" />
-                      </svg>
-                    </button>
-                  </div>
+                  {viewMode === 'per-card' ? (
+                    <div className="flex items-center justify-between gap-2 w-full">
+                      <button
+                        type="button"
+                        onClick={() => cycleCard(-1)}
+                        disabled={cardCount < 2}
+                        className="shrink-0 p-0.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:hover:text-slate-500 disabled:hover:bg-transparent"
+                        aria-label="Previous card"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                      </button>
+                      <span
+                        className="flex-1 min-w-0 truncate text-center"
+                        title={currentCard?.card_name ?? 'Card'}
+                      >
+                        {currentCard?.card_name ?? 'Card'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => cycleCard(1)}
+                        disabled={cardCount < 2}
+                        className="shrink-0 p-0.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:hover:text-slate-500 disabled:hover:bg-transparent"
+                        aria-label="Next card"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <span>Top Multiplier</span>
+                  )}
                 </th>
               </tr>
             </thead>
@@ -308,17 +375,40 @@ export function SpendTabContent({
                       </div>
                     </td>
                     <td className="text-center tabular-nums px-3 py-2 text-slate-200">
-                      {currentCard ? (
+                      {viewMode === 'per-card' ? (
+                        currentCard ? (
+                          (() => {
+                            const pts = earnRow?.get(currentCard.card_id) ?? 0
+                            return pts > 0 ? (
+                              formatCardEarn(currentCard, pts)
+                            ) : (
+                              <span className="text-slate-700">—</span>
+                            )
+                          })()
+                        ) : (
+                          <span className="text-slate-700">—</span>
+                        )
+                      ) : (
                         (() => {
-                          const pts = earnRow?.get(currentCard.card_id) ?? 0
-                          return pts > 0 ? (
-                            formatCardEarn(currentCard, pts)
-                          ) : (
-                            <span className="text-slate-700">—</span>
+                          const top = topCardsForCategory(catName)
+                          if (top.cards.length === 0 || top.mult <= 0) {
+                            return <span className="text-slate-700">—</span>
+                          }
+                          const names = top.cards.map((c) => c.card_name).join(', ')
+                          return (
+                            <div className="flex items-baseline justify-center gap-2 min-w-0">
+                              <span
+                                className="flex-1 min-w-0 text-left text-slate-200 break-words whitespace-normal"
+                                title={names}
+                              >
+                                {names}
+                              </span>
+                              <span className="shrink-0 font-semibold text-indigo-300">
+                                {formatMult(top.mult)}
+                              </span>
+                            </div>
                           )
                         })()
-                      ) : (
-                        <span className="text-slate-700">—</span>
                       )}
                     </td>
                   </tr>

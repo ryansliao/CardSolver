@@ -89,6 +89,7 @@ def wallet_to_schema(wallet, photo_slugs: dict[int, str | None] | None = None) -
                 CategoryEarnItem(category=cat, points=pts)
                 for cat, pts in cr.category_earn
             ],
+            category_multipliers=cr.category_multipliers,
             secondary_currency_earn=cr.secondary_currency_earn,
             secondary_currency_name=cr.secondary_currency_name,
             secondary_currency_id=cr.secondary_currency_id,

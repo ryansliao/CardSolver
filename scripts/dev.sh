@@ -4,7 +4,7 @@
 #
 # First-time setup (run once):
 #   1. cp .env.example .env && fill in DATABASE_URL
-#   2. ./scripts/dev.sh
+#   2. ./scripts/dev.sh  (loads backend/seed/*.yaml into the DB, then starts API + Vite)
 
 set -euo pipefail
 
@@ -43,13 +43,17 @@ if [[ ! -f ".env" ]]; then
   fi
 fi
 
-# ─── 4. Install frontend dependencies (if not already installed) ─────────────
+# ─── 4. Seed reference data ──────────────────────────────────────────────────
+echo "→ Loading seed data (backend/seed/*.yaml)..."
+(cd backend && python3 -m app.seed load)
+
+# ─── 5. Install frontend dependencies (if not already installed) ─────────────
 if [[ ! -d "frontend/node_modules" ]]; then
   echo "→ Installing frontend dependencies..."
   (cd frontend && npm install)
 fi
 
-# ─── 5. Start servers ──────────────────────────────────────────────────────────
+# ─── 6. Start servers ──────────────────────────────────────────────────────────
 echo ""
 echo "→ Starting API on http://localhost:${PORT}"
 echo "→ Starting React dev server on http://localhost:5173"

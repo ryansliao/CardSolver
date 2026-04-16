@@ -17,6 +17,8 @@ cards:
   - category: Hotels
     multiplier: 2.0
     is_portal: true
+  travel_portals:
+  - American
 - name: American AAdvantage Globe
   issuer: Citi
   currency: American AAdvantage Miles
@@ -38,6 +40,8 @@ cards:
     is_portal: true
   - category: Transit
     multiplier: 2.0
+  travel_portals:
+  - American
 - name: American AAdvantage MileUp
   issuer: Citi
   currency: American AAdvantage Miles
@@ -68,6 +72,8 @@ cards:
     multiplier: 2.0
   - category: Gas
     multiplier: 2.0
+  travel_portals:
+  - American
 - name: American Express Blue Business Plus
   issuer: American Express
   currency: American Express Membership Rewards
@@ -82,6 +88,8 @@ cards:
   multipliers:
   - category: All Other
     multiplier: 2.0
+  travel_portals:
+  - American Express Travel
 - name: American Express Gold
   issuer: American Express
   currency: American Express Membership Rewards
@@ -102,6 +110,8 @@ cards:
   - category: Hotels
     multiplier: 2.0
     is_portal: true
+  travel_portals:
+  - American Express Travel
 - name: American Express Green
   issuer: American Express
   currency: American Express Membership Rewards
@@ -123,6 +133,8 @@ cards:
     multiplier: 3.0
   - category: Travel
     multiplier: 3.0
+  travel_portals:
+  - American Express Travel
 - name: American Express Platinum
   issuer: American Express
   currency: American Express Membership Rewards
@@ -139,6 +151,8 @@ cards:
   - category: Hotels
     multiplier: 5.0
     is_portal: true
+  travel_portals:
+  - American Express Travel
 - name: Atmos Rewards Ascent
   issuer: Bank of America
   currency: Atmos Rewards
@@ -164,6 +178,8 @@ cards:
     multiplier: 2.0
   - category: Transit
     multiplier: 2.0
+  travel_portals:
+  - Alaska Atmos
 - name: Atmos Rewards Summit
   issuer: Bank of America
   currency: Atmos Rewards
@@ -183,6 +199,8 @@ cards:
     multiplier: 3.0
   - category: Foreign Transactions
     multiplier: 3.0
+  travel_portals:
+  - Alaska Atmos
 - name: Bank of America Customized Cash Rewards
   issuer: Bank of America
   currency: Cash
@@ -203,6 +221,8 @@ cards:
     multiplier: 2.0
   - category: Wholesale Clubs
     multiplier: 2.0
+  travel_portals:
+  - Bank of America Travel
 - name: Bank of America Premium Rewards
   issuer: Bank of America
   currency: Bank of America Points
@@ -219,6 +239,8 @@ cards:
     multiplier: 2.0
   - category: Travel
     multiplier: 2.0
+  travel_portals:
+  - Bank of America Travel
 - name: Bank of America Premium Rewards Elite
   issuer: Bank of America
   currency: Bank of America Points
@@ -235,6 +257,8 @@ cards:
     multiplier: 2.0
   - category: Travel
     multiplier: 2.0
+  travel_portals:
+  - Bank of America Travel
 - name: Bank of America Travel Rewards
   issuer: Bank of America
   currency: Bank of America Points
@@ -247,6 +271,8 @@ cards:
   multipliers:
   - category: All Other
     multiplier: 1.5
+  travel_portals:
+  - Bank of America Travel
 - name: Bank of America Unlimited Cash Rewards
   issuer: Bank of America
   currency: Cash
@@ -261,6 +287,8 @@ cards:
   multipliers:
   - category: All Other
     multiplier: 1.5
+  travel_portals:
+  - Bank of America Travel
 - name: Bilt Blue
   issuer: Cardless
   currency: Bilt Rewards
@@ -276,6 +304,8 @@ cards:
   housing_tiered_enabled: true
   photo_slug: bilt_blue
   housing_fee_waived: true
+  travel_portals:
+  - Bilt Travel
 - name: Bilt Obsidian
   issuer: Cardless
   currency: Bilt Rewards
@@ -313,6 +343,8 @@ cards:
   - category: Groceries
     multiplier: 3.0
     group_index: 0
+  travel_portals:
+  - Bilt Travel
 - name: Bilt Palladium
   issuer: Cardless
   currency: Bilt Rewards
@@ -341,6 +373,8 @@ cards:
     multiplier: 1.0
   - category: Rent
     multiplier: 1.0
+  travel_portals:
+  - Bilt Travel
 - name: Capital One Savor
   issuer: Capital One
   currency: Capital One Venture Miles
@@ -359,6 +393,8 @@ cards:
     multiplier: 3.0
   - category: Streaming
     multiplier: 3.0
+  travel_portals:
+  - Capital One Travel
 - name: Capital One Venture
   issuer: Capital One
   currency: Capital One Venture Miles
@@ -381,6 +417,8 @@ cards:
   - category: Vacation Rentals
     multiplier: 5.0
     is_portal: true
+  travel_portals:
+  - Capital One Travel
 - name: Capital One Venture X
   issuer: Capital One
   currency: Capital One Venture Miles
@@ -407,6 +445,8 @@ cards:
   - category: Vacation Rentals
     multiplier: 5.0
     is_portal: true
+  travel_portals:
+  - Capital One Travel
 - name: Chase Freedom
   issuer: Chase
   currency: Chase Ultimate Rewards
@@ -538,6 +578,8 @@ cards:
   - year: 2025
     quarter: 4
     category: Wholesale Clubs
+  travel_portals:
+  - Chase Travel
 - name: Chase Freedom Flex
   issuer: Chase
   currency: Chase Ultimate Rewards
@@ -693,6 +735,8 @@ cards:
   - year: 2025
     quarter: 4
     category: Wholesale Clubs
+  travel_portals:
+  - Chase Travel
 - name: Chase Freedom Unlimited
   issuer: Chase
   currency: Chase Ultimate Rewards
@@ -713,6 +757,8 @@ cards:
   - category: Travel
     multiplier: 5.0
     is_portal: true
+  travel_portals:
+  - Chase Travel
 - name: Chase Sapphire Preferred
   issuer: Chase
   currency: Chase Ultimate Rewards
@@ -742,6 +788,8 @@ cards:
   - category: Travel
     multiplier: 5.0
     is_portal: true
+  travel_portals:
+  - Chase Travel
 - name: Chase Sapphire Reserve
   issuer: Chase
   currency: Chase Ultimate Rewards
@@ -762,6 +810,8 @@ cards:
   - category: Travel
     multiplier: 8.0
     is_portal: true
+  travel_portals:
+  - Chase Travel
 - name: Citi Custom Cash
   issuer: Citi
   currency: Citi ThankYou Points
@@ -827,6 +877,8 @@ cards:
   - category: Travel
     multiplier: 5.0
     group_index: 0
+  travel_portals:
+  - Citi Travel
 - name: Citi Double Cash
   issuer: Citi
   currency: Citi ThankYou Points
@@ -849,6 +901,8 @@ cards:
   - category: Hotels
     multiplier: 5.0
     is_portal: true
+  travel_portals:
+  - Citi Travel
 - name: Citi Strata
   issuer: Citi
   currency: Citi ThankYou Points
@@ -879,6 +933,8 @@ cards:
   - category: Hotels
     multiplier: 5.0
     is_portal: true
+  travel_portals:
+  - Citi Travel
 - name: Citi Strata Elite
   issuer: Citi
   currency: Citi ThankYou Points
@@ -907,6 +963,8 @@ cards:
   - category: Hotels
     multiplier: 12.0
     is_portal: true
+  travel_portals:
+  - Citi Travel
 - name: Citi Strata Premier
   issuer: Citi
   currency: Citi ThankYou Points
@@ -939,6 +997,8 @@ cards:
   - category: Hotels
     multiplier: 10.0
     is_portal: true
+  travel_portals:
+  - Citi Travel
 - name: Costco Anywhere
   issuer: Citi
   currency: Cash
@@ -957,6 +1017,8 @@ cards:
     multiplier: 2.0
   - category: Hotels
     multiplier: 3.0
+  travel_portals:
+  - Costco Travel
 - name: Delta SkyMiles Blue
   issuer: American Express
   currency: Delta SkyMiles
@@ -987,6 +1049,8 @@ cards:
     multiplier: 2.0
   - category: Groceries
     multiplier: 2.0
+  travel_portals:
+  - Delta
 - name: Delta SkyMiles Platinum
   issuer: American Express
   currency: Delta SkyMiles
@@ -1007,6 +1071,8 @@ cards:
   - category: Hotels
     multiplier: 2.0
     is_portal: true
+  travel_portals:
+  - Delta
 - name: Delta SkyMiles Reserve
   issuer: American Express
   currency: Delta SkyMiles
@@ -1024,6 +1090,8 @@ cards:
   - category: Hotels
     multiplier: 3.0
     is_portal: true
+  travel_portals:
+  - Delta
 - name: Discover IT Cash Back
   issuer: Discover
   currency: Cash
@@ -1154,6 +1222,8 @@ cards:
     multiplier: 5.0
   - category: Hotels
     multiplier: 7.0
+  travel_portals:
+  - Hilton Honors
 - name: Hilton Honors Aspire
   issuer: American Express
   currency: Hilton Honors
@@ -1175,6 +1245,8 @@ cards:
     multiplier: 7.0
   - category: Hotels
     multiplier: 14.0
+  travel_portals:
+  - Hilton Honors
 - name: Hilton Honors Surpass
   issuer: American Express
   currency: Hilton Honors
@@ -1198,6 +1270,8 @@ cards:
     multiplier: 12.0
   - category: Online Shopping
     multiplier: 4.0
+  travel_portals:
+  - Hilton Honors
 - name: IHG One Rewards Premier
   issuer: Chase
   currency: IHG One Rewards
@@ -1219,6 +1293,8 @@ cards:
     multiplier: 10.0
   - category: Travel
     multiplier: 5.0
+  travel_portals:
+  - IHG One
 - name: IHG One Rewards Traveler
   issuer: Chase
   currency: IHG One Rewards
@@ -1240,6 +1316,8 @@ cards:
     multiplier: 5.0
   - category: Streaming
     multiplier: 3.0
+  travel_portals:
+  - IHG One
 - name: Marriott Bonvoy Bevy
   issuer: American Express
   currency: Marriott Bonvoy
@@ -1259,6 +1337,8 @@ cards:
     multiplier: 4.0
   - category: Hotels
     multiplier: 6.0
+  travel_portals:
+  - Marriot Bonvoy
 - name: Marriott Bonvoy Bold
   issuer: Chase
   currency: Marriott Bonvoy
@@ -1280,6 +1360,8 @@ cards:
     multiplier: 2.0
   - category: Streaming
     multiplier: 2.0
+  travel_portals:
+  - Marriot Bonvoy
 - name: Marriott Bonvoy Boundless
   issuer: Chase
   currency: Marriott Bonvoy
@@ -1301,6 +1383,8 @@ cards:
     multiplier: 3.0
   - category: Hotels
     multiplier: 6.0
+  travel_portals:
+  - Marriot Bonvoy
 - name: Marriott Bonvoy Bountiful
   issuer: Chase
   currency: Marriott Bonvoy
@@ -1320,6 +1404,8 @@ cards:
     multiplier: 4.0
   - category: Hotels
     multiplier: 6.0
+  travel_portals:
+  - Marriot Bonvoy
 - name: Marriott Bonvoy Brilliant
   issuer: American Express
   currency: Marriott Bonvoy
@@ -1339,6 +1425,8 @@ cards:
     multiplier: 3.0
   - category: Hotels
     multiplier: 6.0
+  travel_portals:
+  - Marriot Bonvoy
 - name: United MileagePlus Club
   issuer: Chase
   currency: United MileagePlus
@@ -1360,6 +1448,8 @@ cards:
     multiplier: 2.0
   - category: Travel
     multiplier: 2.0
+  travel_portals:
+  - United
 - name: United MileagePlus Explorer
   issuer: Chase
   currency: United MileagePlus
@@ -1380,6 +1470,8 @@ cards:
     multiplier: 2.0
   - category: Hotels
     multiplier: 2.0
+  travel_portals:
+  - United
 - name: United MileagePlus Gateway
   issuer: Chase
   currency: United MileagePlus
@@ -1402,6 +1494,8 @@ cards:
     multiplier: 2.0
   - category: Transit
     multiplier: 2.0
+  travel_portals:
+  - United
 - name: United MileagePlus Quest
   issuer: Chase
   currency: United MileagePlus
@@ -1425,6 +1519,8 @@ cards:
     multiplier: 2.0
   - category: Travel
     multiplier: 2.0
+  travel_portals:
+  - United
 - name: Wells Fargo Active Cash
   issuer: Wells Fargo
   currency: Wells Fargo Rewards
@@ -1438,6 +1534,8 @@ cards:
   multipliers:
   - category: All Other
     multiplier: 2.0
+  travel_portals:
+  - Wells Fargo Travel
 - name: Wells Fargo Attune
   issuer: Wells Fargo
   currency: Wells Fargo Rewards
@@ -1461,6 +1559,8 @@ cards:
     multiplier: 4.0
   - category: Transit
     multiplier: 4.0
+  travel_portals:
+  - Wells Fargo Travel
 - name: Wells Fargo Autograph
   issuer: Wells Fargo
   currency: Wells Fargo Rewards
@@ -1486,6 +1586,8 @@ cards:
     multiplier: 3.0
   - category: Travel
     multiplier: 3.0
+  travel_portals:
+  - Wells Fargo Travel
 - name: Wells Fargo Autograph Journey
   issuer: Wells Fargo
   currency: Wells Fargo Rewards
@@ -1507,6 +1609,8 @@ cards:
     multiplier: 5.0
   - category: Travel
     multiplier: 3.0
+  travel_portals:
+  - Wells Fargo Travel
 - name: World of Hyatt
   issuer: Chase
   currency: World of Hyatt
@@ -1530,3 +1634,5 @@ cards:
     multiplier: 4.0
   - category: Transit
     multiplier: 2.0
+  travel_portals:
+  - World of Hyatt

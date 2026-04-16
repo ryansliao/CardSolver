@@ -252,6 +252,10 @@ class CardResult:
     effective_reward_kind: str = "points"
     # Per-category earn breakdown: (category_name, annual_points), sorted desc by points
     category_earn: list[tuple[str, float]] = field(default_factory=list)
+    # Effective multiplier per spend-category for this card (top-N applied,
+    # foreign variants stripped). Includes the "All Other" entry; categories
+    # without an explicit entry fall back to "All Other" when looked up.
+    category_multipliers: dict[str, float] = field(default_factory=dict)
 
     # Secondary currency earn
     secondary_currency_earn: float = 0.0        # gross secondary pts over projection window

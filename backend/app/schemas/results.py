@@ -42,6 +42,8 @@ class CardResultSchema(BaseModel):
     effective_currency_id: int = 0
     effective_reward_kind: str = "points"
     category_earn: list[CategoryEarnItem] = []
+    # Effective multiplier per spend category (top-N + manual group selections applied)
+    category_multipliers: dict[str, float] = {}
 
     # Secondary currency earn
     secondary_currency_earn: float = 0.0

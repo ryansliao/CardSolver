@@ -33,6 +33,7 @@ from .currency import (
 )
 from .multipliers import (
     _all_other_multiplier,
+    _build_effective_multipliers,
     _calc_earn_bonus_factor,
     _first_year_pct_bonus,
     _segment_earn_bonus_factor,
@@ -508,6 +509,16 @@ def compute_wallet(
         if foreign_spend_pct > 0:
             cat_earn = _merge_foreign_breakdown(cat_earn)
 
+        # Effective multiplier per category for the UI (top-N + manual group
+        # selections applied). Strip __foreign__ variants so the map is keyed
+        # by user-facing spend category names only.
+        cat_mults_raw = _build_effective_multipliers(card, spend)
+        category_multipliers = {
+            k: round(v, 4)
+            for k, v in cat_mults_raw.items()
+            if not k.startswith(FOREIGN_CAT_PREFIX)
+        }
+
         # Surface only the SUB values that were actually counted in totals.
         # When sub_earnable is False (e.g. in-wallet cards whose SUB is historical
         # or cards the user can't reach the min spend on), the calculator already
@@ -566,6 +577,7 @@ def compute_wallet(
                 effective_currency_id=eff_currency.id,
                 effective_reward_kind=eff_currency.reward_kind,
                 category_earn=cat_earn,
+                category_multipliers=category_multipliers,
                 secondary_currency_earn=round(sec_gross_total, 2),
                 secondary_currency_name=sec_cur_name,
                 secondary_currency_id=sec_cur_id,

@@ -112,7 +112,7 @@ export function WalletPortalSharesEditor({
         Travel Portal Shares
       </p>
       <p className="text-[11px] text-slate-400 mb-3">
-        What fraction of your travel-coverable spend do you book through each
+        What fraction of your travel-coverable spend in this currency do you book through each
         travel portal? Cards earn elevated rates only on the portal portion.
       </p>
       <ul className="space-y-3">

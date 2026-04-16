@@ -281,6 +281,8 @@ export interface CardResult {
   effective_currency_id?: number
   effective_reward_kind?: 'points' | 'cash'
   category_earn: CategoryEarnItem[]
+  /** Effective multiplier per spend category (top-N + manual group selections applied). */
+  category_multipliers?: Record<string, number>
   secondary_currency_earn: number
   secondary_currency_name: string
   secondary_currency_id: number
