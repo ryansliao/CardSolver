@@ -357,6 +357,17 @@ async def wallet_roadmap(
 
     today = as_of_date or date.today()
 
+    # 5/24 is projected to the added_date of the latest opened Future Card
+    # so the status reflects what the wallet looks like right after the
+    # last planned acquisition. If there are no future opened cards to
+    # project to, fall back to today.
+    future_opened_dates = [
+        wc.added_date
+        for wc in wallet.wallet_cards
+        if wc.panel == "future_cards" and wc.acquisition_type == "opened"
+    ]
+    five_twenty_four_as_of = max(future_opened_dates) if future_opened_dates else today
+
     rules = await issuer_service.list_application_rules()
 
     roadmap_spend = await calc_data_service.load_wallet_spend_items(wallet_id)
@@ -364,7 +375,7 @@ async def wallet_roadmap(
 
     card_statuses: list[RoadmapCardStatus] = []
     personal_cards_24mo: list[str] = []
-    cutoff_24mo = today - timedelta(days=730)
+    cutoff_24mo = five_twenty_four_as_of - timedelta(days=730)
 
     in_wallet_cards = [
         wc for wc in wallet.wallet_cards if wc.panel in ("in_wallet", "future_cards")
@@ -374,7 +385,12 @@ async def wallet_roadmap(
         card = wc.card
         is_active = wc.closed_date is None
 
-        if not card.business and wc.added_date >= cutoff_24mo and wc.acquisition_type == "opened":
+        if (
+            not card.business
+            and wc.added_date >= cutoff_24mo
+            and wc.added_date <= five_twenty_four_as_of
+            and wc.acquisition_type == "opened"
+        ):
             personal_cards_24mo.append(card.name)
 
         eff_sub = wc.sub_points if wc.sub_points is not None else (card.sub_points or 0)
@@ -447,11 +463,22 @@ async def wallet_roadmap(
 
     rule_statuses: list[RoadmapRuleStatus] = []
     for rule in rules:
-        cutoff = today - timedelta(days=rule.period_days)
+        # Long-horizon velocity rules (24+ months) are anchored to the
+        # latest planned future card acquisition so the status reflects
+        # post-acquisition state, with a matching upper bound so cards
+        # added later don't count. Short cooldowns stay anchored to today
+        # with no upper bound, so the existing warning modal still
+        # surfaces future-dated 1/90 / 1/8 / 2/65 / 2/30 conflicts within
+        # the plan.
+        is_long_horizon = rule.period_days >= 730
+        rule_anchor = five_twenty_four_as_of if is_long_horizon else today
+        cutoff = rule_anchor - timedelta(days=rule.period_days)
         counted: list[str] = []
         for wc in in_wallet_cards:
             card = wc.card
             if wc.added_date < cutoff:
+                continue
+            if is_long_horizon and wc.added_date > rule_anchor:
                 continue
             if not rule.scope_all_issuers and card.issuer_id != rule.issuer_id:
                 continue

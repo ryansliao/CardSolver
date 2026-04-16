@@ -12,6 +12,29 @@ interface Props {
   onSpendChange: () => void
 }
 
+function CardPhoto({ slug, name }: { slug: string | null; name: string }) {
+  const [failed, setFailed] = useState(false)
+  if (!slug || failed) {
+    return (
+      <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+          <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+          <line x1="1" y1="10" x2="23" y2="10" />
+        </svg>
+      </div>
+    )
+  }
+  return (
+    <img
+      src={`/photos/${slug}.png`}
+      alt={name}
+      title={name}
+      className="w-full h-full object-contain"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
 function InlineCategoryDropdown({
   existingCategoryIds,
   onSelect,
@@ -151,8 +174,8 @@ export function SpendTabContent({
   const existingCategoryIds = new Set(spendItems.map((i) => i.spend_category_id))
 
   // View mode toggle: per-card (cycle through cards, show earn) vs
-  // top-multiplier (highest multiplier card in each category).
-  const [viewMode, setViewMode] = useState<'per-card' | 'top-mult'>('per-card')
+  // top-ros (highest return-on-spend card in each category).
+  const [viewMode, setViewMode] = useState<'per-card' | 'top-ros'>('top-ros')
 
   // Cycling through cards in the third column. Index is clamped to the
   // current card list so removing a card doesn't leave a stale index.
@@ -178,25 +201,31 @@ export function SpendTabContent({
     return allOther
   }
 
-  function topCardsForCategory(catName: string): { cards: CardResult[]; mult: number } {
-    if (selectedCards.length === 0) return { cards: [], mult: 0 }
+  function getRosForCard(card: CardResult, catName: string): number {
+    // Return on spend, expressed as a percentage: multiplier × effective CPP.
+    // e.g. 3x at 2¢/pt → 6 (i.e. 6% back).
+    return getMultForCard(card, catName) * card.cents_per_point
+  }
+
+  function topCardsForCategory(catName: string): { cards: CardResult[]; ros: number } {
+    if (selectedCards.length === 0) return { cards: [], ros: 0 }
     let best = -Infinity
     let bestCards: CardResult[] = []
     for (const card of selectedCards) {
-      const m = getMultForCard(card, catName)
-      if (m > best + 1e-9) {
-        best = m
+      const r = getRosForCard(card, catName)
+      if (r > best + 1e-9) {
+        best = r
         bestCards = [card]
-      } else if (Math.abs(m - best) <= 1e-9) {
+      } else if (Math.abs(r - best) <= 1e-9) {
         bestCards.push(card)
       }
     }
-    return { cards: bestCards, mult: best }
+    return { cards: bestCards, ros: best }
   }
 
-  function formatMult(m: number): string {
-    if (Number.isInteger(m)) return `${m}x`
-    return `${m.toFixed(2).replace(/\.?0+$/, '')}x`
+  function formatRos(ros: number): string {
+    if (Number.isInteger(ros)) return `${ros}%`
+    return `${ros.toFixed(2).replace(/\.?0+$/, '')}%`
   }
 
   // Build a category × card lookup of points (in raw effective-currency units, per-year).
@@ -227,25 +256,25 @@ export function SpendTabContent({
         <div className="inline-flex rounded-lg border border-slate-700 overflow-hidden text-xs">
           <button
             type="button"
-            onClick={() => setViewMode('per-card')}
+            onClick={() => setViewMode('top-ros')}
             className={`px-2.5 py-1 transition-colors ${
+              viewMode === 'top-ros'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-900 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            Top ROS
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('per-card')}
+            className={`px-2.5 py-1 border-l border-slate-700 transition-colors ${
               viewMode === 'per-card'
                 ? 'bg-indigo-600 text-white'
                 : 'bg-slate-900 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
             }`}
           >
             Per-Card Earn
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('top-mult')}
-            className={`px-2.5 py-1 border-l border-slate-700 transition-colors ${
-              viewMode === 'top-mult'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-slate-900 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            Top Multiplier
           </button>
         </div>
       </div>
@@ -255,9 +284,10 @@ export function SpendTabContent({
         <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-slate-800">
           <table className="w-full text-sm border-collapse table-fixed">
             <colgroup>
-              <col className="w-45" />
-              <col className="w-30" />
               <col />
+              <col className="w-30" />
+              <col className={viewMode === 'top-ros' ? 'w-36' : 'w-56'} />
+              {viewMode === 'top-ros' && <col className="w-20" />}
             </colgroup>
             <thead className="sticky top-0 bg-slate-900 z-10">
               <tr>
@@ -281,12 +311,14 @@ export function SpendTabContent({
                           <polyline points="15 18 9 12 15 6" />
                         </svg>
                       </button>
-                      <span
-                        className="flex-1 min-w-0 truncate text-center"
-                        title={currentCard?.card_name ?? 'Card'}
-                      >
-                        {currentCard?.card_name ?? 'Card'}
-                      </span>
+                      <div className="flex-1 min-w-0 flex items-center justify-center">
+                        <div className="w-[72px] h-11 shrink-0 rounded overflow-hidden bg-slate-700/50">
+                          <CardPhoto
+                            slug={currentCard?.photo_slug ?? null}
+                            name={currentCard?.card_name ?? 'Card'}
+                          />
+                        </div>
+                      </div>
                       <button
                         type="button"
                         onClick={() => cycleCard(1)}
@@ -300,9 +332,14 @@ export function SpendTabContent({
                       </button>
                     </div>
                   ) : (
-                    <span>Top Multiplier</span>
+                    <span>Top ROS Card</span>
                   )}
                 </th>
+                {viewMode === 'top-ros' && (
+                  <th className="text-center text-sm font-semibold text-slate-300 px-3 py-2.5 border-b border-l border-slate-800 whitespace-nowrap">
+                    ROS
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -374,9 +411,9 @@ export function SpendTabContent({
                         />
                       </div>
                     </td>
-                    <td className="text-center tabular-nums px-3 py-2 text-slate-200">
-                      {viewMode === 'per-card' ? (
-                        currentCard ? (
+                    {viewMode === 'per-card' ? (
+                      <td className="text-center tabular-nums px-3 py-2 text-slate-200">
+                        {currentCard ? (
                           (() => {
                             const pts = earnRow?.get(currentCard.card_id) ?? 0
                             return pts > 0 ? (
@@ -387,36 +424,52 @@ export function SpendTabContent({
                           })()
                         ) : (
                           <span className="text-slate-700">—</span>
+                        )}
+                      </td>
+                    ) : (
+                      (() => {
+                        const top = topCardsForCategory(catName)
+                        const noTop = top.cards.length === 0 || top.ros <= 0
+                        return (
+                          <>
+                            <td className="text-center px-3 py-2 text-slate-200">
+                              {noTop ? (
+                                <span className="text-slate-700">—</span>
+                              ) : (
+                                <div className="flex flex-wrap items-center justify-center gap-1.5">
+                                  {top.cards.map((c) => (
+                                    <div
+                                      key={c.card_id}
+                                      className="w-[72px] h-11 shrink-0 rounded overflow-hidden bg-slate-700/50"
+                                    >
+                                      <CardPhoto slug={c.photo_slug} name={c.card_name} />
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                            <td className="text-center tabular-nums px-3 py-2 border-l border-slate-800/60">
+                              {noTop ? (
+                                <span className="text-slate-700">—</span>
+                              ) : (
+                                <span className="font-semibold text-indigo-300">
+                                  {formatRos(top.ros)}
+                                </span>
+                              )}
+                            </td>
+                          </>
                         )
-                      ) : (
-                        (() => {
-                          const top = topCardsForCategory(catName)
-                          if (top.cards.length === 0 || top.mult <= 0) {
-                            return <span className="text-slate-700">—</span>
-                          }
-                          const names = top.cards.map((c) => c.card_name).join(', ')
-                          return (
-                            <div className="flex items-baseline justify-center gap-2 min-w-0">
-                              <span
-                                className="flex-1 min-w-0 text-left text-slate-200 break-words whitespace-normal"
-                                title={names}
-                              >
-                                {names}
-                              </span>
-                              <span className="shrink-0 font-semibold text-indigo-300">
-                                {formatMult(top.mult)}
-                              </span>
-                            </div>
-                          )
-                        })()
-                      )}
-                    </td>
+                      })()
+                    )}
                   </tr>
                 )
               })}
               {spendItems.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="text-center text-slate-500 text-sm py-5">
+                  <td
+                    colSpan={viewMode === 'top-ros' ? 4 : 3}
+                    className="text-center text-slate-500 text-sm py-5"
+                  >
                     No spend categories yet. Add one to configure your annual spend.
                   </td>
                 </tr>
