@@ -1,4 +1,3 @@
 # To-Do List
 
-- Add local seed code for cards, issuers, networks, spend categories, and travel portals.
-- Make sure the wallet annual income is still calculated from current to end date instead of totaling currencies.
+Add toggle on the spend tab which toggles between the per-card spend in categories, and the highest multiplier card in each category and how high that multiplier is.

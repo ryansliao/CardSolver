@@ -26,6 +26,7 @@ scipy>=1.13.0                  # linprog: optimal cross-card allocation when cap
 # ── Serialization ─────────────────────────────────────────────────────────────
 orjson>=3.10.0                 # Fast JSON serializer; FastAPI uses it automatically
                                # when installed (significant speedup for large responses)
+PyYAML>=6.0                    # Used by app.seed to export/load reference data to YAML
 
 # ── Authentication ────────────────────────────────────────────────────────────
 google-auth[requests]>=2.29.0  # Verify Google OAuth2 ID tokens server-side

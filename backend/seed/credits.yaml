@@ -1,0 +1,368 @@
+credits:
+- credit_name: 50% Flight Discount Code
+  currency: Cash
+- credit_name: Admirals Club Access
+  value: 0.0
+  currency: Cash
+  cards:
+  - card: American AAdvantage Executive
+- credit_name: Airline Credit
+  currency: Cash
+  cards:
+  - card: American Express Platinum
+    value: 200.0
+  - card: Bank of America Premium Rewards
+    value: 100.0
+  - card: Bank of America Premium Rewards Elite
+    value: 300.0
+  - card: Hilton Honors Aspire
+    value: 200.0
+  - card: Wells Fargo Autograph Journey
+    value: 50.0
+- credit_name: Alaska Lounge Passes
+  currency: Cash
+  cards:
+  - card: Atmos Rewards Summit
+    value: 0.0
+- credit_name: Annual Companion Certificate
+  value: 0.0
+  excludes_first_year: true
+  currency: Cash
+  cards:
+  - card: Delta SkyMiles Platinum
+  - card: Delta SkyMiles Reserve
+- credit_name: Apple TV+/Music Credit
+  currency: Cash
+  cards:
+  - card: Chase Sapphire Reserve
+    value: 288.0
+- credit_name: Atmos Companion Fare
+  value: 99.0
+  excludes_first_year: true
+  currency: Cash
+  cards:
+  - card: Atmos Rewards Ascent
+- credit_name: Atmos Global Companion Award
+  value: 25000.0
+  excludes_first_year: true
+  currency: Atmos Rewards
+  cards:
+  - card: Atmos Rewards Summit
+- credit_name: Avis / Budget Car Rental Credit
+  value: 0.0
+  currency: Cash
+- credit_name: Bank of America Lifestyle Credit
+  currency: Cash
+  cards:
+  - card: Bank of America Premium Rewards Elite
+    value: 150.0
+- credit_name: Bilt Travel Hotel Credit
+  currency: Cash
+  cards:
+  - card: Bilt Obsidian
+    value: 100.0
+  - card: Bilt Palladium
+    value: 400.0
+- credit_name: Blacklane Credit
+  currency: Cash
+  cards:
+  - card: Citi Strata Elite
+    value: 200.0
+- credit_name: Capital One Lounge
+  value: 0.0
+  currency: Cash
+- credit_name: Capital One Travel Credit
+  currency: Cash
+  cards:
+  - card: Capital One Venture X
+    value: 300.0
+- credit_name: Chase Partner Hotel Credit
+  currency: Cash
+  cards:
+  - card: Chase Sapphire Reserve
+    value: 250.0
+- credit_name: Chase Travel Hotels
+  currency: Cash
+  cards:
+  - card: Chase Sapphire Preferred
+    value: 50.0
+- credit_name: Citi Travel Hotel Credit
+  currency: Cash
+  cards:
+  - card: Citi Strata Elite
+    value: 300.0
+  - card: Citi Strata Premier
+    value: 100.0
+- credit_name: CLEAR Plus
+  value: 199.0
+  currency: Cash
+  cards:
+  - card: American Express Green
+  - card: American Express Platinum
+  - card: Chase Sapphire Reserve
+  - card: Hilton Honors Aspire
+- credit_name: DashPass Membership
+  value: 120.0
+  currency: Cash
+  cards:
+  - card: Chase Freedom Flex
+  - card: Chase Freedom Unlimited
+  - card: Chase Sapphire Preferred
+  - card: Chase Sapphire Reserve
+  - card: IHG One Rewards Premier
+  - card: Marriott Bonvoy Bold
+  - card: Marriott Bonvoy Boundless
+  - card: Marriott Bonvoy Bountiful
+  - card: World of Hyatt
+- credit_name: Delta Stays Credit
+  currency: Cash
+  cards:
+  - card: Delta SkyMiles Gold
+    value: 100.0
+  - card: Delta SkyMiles Platinum
+    value: 100.0
+  - card: Delta SkyMiles Reserve
+    value: 200.0
+- credit_name: Digital Entertainment Credit
+  currency: Cash
+  cards:
+  - card: American Express Platinum
+    value: 300.0
+- credit_name: Dining Credit
+  currency: Cash
+  cards:
+  - card: American Express Gold
+    value: 120.0
+  - card: Marriott Bonvoy Brilliant
+    value: 300.0
+- credit_name: DoorDash Credit
+  currency: Cash
+  cards:
+  - card: Chase Sapphire Reserve
+    value: 300.0
+- credit_name: Dunkin Credit
+  currency: Cash
+  cards:
+  - card: American Express Gold
+    value: 84.0
+- credit_name: Equinox Credit
+  currency: Cash
+  cards:
+  - card: American Express Platinum
+    value: 300.0
+- credit_name: Fine Hotels & Resorts / Hotel Collection Credit
+  currency: Cash
+  cards:
+  - card: American Express Platinum
+    value: 600.0
+- credit_name: Free Checked Bags
+  currency: Cash
+  cards:
+  - card: American AAdvantage Executive
+    value: 0.0
+  - card: American AAdvantage Globe
+    value: 0.0
+  - card: American AAdvantage Platinum Select
+    value: 0.0
+  - card: Delta SkyMiles Gold
+    value: 0.0
+  - card: Delta SkyMiles Platinum
+    value: 0.0
+  - card: Delta SkyMiles Reserve
+    value: 0.0
+  - card: United MileagePlus Club
+    value: 0.0
+  - card: United MileagePlus Explorer
+    value: 0.0
+  - card: United MileagePlus Gateway
+    value: 0.0
+  - card: United MileagePlus Quest
+    value: 0.0
+- credit_name: Global Entry / TSA PreCheck
+  value: 120.0
+  currency: Cash
+  cards:
+  - card: American AAdvantage Executive
+  - card: American Express Platinum
+  - card: Atmos Rewards Summit
+  - card: Bank of America Premium Rewards
+  - card: Bank of America Premium Rewards Elite
+  - card: Capital One Venture
+  - card: Capital One Venture X
+  - card: Chase Sapphire Reserve
+  - card: Citi Strata Elite
+  - card: Delta SkyMiles Reserve
+  - card: IHG One Rewards Premier
+  - card: Marriott Bonvoy Brilliant
+  - card: United MileagePlus Club
+  - card: United MileagePlus Explorer
+  - card: United MileagePlus Quest
+- credit_name: Global Lounge Collection
+  value: 0.0
+  currency: Cash
+  cards:
+  - card: American Express Platinum
+- credit_name: Grubhub Credit
+  currency: Cash
+- credit_name: Hertz Five Star Status
+  value: 0.0
+  currency: Cash
+  cards:
+  - card: Capital One Venture
+- credit_name: Hertz President's Circle Status
+  value: 0.0
+  currency: Cash
+  cards:
+  - card: Capital One Venture X
+- credit_name: Hilton Free Night Award
+  currency: Cash
+  cards:
+  - card: Hilton Honors Aspire
+    value: 0.0
+- credit_name: Hilton Honors Gold Status
+  value: 0.0
+  currency: Cash
+  cards:
+  - card: American Express Platinum
+- credit_name: Hilton Resort Credit
+  currency: Cash
+  cards:
+  - card: Hilton Honors Aspire
+    value: 400.0
+  - card: Hilton Honors Surpass
+    value: 200.0
+- credit_name: IHG Free Night Award
+  excludes_first_year: true
+  currency: Cash
+  cards:
+  - card: IHG One Rewards Premier
+    value: 0.0
+- credit_name: IHG One Platinum Elite Status
+  value: 0.0
+  currency: Cash
+  cards:
+  - card: Chase Sapphire Reserve
+- credit_name: Lululemon Credit
+  currency: Cash
+  cards:
+  - card: American Express Platinum
+    value: 300.0
+- credit_name: Lyft Credit
+  currency: Cash
+  cards:
+  - card: Chase Sapphire Reserve
+    value: 120.0
+- credit_name: Marriot Bonvoy Gold Elite Status
+  value: 0.0
+  currency: Cash
+  cards:
+  - card: American Express Platinum
+- credit_name: Marriott Free Night Award
+  excludes_first_year: true
+  currency: Cash
+  cards:
+  - card: Marriott Bonvoy Boundless
+    value: 0.0
+  - card: Marriott Bonvoy Brilliant
+    value: 0.0
+- credit_name: National Emerald Club Executive Status
+  value: 0.0
+  currency: Cash
+- credit_name: Peloton Credit
+  currency: Cash
+  cards:
+  - card: Chase Sapphire Reserve
+    value: 120.0
+- credit_name: Priority Pass
+  value: 469.0
+  currency: Cash
+  cards:
+  - card: American Express Platinum
+  - card: Bank of America Premium Rewards Elite
+  - card: Bilt Palladium
+  - card: Capital One Venture X
+  - card: Chase Sapphire Reserve
+  - card: Citi Strata Elite
+  - card: Marriott Bonvoy Brilliant
+- credit_name: Resy Credit
+  currency: Cash
+  cards:
+  - card: American Express Gold
+    value: 100.0
+  - card: American Express Platinum
+    value: 400.0
+  - card: Delta SkyMiles Platinum
+    value: 120.0
+  - card: Delta SkyMiles Reserve
+    value: 240.0
+- credit_name: Saks Fifth Avenue Credit
+  currency: Cash
+  cards:
+  - card: American Express Platinum
+    value: 100.0
+- credit_name: Sapphire Exclusive Tables Credit
+  currency: Cash
+  cards:
+  - card: Chase Sapphire Reserve
+    value: 300.0
+- credit_name: Sapphire Lounge Access
+  value: 0.0
+  currency: Cash
+  cards:
+  - card: Chase Sapphire Reserve
+- credit_name: Splurge Credit
+  currency: Cash
+  cards:
+  - card: Citi Strata Elite
+    value: 200.0
+- credit_name: Streaming Credit
+  currency: Cash
+- credit_name: StubHub/Viagogo Credit
+  currency: Cash
+  cards:
+  - card: Chase Sapphire Reserve
+    value: 300.0
+- credit_name: The Edit Hotel Credit
+  currency: Cash
+  cards:
+  - card: Chase Sapphire Reserve
+    value: 500.0
+- credit_name: Travel Credit
+  currency: Cash
+  cards:
+  - card: Chase Sapphire Reserve
+    value: 300.0
+  - card: United MileagePlus Explorer
+    value: 100.0
+  - card: United MileagePlus Quest
+    value: 200.0
+- credit_name: Turo Credit
+  currency: Cash
+- credit_name: Uber Cash
+  currency: Cash
+  cards:
+  - card: American Express Gold
+    value: 120.0
+  - card: American Express Platinum
+    value: 200.0
+- credit_name: Uber One
+  value: 120.0
+  currency: Cash
+  cards:
+  - card: American Express Platinum
+- credit_name: United Club Membership
+  currency: Cash
+  cards:
+  - card: United MileagePlus Club
+    value: 750.0
+- credit_name: Walmart+ Membership
+  value: 155.0
+  currency: Cash
+  cards:
+  - card: American Express Platinum
+- credit_name: World of Hyatt Free Night Award
+  excludes_first_year: true
+  currency: Cash
+  cards:
+  - card: World of Hyatt
+    value: 0.0

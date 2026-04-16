@@ -1,0 +1,23 @@
+networks:
+- name: American Express
+  tiers:
+  - American Express
+  - American Express Business
+- name: Discover
+  tiers:
+  - Discover
+- name: Mastercard
+  tiers:
+  - World Elite Mastercard
+  - World Elite Mastercard for Business
+  - World Legend Mastercard
+  - World Legend Mastercard for Business
+  - World Mastercard
+  - World Mastercard for Business
+- name: Visa
+  tiers:
+  - Visa Infinite
+  - Visa Infinite Business
+  - Visa Signature
+  - Visa Signature Business
+  - Visa Traditional

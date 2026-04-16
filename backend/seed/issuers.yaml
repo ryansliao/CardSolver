@@ -1,0 +1,54 @@
+issuers:
+- name: American Express
+  application_rules:
+  - rule_name: 1/90 Business
+    max_count: 1
+    period_days: 90
+    description: American Express typically approves only one new business credit card application per 90-day rolling window.
+  - rule_name: 1/90 Personal
+    max_count: 1
+    period_days: 90
+    description: American Express typically approves only one new personal credit card application per 90-day rolling window.
+    personal_only: true
+  - rule_name: 5 Card Max
+    max_count: 5
+    period_days: 36500
+    description: American Express generally caps cardholders at 5 open credit cards (charge cards not counted). Having 5+
+      open Amex credit cards usually results in denial.
+- name: Bank of America
+  application_rules: []
+- name: Barclays
+  application_rules: []
+- name: Capital One
+  application_rules: []
+- name: Cardless
+  application_rules: []
+- name: Chase
+  application_rules:
+  - rule_name: 2/30
+    max_count: 2
+    period_days: 30
+    description: Chase typically limits applicants to 2 Chase credit card approvals within any 30-day rolling window.
+  - rule_name: 5/24
+    max_count: 5
+    period_days: 730
+    description: Chase denies most card applications if you have opened 5 or more personal credit cards (from any issuer)
+      in the last 24 months. Business cards from most issuers do NOT count toward this limit.
+    personal_only: true
+    scope_all_issuers: true
+- name: Citi
+  application_rules:
+  - rule_name: 1/8
+    max_count: 1
+    period_days: 8
+    description: Citi limits approvals to 1 new card per 8-day rolling window.
+  - rule_name: 2/65
+    max_count: 2
+    period_days: 65
+    description: Citi limits approvals to 2 new cards per 65-day rolling window.
+- name: Discover
+  application_rules: []
+- name: US Bank
+  application_rules: []
+- name: Wells Fargo
+  application_rules: []

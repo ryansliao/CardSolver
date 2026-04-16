@@ -1,0 +1,77 @@
+currencies:
+- name: American AAdvantage Miles
+  reward_kind: points
+  cents_per_point: 1.7
+  partner_transfer_rate: 1.0
+- name: American Express Membership Rewards
+  reward_kind: points
+  cents_per_point: 2.0
+  partner_transfer_rate: 1.0
+  cash_transfer_rate: 0.6
+- name: Atmos Rewards
+  reward_kind: points
+  cents_per_point: 1.4
+  partner_transfer_rate: 1.0
+- name: Bank of America Points
+  reward_kind: points
+  cents_per_point: 1.0
+  cash_transfer_rate: 1.0
+- name: Bilt Cash
+  reward_kind: cash
+  cents_per_point: 1.0
+  cash_transfer_rate: 1.0
+- name: Bilt Rewards
+  reward_kind: points
+  cents_per_point: 2.2
+  partner_transfer_rate: 1.0
+  cash_transfer_rate: 0.55
+- name: Capital One Venture Miles
+  reward_kind: points
+  cents_per_point: 1.85
+  partner_transfer_rate: 1.0
+  cash_transfer_rate: 0.5
+- name: Cash
+  reward_kind: cash
+  cents_per_point: 1.0
+  cash_transfer_rate: 1.0
+- name: Chase Ultimate Rewards
+  reward_kind: points
+  cents_per_point: 2.05
+  partner_transfer_rate: 1.0
+  cash_transfer_rate: 1.0
+  no_transfer_cpp: 1.0
+- name: Citi ThankYou Points
+  reward_kind: points
+  cents_per_point: 1.9
+  partner_transfer_rate: 1.0
+  cash_transfer_rate: 1.0
+  no_transfer_rate: 0.7
+- name: Delta SkyMiles
+  reward_kind: points
+  cents_per_point: 1.2
+  partner_transfer_rate: 1.0
+- name: Hilton Honors
+  reward_kind: points
+  cents_per_point: 0.4
+  partner_transfer_rate: 1.0
+- name: IHG One Rewards
+  reward_kind: points
+  cents_per_point: 0.6
+  partner_transfer_rate: 1.0
+- name: Marriott Bonvoy
+  reward_kind: points
+  cents_per_point: 0.75
+  partner_transfer_rate: 1.0
+- name: United MileagePlus
+  reward_kind: points
+  cents_per_point: 1.35
+  partner_transfer_rate: 1.0
+- name: Wells Fargo Rewards
+  reward_kind: points
+  cents_per_point: 1.65
+  partner_transfer_rate: 1.0
+  cash_transfer_rate: 1.0
+- name: World of Hyatt
+  reward_kind: points
+  cents_per_point: 1.7
+  partner_transfer_rate: 1.0

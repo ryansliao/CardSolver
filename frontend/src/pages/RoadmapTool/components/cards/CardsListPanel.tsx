@@ -109,6 +109,7 @@ function CardItem({
 }) {
   const isClosed = !!wc.closed_date
   const isFuture = panel === 'future_cards'
+  const canCloseCard = panel !== 'considering'
   const isDimmed = isClosed || isProductChanged
 
   return (
@@ -214,7 +215,7 @@ function CardItem({
               <>
                 {!isClosed && (
                   <>
-                    {closeCardId === wc.card_id ? (
+                    {closeCardId === wc.card_id && canCloseCard ? (
                       <span className="flex items-center gap-1 flex-wrap justify-end">
                         <input
                           type="date"
@@ -239,15 +240,17 @@ function CardItem({
                         </button>
                       </span>
                     ) : (
-                      <button
-                        className="text-xs text-slate-500 hover:text-amber-400"
-                        onClick={() => {
-                          onSetCloseCard(wc.card_id)
-                          onSetCloseDateInput(today())
-                        }}
-                      >
-                        Close card
-                      </button>
+                      canCloseCard && (
+                        <button
+                          className="text-xs text-slate-500 hover:text-amber-400"
+                          onClick={() => {
+                            onSetCloseCard(wc.card_id)
+                            onSetCloseDateInput(today())
+                          }}
+                        >
+                          Close card
+                        </button>
+                      )
                     )}
                   </>
                 )}

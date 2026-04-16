@@ -1,0 +1,1532 @@
+cards:
+- name: American AAdvantage Executive
+  issuer: Citi
+  currency: American AAdvantage Miles
+  co_brand: American AAdvantage
+  network_tier: World Elite Mastercard
+  annual_fee: 595.0
+  sub_points: 70000
+  sub_min_spend: 7000
+  sub_months: 3
+  multipliers:
+  - category: Airlines
+    multiplier: 4.0
+    is_portal: true
+  - category: Dining
+    multiplier: 2.0
+  - category: Hotels
+    multiplier: 2.0
+    is_portal: true
+- name: American AAdvantage Globe
+  issuer: Citi
+  currency: American AAdvantage Miles
+  co_brand: American AAdvantage
+  network_tier: World Elite Mastercard
+  annual_fee: 350.0
+  sub_points: 60000
+  sub_min_spend: 4000
+  sub_months: 3
+  photo_slug: aadvantage_globe
+  multipliers:
+  - category: Airlines
+    multiplier: 3.0
+    is_portal: true
+  - category: Dining
+    multiplier: 2.0
+  - category: Hotels
+    multiplier: 2.0
+    is_portal: true
+  - category: Transit
+    multiplier: 2.0
+- name: American AAdvantage MileUp
+  issuer: Citi
+  currency: American AAdvantage Miles
+  co_brand: American AAdvantage
+  network_tier: World Elite Mastercard
+  annual_fee: 0.0
+  sub_points: 15000
+  sub_min_spend: 1000
+  sub_months: 3
+  photo_slug: aadvantage_mileup
+  foreign_transaction_fee: true
+- name: American AAdvantage Platinum Select
+  issuer: Citi
+  currency: American AAdvantage Miles
+  co_brand: American AAdvantage
+  network_tier: World Elite Mastercard
+  annual_fee: 99.0
+  first_year_fee: 0.0
+  sub_points: 50000
+  sub_min_spend: 2500
+  sub_months: 3
+  photo_slug: aadvantage_platinum_select
+  multipliers:
+  - category: Airlines
+    multiplier: 2.0
+    is_portal: true
+  - category: Dining
+    multiplier: 2.0
+  - category: Gas
+    multiplier: 2.0
+- name: American Express Blue Business Plus
+  issuer: American Express
+  currency: American Express Membership Rewards
+  network_tier: American Express Business
+  annual_fee: 0.0
+  business: true
+  sub_points: 15000
+  sub_min_spend: 3000
+  sub_months: 3
+  transfer_enabler: true
+  photo_slug: amex_blue_business_plus
+  multipliers:
+  - category: All Other
+    multiplier: 2.0
+- name: American Express Gold
+  issuer: American Express
+  currency: American Express Membership Rewards
+  network_tier: American Express
+  annual_fee: 325.0
+  sub_points: 100000
+  sub_min_spend: 6000
+  sub_months: 6
+  transfer_enabler: true
+  photo_slug: amex_gold
+  multipliers:
+  - category: Airlines
+    multiplier: 3.0
+  - category: Dining
+    multiplier: 4.0
+  - category: Groceries
+    multiplier: 4.0
+  - category: Hotels
+    multiplier: 2.0
+    is_portal: true
+- name: American Express Green
+  issuer: American Express
+  currency: American Express Membership Rewards
+  network_tier: American Express
+  annual_fee: 150.0
+  sub_points: 40000
+  sub_min_spend: 3000
+  sub_months: 3
+  transfer_enabler: true
+  photo_slug: amex_green
+  multipliers:
+  - category: Airlines
+    multiplier: 3.0
+  - category: Dining
+    multiplier: 3.0
+  - category: Hotels
+    multiplier: 3.0
+  - category: Transit
+    multiplier: 3.0
+  - category: Travel
+    multiplier: 3.0
+- name: American Express Platinum
+  issuer: American Express
+  currency: American Express Membership Rewards
+  network_tier: American Express
+  annual_fee: 895.0
+  sub_points: 175000
+  sub_min_spend: 12000
+  sub_months: 6
+  transfer_enabler: true
+  photo_slug: amex_platinum
+  multipliers:
+  - category: Airlines
+    multiplier: 5.0
+  - category: Hotels
+    multiplier: 5.0
+    is_portal: true
+- name: Atmos Rewards Ascent
+  issuer: Bank of America
+  currency: Atmos Rewards
+  co_brand: Atmos Rewards
+  network_tier: Visa Signature
+  annual_fee: 95.0
+  sub_points: 80000
+  sub_min_spend: 4000
+  sub_months: 4
+  photo_slug: atmos_ascent
+  multipliers:
+  - category: Airlines
+    multiplier: 3.0
+  - category: All Other
+    multiplier: 1.0
+  - category: EV Charging
+    multiplier: 2.0
+  - category: Gas
+    multiplier: 2.0
+  - category: Rideshare
+    multiplier: 2.0
+  - category: Streaming
+    multiplier: 2.0
+  - category: Transit
+    multiplier: 2.0
+- name: Atmos Rewards Summit
+  issuer: Bank of America
+  currency: Atmos Rewards
+  co_brand: Atmos Rewards
+  network_tier: Visa Infinite
+  annual_fee: 395.0
+  sub_points: 100000
+  sub_min_spend: 6500
+  sub_months: 3
+  photo_slug: atmos_summit
+  multipliers:
+  - category: Airlines
+    multiplier: 3.0
+  - category: All Other
+    multiplier: 1.0
+  - category: Dining
+    multiplier: 3.0
+  - category: Foreign Transactions
+    multiplier: 3.0
+- name: Bank of America Customized Cash Rewards
+  issuer: Bank of America
+  currency: Cash
+  network_tier: Visa Signature
+  annual_fee: 0.0
+  sub_points: 0
+  sub_min_spend: 1000
+  sub_months: 3
+  sub_cash: 200.0
+  photo_slug: boa_customized_cash
+  foreign_transaction_fee: true
+  multipliers:
+  - category: All Other
+    multiplier: 1.0
+  - category: Dining
+    multiplier: 3.0
+  - category: Groceries
+    multiplier: 2.0
+  - category: Wholesale Clubs
+    multiplier: 2.0
+- name: Bank of America Premium Rewards
+  issuer: Bank of America
+  currency: Bank of America Points
+  network_tier: Visa Signature
+  annual_fee: 95.0
+  sub_points: 60000
+  sub_min_spend: 4000
+  sub_months: 3
+  photo_slug: boa_premium_rewards
+  multipliers:
+  - category: All Other
+    multiplier: 1.5
+  - category: Dining
+    multiplier: 2.0
+  - category: Travel
+    multiplier: 2.0
+- name: Bank of America Premium Rewards Elite
+  issuer: Bank of America
+  currency: Bank of America Points
+  network_tier: Visa Infinite
+  annual_fee: 550.0
+  sub_points: 75000
+  sub_min_spend: 5000
+  sub_months: 3
+  photo_slug: boa_premium_rewards_elite
+  multipliers:
+  - category: All Other
+    multiplier: 1.5
+  - category: Dining
+    multiplier: 2.0
+  - category: Travel
+    multiplier: 2.0
+- name: Bank of America Travel Rewards
+  issuer: Bank of America
+  currency: Bank of America Points
+  network_tier: Visa Traditional
+  annual_fee: 0.0
+  sub_points: 25000
+  sub_min_spend: 1000
+  sub_months: 3
+  photo_slug: boa_travel_rewards
+  multipliers:
+  - category: All Other
+    multiplier: 1.5
+- name: Bank of America Unlimited Cash Rewards
+  issuer: Bank of America
+  currency: Cash
+  network_tier: Visa Signature
+  annual_fee: 0.0
+  sub_points: 0
+  sub_min_spend: 1000
+  sub_months: 3
+  sub_cash: 200.0
+  photo_slug: boa_unlimited_cash
+  foreign_transaction_fee: true
+  multipliers:
+  - category: All Other
+    multiplier: 1.5
+- name: Bilt Blue
+  issuer: Cardless
+  currency: Bilt Rewards
+  co_brand: Bilt
+  network_tier: World Elite Mastercard
+  annual_fee: 0.0
+  sub_points: 0
+  sub_secondary_points: 10000
+  transfer_enabler: true
+  secondary_currency: Bilt Cash
+  secondary_currency_rate: 0.04
+  secondary_currency_cap_rate: 0.75
+  housing_tiered_enabled: true
+  photo_slug: bilt_blue
+  housing_fee_waived: true
+- name: Bilt Obsidian
+  issuer: Cardless
+  currency: Bilt Rewards
+  co_brand: Bilt
+  network_tier: World Elite Mastercard
+  annual_fee: 95.0
+  sub_points: 0
+  sub_secondary_points: 20000
+  transfer_enabler: true
+  secondary_currency: Bilt Cash
+  secondary_currency_rate: 0.04
+  secondary_currency_cap_rate: 0.75
+  accelerator_cost: 20000
+  accelerator_spend_limit: 5000.0
+  accelerator_bonus_multiplier: 1.0
+  accelerator_max_activations: 5
+  housing_tiered_enabled: true
+  photo_slug: bilt_obsidian
+  housing_fee_waived: true
+  multiplier_groups:
+  - multiplier: 3.0
+    cap_per_billing_cycle: 25000.0
+    cap_period_months: 12
+    top_n_categories: 1
+  multipliers:
+  - category: Airlines
+    multiplier: 2.0
+  - category: Hotels
+    multiplier: 2.0
+  - category: Travel
+    multiplier: 2.0
+  - category: Dining
+    multiplier: 3.0
+    group_index: 0
+  - category: Groceries
+    multiplier: 3.0
+    group_index: 0
+- name: Bilt Palladium
+  issuer: Cardless
+  currency: Bilt Rewards
+  co_brand: Bilt
+  network_tier: World Legend Mastercard
+  annual_fee: 495.0
+  sub_points: 50000
+  sub_min_spend: 4000
+  sub_months: 3
+  sub_secondary_points: 30000
+  transfer_enabler: true
+  secondary_currency: Bilt Cash
+  secondary_currency_rate: 0.04
+  secondary_currency_cap_rate: 0.75
+  accelerator_cost: 20000
+  accelerator_spend_limit: 1000.0
+  accelerator_bonus_multiplier: 1.0
+  accelerator_max_activations: 5
+  housing_tiered_enabled: true
+  photo_slug: bilt_palladium
+  housing_fee_waived: true
+  multipliers:
+  - category: All Other
+    multiplier: 2.0
+  - category: Mortgage
+    multiplier: 1.0
+  - category: Rent
+    multiplier: 1.0
+- name: Capital One Savor
+  issuer: Capital One
+  currency: Capital One Venture Miles
+  network_tier: World Elite Mastercard
+  annual_fee: 0.0
+  sub_points: 20000
+  sub_min_spend: 500
+  sub_months: 3
+  photo_slug: capital_one_savor
+  multipliers:
+  - category: Dining
+    multiplier: 3.0
+  - category: Groceries
+    multiplier: 3.0
+  - category: Live Entertainment
+    multiplier: 3.0
+  - category: Streaming
+    multiplier: 3.0
+- name: Capital One Venture
+  issuer: Capital One
+  currency: Capital One Venture Miles
+  network_tier: World Elite Mastercard
+  annual_fee: 95.0
+  sub_points: 75000
+  sub_min_spend: 4000
+  sub_months: 3
+  transfer_enabler: true
+  photo_slug: capital_one_venture
+  multipliers:
+  - category: All Other
+    multiplier: 2.0
+  - category: Car Rentals
+    multiplier: 5.0
+    is_portal: true
+  - category: Hotels
+    multiplier: 5.0
+    is_portal: true
+  - category: Vacation Rentals
+    multiplier: 5.0
+    is_portal: true
+- name: Capital One Venture X
+  issuer: Capital One
+  currency: Capital One Venture Miles
+  network_tier: Visa Infinite
+  annual_fee: 395.0
+  sub_points: 75000
+  sub_min_spend: 4000
+  sub_months: 3
+  annual_bonus: 10000
+  transfer_enabler: true
+  photo_slug: capital_one_venture_x
+  multipliers:
+  - category: All Other
+    multiplier: 2.0
+  - category: Car Rentals
+    multiplier: 10.0
+    is_portal: true
+  - category: Flights
+    multiplier: 5.0
+    is_portal: true
+  - category: Hotels
+    multiplier: 10.0
+    is_portal: true
+  - category: Vacation Rentals
+    multiplier: 5.0
+    is_portal: true
+- name: Chase Freedom
+  issuer: Chase
+  currency: Chase Ultimate Rewards
+  network_tier: Visa Traditional
+  annual_fee: 0.0
+  photo_slug: chase_freedom
+  foreign_transaction_fee: true
+  multiplier_groups:
+  - multiplier: 5.0
+    cap_per_billing_cycle: 1500.0
+    cap_period_months: 3
+    is_rotating: true
+  multipliers:
+  - category: Amazon
+    multiplier: 5.0
+    group_index: 0
+  - category: Dining
+    multiplier: 5.0
+    group_index: 0
+  - category: EV Charging
+    multiplier: 5.0
+    group_index: 0
+  - category: Fitness
+    multiplier: 5.0
+    group_index: 0
+  - category: Gas
+    multiplier: 5.0
+    group_index: 0
+  - category: Groceries
+    multiplier: 5.0
+    group_index: 0
+  - category: Hotels
+    multiplier: 5.0
+    group_index: 0
+  - category: Lowe's
+    multiplier: 5.0
+    group_index: 0
+  - category: McDonald's
+    multiplier: 5.0
+    group_index: 0
+  - category: Movies
+    multiplier: 5.0
+    group_index: 0
+  - category: PayPal
+    multiplier: 5.0
+    group_index: 0
+  - category: Wholesale Clubs
+    multiplier: 5.0
+    group_index: 0
+  rotating_categories:
+  - year: 2023
+    quarter: 1
+    category: Fitness
+  - year: 2023
+    quarter: 1
+    category: Groceries
+  - year: 2023
+    quarter: 2
+    category: Amazon
+  - year: 2023
+    quarter: 2
+    category: Lowe's
+  - year: 2023
+    quarter: 3
+    category: EV Charging
+  - year: 2023
+    quarter: 3
+    category: Gas
+  - year: 2023
+    quarter: 3
+    category: Movies
+  - year: 2023
+    quarter: 4
+    category: PayPal
+  - year: 2023
+    quarter: 4
+    category: Wholesale Clubs
+  - year: 2024
+    quarter: 1
+    category: Fitness
+  - year: 2024
+    quarter: 1
+    category: Groceries
+  - year: 2024
+    quarter: 2
+    category: Dining
+  - year: 2024
+    quarter: 2
+    category: Hotels
+  - year: 2024
+    quarter: 3
+    category: EV Charging
+  - year: 2024
+    quarter: 3
+    category: Gas
+  - year: 2024
+    quarter: 3
+    category: Movies
+  - year: 2024
+    quarter: 4
+    category: McDonald's
+  - year: 2024
+    quarter: 4
+    category: PayPal
+  - year: 2025
+    quarter: 1
+    category: Fitness
+  - year: 2025
+    quarter: 1
+    category: Groceries
+  - year: 2025
+    quarter: 2
+    category: Amazon
+  - year: 2025
+    quarter: 2
+    category: Hotels
+  - year: 2025
+    quarter: 3
+    category: Dining
+  - year: 2025
+    quarter: 3
+    category: EV Charging
+  - year: 2025
+    quarter: 3
+    category: Gas
+  - year: 2025
+    quarter: 4
+    category: PayPal
+  - year: 2025
+    quarter: 4
+    category: Wholesale Clubs
+- name: Chase Freedom Flex
+  issuer: Chase
+  currency: Chase Ultimate Rewards
+  network_tier: World Mastercard
+  annual_fee: 0.0
+  sub_points: 20000
+  sub_min_spend: 500
+  sub_months: 3
+  photo_slug: chase_freedom_flex
+  foreign_transaction_fee: true
+  multiplier_groups:
+  - multiplier: 4.0
+    cap_per_billing_cycle: 1500.0
+    cap_period_months: 3
+    is_rotating: true
+    is_additive: true
+  multipliers:
+  - category: Dining
+    multiplier: 3.0
+  - category: Drugstores
+    multiplier: 3.0
+  - category: Travel
+    multiplier: 4.0
+    is_portal: true
+    is_additive: true
+  - category: Amazon
+    multiplier: 4.0
+    is_additive: true
+    group_index: 0
+  - category: Dining
+    multiplier: 4.0
+    is_additive: true
+    group_index: 0
+  - category: EV Charging
+    multiplier: 4.0
+    is_additive: true
+    group_index: 0
+  - category: Fitness
+    multiplier: 4.0
+    is_additive: true
+    group_index: 0
+  - category: Gas
+    multiplier: 4.0
+    is_additive: true
+    group_index: 0
+  - category: Groceries
+    multiplier: 4.0
+    is_additive: true
+    group_index: 0
+  - category: Hotels
+    multiplier: 4.0
+    is_additive: true
+    group_index: 0
+  - category: Lowe's
+    multiplier: 4.0
+    is_additive: true
+    group_index: 0
+  - category: McDonald's
+    multiplier: 4.0
+    is_additive: true
+    group_index: 0
+  - category: Movies
+    multiplier: 4.0
+    is_additive: true
+    group_index: 0
+  - category: PayPal
+    multiplier: 4.0
+    is_additive: true
+    group_index: 0
+  - category: Wholesale Clubs
+    multiplier: 4.0
+    is_additive: true
+    group_index: 0
+  rotating_categories:
+  - year: 2023
+    quarter: 1
+    category: Fitness
+  - year: 2023
+    quarter: 1
+    category: Groceries
+  - year: 2023
+    quarter: 2
+    category: Amazon
+  - year: 2023
+    quarter: 2
+    category: Lowe's
+  - year: 2023
+    quarter: 3
+    category: EV Charging
+  - year: 2023
+    quarter: 3
+    category: Gas
+  - year: 2023
+    quarter: 3
+    category: Movies
+  - year: 2023
+    quarter: 4
+    category: PayPal
+  - year: 2023
+    quarter: 4
+    category: Wholesale Clubs
+  - year: 2024
+    quarter: 1
+    category: Fitness
+  - year: 2024
+    quarter: 1
+    category: Groceries
+  - year: 2024
+    quarter: 2
+    category: Dining
+  - year: 2024
+    quarter: 2
+    category: Hotels
+  - year: 2024
+    quarter: 3
+    category: EV Charging
+  - year: 2024
+    quarter: 3
+    category: Gas
+  - year: 2024
+    quarter: 3
+    category: Movies
+  - year: 2024
+    quarter: 4
+    category: McDonald's
+  - year: 2024
+    quarter: 4
+    category: PayPal
+  - year: 2025
+    quarter: 1
+    category: Fitness
+  - year: 2025
+    quarter: 1
+    category: Groceries
+  - year: 2025
+    quarter: 2
+    category: Amazon
+  - year: 2025
+    quarter: 2
+    category: Hotels
+  - year: 2025
+    quarter: 3
+    category: Dining
+  - year: 2025
+    quarter: 3
+    category: EV Charging
+  - year: 2025
+    quarter: 3
+    category: Gas
+  - year: 2025
+    quarter: 4
+    category: PayPal
+  - year: 2025
+    quarter: 4
+    category: Wholesale Clubs
+- name: Chase Freedom Unlimited
+  issuer: Chase
+  currency: Chase Ultimate Rewards
+  network_tier: Visa Traditional
+  annual_fee: 0.0
+  sub_points: 20000
+  sub_min_spend: 500
+  sub_months: 3
+  photo_slug: chase_freedom_unlimited
+  foreign_transaction_fee: true
+  multipliers:
+  - category: All Other
+    multiplier: 1.5
+  - category: Dining
+    multiplier: 3.0
+  - category: Drugstores
+    multiplier: 3.0
+  - category: Travel
+    multiplier: 5.0
+    is_portal: true
+- name: Chase Sapphire Preferred
+  issuer: Chase
+  currency: Chase Ultimate Rewards
+  network_tier: Visa Signature
+  annual_fee: 95.0
+  sub_points: 75000
+  sub_min_spend: 5000
+  sub_months: 3
+  annual_bonus_percent: 10.0
+  transfer_enabler: true
+  photo_slug: chase_sapphire_preferred
+  multipliers:
+  - category: Airlines
+    multiplier: 5.0
+  - category: Dining
+    multiplier: 3.0
+  - category: Groceries
+    multiplier: 3.0
+  - category: Hotels
+    multiplier: 5.0
+  - category: Streaming
+    multiplier: 3.0
+  - category: Transit
+    multiplier: 2.0
+  - category: Travel
+    multiplier: 2.0
+  - category: Travel
+    multiplier: 5.0
+    is_portal: true
+- name: Chase Sapphire Reserve
+  issuer: Chase
+  currency: Chase Ultimate Rewards
+  network_tier: Visa Infinite
+  annual_fee: 795.0
+  sub_points: 125000
+  sub_min_spend: 6000
+  sub_months: 3
+  transfer_enabler: true
+  photo_slug: chase_sapphire_reserve
+  multipliers:
+  - category: Airlines
+    multiplier: 4.0
+  - category: Dining
+    multiplier: 3.0
+  - category: Hotels
+    multiplier: 4.0
+  - category: Travel
+    multiplier: 8.0
+    is_portal: true
+- name: Citi Custom Cash
+  issuer: Citi
+  currency: Citi ThankYou Points
+  network_tier: World Mastercard
+  annual_fee: 0.0
+  sub_points: 20000
+  sub_min_spend: 1500
+  sub_months: 6
+  photo_slug: citi_custom_cash
+  foreign_transaction_fee: true
+  multiplier_groups:
+  - multiplier: 5.0
+    cap_per_billing_cycle: 500.0
+    cap_period_months: 1
+    top_n_categories: 1
+  multipliers:
+  - category: Travel
+    multiplier: 4.0
+    is_portal: true
+    is_additive: true
+  - category: Airlines
+    multiplier: 5.0
+    group_index: 0
+  - category: Dining
+    multiplier: 5.0
+    group_index: 0
+  - category: Drugstores
+    multiplier: 5.0
+    group_index: 0
+  - category: Fitness
+    multiplier: 5.0
+    group_index: 0
+  - category: Gas
+    multiplier: 5.0
+    group_index: 0
+  - category: Groceries
+    multiplier: 5.0
+    group_index: 0
+  - category: Hotels
+    multiplier: 5.0
+    group_index: 0
+  - category: Internet
+    multiplier: 5.0
+    group_index: 0
+  - category: Live Entertainment
+    multiplier: 5.0
+    group_index: 0
+  - category: Personal Care
+    multiplier: 5.0
+    group_index: 0
+  - category: Phone
+    multiplier: 5.0
+    group_index: 0
+  - category: Rideshare
+    multiplier: 5.0
+    group_index: 0
+  - category: Streaming
+    multiplier: 5.0
+    group_index: 0
+  - category: Transit
+    multiplier: 5.0
+    group_index: 0
+  - category: Travel
+    multiplier: 5.0
+    group_index: 0
+- name: Citi Double Cash
+  issuer: Citi
+  currency: Citi ThankYou Points
+  network_tier: World Elite Mastercard
+  annual_fee: 0.0
+  sub_points: 20000
+  sub_min_spend: 1500
+  sub_months: 6
+  photo_slug: citi_double_cash
+  foreign_transaction_fee: true
+  multipliers:
+  - category: All Other
+    multiplier: 2.0
+  - category: Attractions
+    multiplier: 5.0
+    is_portal: true
+  - category: Car Rentals
+    multiplier: 5.0
+    is_portal: true
+  - category: Hotels
+    multiplier: 5.0
+    is_portal: true
+- name: Citi Strata
+  issuer: Citi
+  currency: Citi ThankYou Points
+  network_tier: World Elite Mastercard
+  annual_fee: 0.0
+  sub_points: 20000
+  sub_min_spend: 1000
+  sub_months: 3
+  photo_slug: citi_strata
+  multiplier_groups:
+  - multiplier: 5.0
+    top_n_categories: 1
+  multipliers:
+  - category: Attractions
+    multiplier: 5.0
+    is_portal: true
+  - category: Car Rentals
+    multiplier: 5.0
+    is_portal: true
+  - category: Dining
+    multiplier: 2.0
+  - category: EV Charging
+    multiplier: 3.0
+  - category: Gas
+    multiplier: 3.0
+  - category: Groceries
+    multiplier: 2.0
+  - category: Hotels
+    multiplier: 5.0
+    is_portal: true
+- name: Citi Strata Elite
+  issuer: Citi
+  currency: Citi ThankYou Points
+  network_tier: World Legend Mastercard
+  annual_fee: 595.0
+  sub_points: 75000
+  sub_min_spend: 6000
+  sub_months: 3
+  transfer_enabler: true
+  photo_slug: citi_strata_elite
+  multipliers:
+  - category: Airlines
+    multiplier: 6.0
+  - category: All Other
+    multiplier: 1.5
+  - category: Attractions
+    multiplier: 12.0
+    is_portal: true
+  - category: Car Rentals
+    multiplier: 12.0
+    is_portal: true
+  - category: Dining
+    multiplier: 3.0
+  - category: Hotels
+    multiplier: 12.0
+  - category: Hotels
+    multiplier: 12.0
+    is_portal: true
+- name: Citi Strata Premier
+  issuer: Citi
+  currency: Citi ThankYou Points
+  network_tier: World Elite Mastercard
+  annual_fee: 95.0
+  sub_points: 60000
+  sub_min_spend: 4000
+  sub_months: 3
+  transfer_enabler: true
+  photo_slug: citi_strata_premier
+  multipliers:
+  - category: Airlines
+    multiplier: 3.0
+  - category: Attractions
+    multiplier: 10.0
+    is_portal: true
+  - category: Car Rentals
+    multiplier: 10.0
+    is_portal: true
+  - category: Dining
+    multiplier: 3.0
+  - category: EV Charging
+    multiplier: 3.0
+  - category: Gas
+    multiplier: 3.0
+  - category: Groceries
+    multiplier: 3.0
+  - category: Hotels
+    multiplier: 3.0
+  - category: Hotels
+    multiplier: 10.0
+    is_portal: true
+- name: Costco Anywhere
+  issuer: Citi
+  currency: Cash
+  co_brand: Costco
+  network_tier: Visa Signature
+  annual_fee: 0.0
+  photo_slug: costco_anywhere
+  multipliers:
+  - category: Airlines
+    multiplier: 3.0
+  - category: Dining
+    multiplier: 3.0
+  - category: Gas
+    multiplier: 5.0
+  - category: Groceries
+    multiplier: 2.0
+  - category: Hotels
+    multiplier: 3.0
+- name: Delta SkyMiles Blue
+  issuer: American Express
+  currency: Delta SkyMiles
+  co_brand: Delta SkyMiles
+  network_tier: American Express
+  annual_fee: 0.0
+  sub_points: 10000
+  sub_min_spend: 1000
+  sub_months: 6
+  photo_slug: delta_skymiles_blue
+  foreign_transaction_fee: true
+- name: Delta SkyMiles Gold
+  issuer: American Express
+  currency: Delta SkyMiles
+  co_brand: Delta SkyMiles
+  network_tier: American Express
+  annual_fee: 150.0
+  first_year_fee: 0.0
+  sub_points: 80000
+  sub_min_spend: 2000
+  sub_months: 6
+  photo_slug: delta_skymiles_gold
+  multipliers:
+  - category: Airlines
+    multiplier: 2.0
+    is_portal: true
+  - category: Dining
+    multiplier: 2.0
+  - category: Groceries
+    multiplier: 2.0
+- name: Delta SkyMiles Platinum
+  issuer: American Express
+  currency: Delta SkyMiles
+  co_brand: Delta SkyMiles
+  network_tier: American Express
+  annual_fee: 350.0
+  sub_points: 90000
+  sub_min_spend: 3000
+  sub_months: 6
+  photo_slug: delta_skymiles_platinum
+  multipliers:
+  - category: Airlines
+    multiplier: 3.0
+  - category: Dining
+    multiplier: 2.0
+  - category: Groceries
+    multiplier: 2.0
+  - category: Hotels
+    multiplier: 2.0
+    is_portal: true
+- name: Delta SkyMiles Reserve
+  issuer: American Express
+  currency: Delta SkyMiles
+  co_brand: Delta SkyMiles
+  network_tier: American Express
+  annual_fee: 650.0
+  sub_points: 100000
+  sub_min_spend: 5000
+  sub_months: 6
+  photo_slug: delta_skymiles_reserve
+  multipliers:
+  - category: Airlines
+    multiplier: 3.0
+    is_portal: true
+  - category: Hotels
+    multiplier: 3.0
+    is_portal: true
+- name: Discover IT Cash Back
+  issuer: Discover
+  currency: Cash
+  network_tier: Discover
+  annual_fee: 0.0
+  annual_bonus_percent: 100.0
+  annual_bonus_first_year_only: true
+  photo_slug: discover_it_cash_back
+  multiplier_groups:
+  - multiplier: 4.0
+    cap_per_billing_cycle: 1500.0
+    cap_period_months: 3
+    is_rotating: true
+    is_additive: true
+  multipliers:
+  - category: Amazon
+    multiplier: 4.0
+    group_index: 0
+  - category: Dining
+    multiplier: 4.0
+    group_index: 0
+  - category: Gas
+    multiplier: 4.0
+    group_index: 0
+  - category: Groceries
+    multiplier: 4.0
+    group_index: 0
+  - category: Home Improvement
+    multiplier: 4.0
+    group_index: 0
+  - category: Lowe's
+    multiplier: 4.0
+    group_index: 0
+  - category: Movies
+    multiplier: 4.0
+    group_index: 0
+  - category: PayPal
+    multiplier: 4.0
+    group_index: 0
+  - category: Target
+    multiplier: 4.0
+    group_index: 0
+  - category: Wholesale Clubs
+    multiplier: 4.0
+    group_index: 0
+  rotating_categories:
+  - year: 2023
+    quarter: 1
+    category: Groceries
+  - year: 2023
+    quarter: 3
+    category: Dining
+  - year: 2023
+    quarter: 3
+    category: PayPal
+  - year: 2023
+    quarter: 4
+    category: Amazon
+  - year: 2023
+    quarter: 4
+    category: Target
+  - year: 2023
+    quarter: 4
+    category: Wholesale Clubs
+  - year: 2024
+    quarter: 1
+    category: Groceries
+  - year: 2024
+    quarter: 2
+    category: Home Improvement
+  - year: 2024
+    quarter: 2
+    category: Lowe's
+  - year: 2024
+    quarter: 3
+    category: Dining
+  - year: 2024
+    quarter: 3
+    category: PayPal
+  - year: 2024
+    quarter: 4
+    category: Amazon
+  - year: 2024
+    quarter: 4
+    category: Target
+  - year: 2024
+    quarter: 4
+    category: Wholesale Clubs
+  - year: 2025
+    quarter: 1
+    category: Groceries
+  - year: 2025
+    quarter: 2
+    category: Home Improvement
+  - year: 2025
+    quarter: 2
+    category: Lowe's
+  - year: 2025
+    quarter: 3
+    category: Dining
+  - year: 2025
+    quarter: 3
+    category: PayPal
+  - year: 2025
+    quarter: 4
+    category: Amazon
+  - year: 2025
+    quarter: 4
+    category: Target
+- name: Hilton Honors
+  issuer: American Express
+  currency: Hilton Honors
+  co_brand: Hilton Honors
+  network_tier: American Express
+  annual_fee: 0.0
+  sub_points: 70000
+  sub_min_spend: 2000
+  sub_months: 6
+  photo_slug: hilton_honors
+  multipliers:
+  - category: All Other
+    multiplier: 3.0
+  - category: Dining
+    multiplier: 5.0
+  - category: Gas
+    multiplier: 5.0
+  - category: Groceries
+    multiplier: 5.0
+  - category: Hotels
+    multiplier: 7.0
+- name: Hilton Honors Aspire
+  issuer: American Express
+  currency: Hilton Honors
+  co_brand: Hilton Honors
+  network_tier: American Express
+  annual_fee: 550.0
+  sub_points: 175000
+  sub_min_spend: 6000
+  sub_months: 6
+  photo_slug: hilton_honors_aspire
+  multipliers:
+  - category: Airlines
+    multiplier: 7.0
+  - category: All Other
+    multiplier: 3.0
+  - category: Car Rentals
+    multiplier: 7.0
+  - category: Dining
+    multiplier: 7.0
+  - category: Hotels
+    multiplier: 14.0
+- name: Hilton Honors Surpass
+  issuer: American Express
+  currency: Hilton Honors
+  co_brand: Hilton Honors
+  network_tier: American Express
+  annual_fee: 150.0
+  sub_points: 130000
+  sub_min_spend: 3000
+  sub_months: 6
+  photo_slug: hilton_honors_surpass
+  multipliers:
+  - category: All Other
+    multiplier: 3.0
+  - category: Dining
+    multiplier: 6.0
+  - category: Gas
+    multiplier: 6.0
+  - category: Groceries
+    multiplier: 6.0
+  - category: Hotels
+    multiplier: 12.0
+  - category: Online Shopping
+    multiplier: 4.0
+- name: IHG One Rewards Premier
+  issuer: Chase
+  currency: IHG One Rewards
+  co_brand: IHG One Rewards
+  network_tier: World Elite Mastercard
+  annual_fee: 99.0
+  sub_points: 140000
+  sub_min_spend: 3000
+  sub_months: 3
+  photo_slug: ihg_one_premier
+  multipliers:
+  - category: All Other
+    multiplier: 3.0
+  - category: Dining
+    multiplier: 5.0
+  - category: Gas
+    multiplier: 5.0
+  - category: Hotels
+    multiplier: 10.0
+  - category: Travel
+    multiplier: 5.0
+- name: IHG One Rewards Traveler
+  issuer: Chase
+  currency: IHG One Rewards
+  co_brand: IHG One Rewards
+  network_tier: Visa Traditional
+  annual_fee: 0.0
+  sub_points: 80000
+  sub_min_spend: 2000
+  sub_months: 3
+  photo_slug: ihg_one_traveler
+  multipliers:
+  - category: All Other
+    multiplier: 2.0
+  - category: Dining
+    multiplier: 3.0
+  - category: Gas
+    multiplier: 3.0
+  - category: Hotels
+    multiplier: 5.0
+  - category: Streaming
+    multiplier: 3.0
+- name: Marriott Bonvoy Bevy
+  issuer: American Express
+  currency: Marriott Bonvoy
+  co_brand: Marriot Bonvoy
+  network_tier: American Express
+  annual_fee: 250.0
+  sub_points: 175000
+  sub_min_spend: 5000
+  sub_months: 6
+  photo_slug: marriott_bonvoy_bevy
+  multipliers:
+  - category: All Other
+    multiplier: 2.0
+  - category: Dining
+    multiplier: 4.0
+  - category: Groceries
+    multiplier: 4.0
+  - category: Hotels
+    multiplier: 6.0
+- name: Marriott Bonvoy Bold
+  issuer: Chase
+  currency: Marriott Bonvoy
+  co_brand: Marriot Bonvoy
+  network_tier: Visa Signature
+  annual_fee: 0.0
+  sub_points: 30000
+  sub_min_spend: 1000
+  sub_months: 3
+  photo_slug: marriott_bonvoy_bold
+  multipliers:
+  - category: All Other
+    multiplier: 1.0
+  - category: Groceries
+    multiplier: 2.0
+  - category: Hotels
+    multiplier: 3.0
+  - category: Rideshare
+    multiplier: 2.0
+  - category: Streaming
+    multiplier: 2.0
+- name: Marriott Bonvoy Boundless
+  issuer: Chase
+  currency: Marriott Bonvoy
+  co_brand: Marriot Bonvoy
+  network_tier: Visa Signature
+  annual_fee: 95.0
+  sub_points: 150000
+  sub_min_spend: 3000
+  sub_months: 3
+  photo_slug: marriott_bonvoy_boundless
+  multipliers:
+  - category: All Other
+    multiplier: 2.0
+  - category: Dining
+    multiplier: 3.0
+  - category: Gas
+    multiplier: 3.0
+  - category: Groceries
+    multiplier: 3.0
+  - category: Hotels
+    multiplier: 6.0
+- name: Marriott Bonvoy Bountiful
+  issuer: Chase
+  currency: Marriott Bonvoy
+  co_brand: Marriot Bonvoy
+  network_tier: Visa Signature
+  annual_fee: 250.0
+  sub_points: 85000
+  sub_min_spend: 4000
+  sub_months: 3
+  photo_slug: marriott_bonvoy_bountiful
+  multipliers:
+  - category: All Other
+    multiplier: 2.0
+  - category: Dining
+    multiplier: 4.0
+  - category: Groceries
+    multiplier: 4.0
+  - category: Hotels
+    multiplier: 6.0
+- name: Marriott Bonvoy Brilliant
+  issuer: American Express
+  currency: Marriott Bonvoy
+  co_brand: Marriot Bonvoy
+  network_tier: American Express
+  annual_fee: 650.0
+  sub_points: 200000
+  sub_min_spend: 6000
+  sub_months: 6
+  photo_slug: marriott_bonvoy_brilliant
+  multipliers:
+  - category: Airlines
+    multiplier: 3.0
+  - category: All Other
+    multiplier: 2.0
+  - category: Dining
+    multiplier: 3.0
+  - category: Hotels
+    multiplier: 6.0
+- name: United MileagePlus Club
+  issuer: Chase
+  currency: United MileagePlus
+  co_brand: United MileagePlus
+  network_tier: Visa Infinite
+  annual_fee: 695.0
+  sub_points: 100000
+  sub_min_spend: 5000
+  sub_months: 3
+  photo_slug: united_club
+  multipliers:
+  - category: Airlines
+    multiplier: 5.0
+  - category: All Other
+    multiplier: 1.0
+  - category: Dining
+    multiplier: 2.0
+  - category: Hotels
+    multiplier: 2.0
+  - category: Travel
+    multiplier: 2.0
+- name: United MileagePlus Explorer
+  issuer: Chase
+  currency: United MileagePlus
+  co_brand: United MileagePlus
+  network_tier: Visa Signature
+  annual_fee: 150.0
+  first_year_fee: 0.0
+  sub_points: 70000
+  sub_min_spend: 3000
+  sub_months: 3
+  photo_slug: united_explorer
+  multipliers:
+  - category: Airlines
+    multiplier: 3.0
+  - category: All Other
+    multiplier: 1.0
+  - category: Dining
+    multiplier: 2.0
+  - category: Hotels
+    multiplier: 2.0
+- name: United MileagePlus Gateway
+  issuer: Chase
+  currency: United MileagePlus
+  co_brand: United MileagePlus
+  network_tier: Visa Traditional
+  annual_fee: 0.0
+  sub_points: 30000
+  sub_min_spend: 1000
+  sub_months: 3
+  photo_slug: united_gateway
+  foreign_transaction_fee: true
+  multipliers:
+  - category: Airlines
+    multiplier: 2.0
+  - category: All Other
+    multiplier: 1.0
+  - category: Gas
+    multiplier: 2.0
+  - category: Rideshare
+    multiplier: 2.0
+  - category: Transit
+    multiplier: 2.0
+- name: United MileagePlus Quest
+  issuer: Chase
+  currency: United MileagePlus
+  co_brand: United MileagePlus
+  network_tier: Visa Signature
+  annual_fee: 350.0
+  sub_points: 90000
+  sub_min_spend: 4000
+  sub_months: 3
+  photo_slug: united_quest
+  multipliers:
+  - category: Airlines
+    multiplier: 4.0
+  - category: All Other
+    multiplier: 1.0
+  - category: Dining
+    multiplier: 2.0
+  - category: Hotels
+    multiplier: 2.0
+  - category: Streaming
+    multiplier: 2.0
+  - category: Travel
+    multiplier: 2.0
+- name: Wells Fargo Active Cash
+  issuer: Wells Fargo
+  currency: Wells Fargo Rewards
+  network_tier: Visa Traditional
+  annual_fee: 0.0
+  sub_points: 0
+  sub_min_spend: 500
+  sub_months: 3
+  sub_cash: 200.0
+  photo_slug: wells_fargo_active_cash
+  multipliers:
+  - category: All Other
+    multiplier: 2.0
+- name: Wells Fargo Attune
+  issuer: Wells Fargo
+  currency: Wells Fargo Rewards
+  network_tier: World Elite Mastercard
+  annual_fee: 0.0
+  sub_points: 0
+  sub_min_spend: 500
+  sub_months: 3
+  sub_cash: 100.0
+  photo_slug: wells_fargo_attune
+  multipliers:
+  - category: All Other
+    multiplier: 1.0
+  - category: EV Charging
+    multiplier: 4.0
+  - category: Fitness
+    multiplier: 4.0
+  - category: Live Entertainment
+    multiplier: 4.0
+  - category: Pet Supply Stores
+    multiplier: 4.0
+  - category: Transit
+    multiplier: 4.0
+- name: Wells Fargo Autograph
+  issuer: Wells Fargo
+  currency: Wells Fargo Rewards
+  network_tier: Visa Signature
+  annual_fee: 0.0
+  sub_points: 20000
+  sub_min_spend: 1000
+  sub_months: 3
+  transfer_enabler: true
+  photo_slug: wells_fargo_autograph
+  multipliers:
+  - category: All Other
+    multiplier: 1.0
+  - category: Dining
+    multiplier: 3.0
+  - category: Gas
+    multiplier: 3.0
+  - category: Phone
+    multiplier: 3.0
+  - category: Streaming
+    multiplier: 3.0
+  - category: Transit
+    multiplier: 3.0
+  - category: Travel
+    multiplier: 3.0
+- name: Wells Fargo Autograph Journey
+  issuer: Wells Fargo
+  currency: Wells Fargo Rewards
+  network_tier: Visa Signature
+  annual_fee: 95.0
+  sub_points: 60000
+  sub_min_spend: 4000
+  sub_months: 3
+  transfer_enabler: true
+  photo_slug: wells_fargo_autograph_journey
+  multipliers:
+  - category: Airlines
+    multiplier: 4.0
+  - category: All Other
+    multiplier: 1.0
+  - category: Dining
+    multiplier: 3.0
+  - category: Hotels
+    multiplier: 5.0
+  - category: Travel
+    multiplier: 3.0
+- name: World of Hyatt
+  issuer: Chase
+  currency: World of Hyatt
+  co_brand: World of Hyatt
+  network_tier: Visa Signature
+  annual_fee: 95.0
+  sub_points: 30000
+  sub_min_spend: 3000
+  sub_months: 3
+  photo_slug: world_of_hyatt
+  multipliers:
+  - category: Airlines
+    multiplier: 2.0
+  - category: All Other
+    multiplier: 1.0
+  - category: Dining
+    multiplier: 2.0
+  - category: Fitness
+    multiplier: 2.0
+  - category: Hotels
+    multiplier: 4.0
+  - category: Transit
+    multiplier: 2.0
