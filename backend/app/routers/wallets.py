@@ -192,6 +192,7 @@ async def add_card_to_wallet(
         sub_earned_date=payload.sub_earned_date,
         closed_date=payload.closed_date,
         acquisition_type=payload.acquisition_type,
+        pc_from_card_id=payload.pc_from_card_id if payload.acquisition_type == "product_change" else None,
         panel=payload.panel,
     )
     db.add(wc_obj)
@@ -214,6 +215,18 @@ async def add_card_to_wallet(
                     value=entry.value,
                 )
             )
+
+    # If this is a product change, mark the "from" card as product-changed.
+    if payload.acquisition_type == "product_change" and payload.pc_from_card_id is not None:
+        from_wc_result = await db.execute(
+            select(WalletCard).where(
+                WalletCard.wallet_id == wallet_id,
+                WalletCard.card_id == payload.pc_from_card_id,
+            )
+        )
+        from_wc = from_wc_result.scalar_one_or_none()
+        if from_wc is not None:
+            from_wc.product_changed_date = payload.added_date
 
     await ensure_wallet_currency_rows_for_earning_currencies(db, wallet_id)
     await db.commit()

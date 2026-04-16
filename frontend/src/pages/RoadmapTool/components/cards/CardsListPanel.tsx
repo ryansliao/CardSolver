@@ -90,6 +90,7 @@ function CardItem({
   onEditCard,
   draggable,
   locked,
+  isProductChanged,
 }: {
   wc: WalletCard
   closeCardId: number | null
@@ -104,9 +105,11 @@ function CardItem({
   onEditCard: (wc: WalletCard) => void
   draggable: boolean
   locked?: boolean
+  isProductChanged?: boolean
 }) {
   const isClosed = !!wc.closed_date
   const isFuture = panel === 'future_cards'
+  const isDimmed = isClosed || isProductChanged
 
   return (
     <li
@@ -115,7 +118,7 @@ function CardItem({
         e.dataTransfer.setData('text/plain', String(wc.card_id))
         e.dataTransfer.effectAllowed = 'move'
       }}
-      className={`bg-slate-800 rounded-lg px-3 py-2 ${isClosed ? 'opacity-50' : ''} ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      className={`bg-slate-800 rounded-lg px-3 py-2 ${isDimmed ? 'opacity-50' : ''} ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
     >
       <div className="flex items-center justify-between gap-3">
         {/* Card photo */}
@@ -142,6 +145,9 @@ function CardItem({
           <p className="text-xs text-slate-400 mt-0.5">
             {wc.acquisition_type === 'product_change' ? 'Product Changed ' : 'Opened '} {wc.added_date}
           </p>
+          {isProductChanged && wc.product_changed_date && (
+            <p className="text-xs text-slate-500 mt-0.5">Product Changed {wc.product_changed_date}</p>
+          )}
           {isClosed && wc.closed_date && (
             <p className="text-xs text-slate-500 mt-0.5">Closed {wc.closed_date}</p>
           )}
@@ -151,30 +157,30 @@ function CardItem({
             </p>
           )}
         </div>
-        {!locked && (
-          <div className="flex flex-col items-end justify-between gap-1 shrink-0 self-stretch">
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-700"
-                aria-label="Edit card"
-                title="Edit"
-                onClick={() => onEditCard(wc)}
+        <div className="flex flex-col items-end justify-between gap-1 shrink-0 self-stretch">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-700"
+              aria-label="Edit card"
+              title="Edit"
+              onClick={() => onEditCard(wc)}
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
-              </button>
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
+            {!locked && (
               <button
                 type="button"
                 className="p-1 rounded text-slate-600 hover:text-red-400 hover:bg-red-950/40 disabled:opacity-50"
@@ -197,59 +203,67 @@ function CardItem({
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                 </svg>
               </button>
-            </div>
-            <div className="flex justify-end items-center gap-2 flex-wrap max-w-[min(100%,18rem)]">
-              {!isClosed && (
-                <>
-                  {closeCardId === wc.card_id ? (
-                    <span className="flex items-center gap-1 flex-wrap justify-end">
-                      <input
-                        type="date"
-                        value={closeDateInput}
-                        onChange={(e) => onSetCloseDateInput(e.target.value)}
-                        className="bg-slate-700 border border-slate-500 text-white text-xs rounded px-1.5 py-0.5"
-                      />
-                      <button
-                        className="text-xs text-amber-400 hover:text-amber-300"
-                        disabled={isUpdating}
-                        onClick={() =>
-                          onUpdateCard(wc.card_id, { closed_date: closeDateInput || today() })
-                        }
-                      >
-                        Save
-                      </button>
-                      <button
-                        className="text-xs text-slate-500 hover:text-slate-300"
-                        onClick={() => { onSetCloseCard(null); onSetCloseDateInput('') }}
-                      >
-                        Cancel
-                      </button>
-                    </span>
-                  ) : (
-                    <button
-                      className="text-xs text-slate-500 hover:text-amber-400"
-                      onClick={() => {
-                        onSetCloseCard(wc.card_id)
-                        onSetCloseDateInput(today())
-                      }}
-                    >
-                      Close card
-                    </button>
-                  )}
-                </>
-              )}
-              {isClosed && (
-                <button
-                  className="text-xs text-slate-500 hover:text-emerald-400"
-                  disabled={isUpdating}
-                  onClick={() => onUpdateCard(wc.card_id, { closed_date: null })}
-                >
-                  Reopen
-                </button>
-              )}
-            </div>
+            )}
           </div>
-        )}
+          <div className="flex justify-end items-center gap-2 flex-wrap max-w-[min(100%,18rem)]">
+            {isProductChanged ? (
+              <span className="text-xs text-slate-600 cursor-default select-none">
+                Product Changed
+              </span>
+            ) : (
+              <>
+                {!isClosed && (
+                  <>
+                    {closeCardId === wc.card_id ? (
+                      <span className="flex items-center gap-1 flex-wrap justify-end">
+                        <input
+                          type="date"
+                          value={closeDateInput}
+                          onChange={(e) => onSetCloseDateInput(e.target.value)}
+                          className="bg-slate-700 border border-slate-500 text-white text-xs rounded px-1.5 py-0.5"
+                        />
+                        <button
+                          className="text-xs text-amber-400 hover:text-amber-300"
+                          disabled={isUpdating}
+                          onClick={() =>
+                            onUpdateCard(wc.card_id, { closed_date: closeDateInput || today() })
+                          }
+                        >
+                          Save
+                        </button>
+                        <button
+                          className="text-xs text-slate-500 hover:text-slate-300"
+                          onClick={() => { onSetCloseCard(null); onSetCloseDateInput('') }}
+                        >
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        className="text-xs text-slate-500 hover:text-amber-400"
+                        onClick={() => {
+                          onSetCloseCard(wc.card_id)
+                          onSetCloseDateInput(today())
+                        }}
+                      >
+                        Close card
+                      </button>
+                    )}
+                  </>
+                )}
+                {isClosed && (
+                  <button
+                    className="text-xs text-slate-500 hover:text-emerald-400"
+                    disabled={isUpdating}
+                    onClick={() => onUpdateCard(wc.card_id, { closed_date: null })}
+                  >
+                    Reopen
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       </div>
     </li>
   )
@@ -280,6 +294,23 @@ export function CardsListPanel({
   const consideringCards = walletCards
     .filter((wc) => wc.panel === 'considering')
     .sort(compareWalletCardsByOpeningNewestFirst)
+
+  // card_ids whose product-change successor is currently in the future_cards panel.
+  // Matches via pc_from_card_id (new cards) or via date equality (legacy cards where
+  // pc_from_card_id wasn't stored but backend set product_changed_date = added_date).
+  const productChangedFromIds = new Set<number>()
+  for (const pcCard of walletCards) {
+    if (pcCard.acquisition_type !== 'product_change' || pcCard.panel !== 'future_cards') continue
+    if (pcCard.pc_from_card_id != null) {
+      productChangedFromIds.add(pcCard.pc_from_card_id)
+    } else {
+      for (const c of walletCards) {
+        if (c.product_changed_date && c.product_changed_date === pcCard.added_date) {
+          productChangedFromIds.add(c.card_id)
+        }
+      }
+    }
+  }
 
   const [dragOverPanel, setDragOverPanel] = useState<WalletCardPanel | null>(null)
 
@@ -403,6 +434,7 @@ export function CardsListPanel({
                     panel={panel}
                     draggable={!isLocked}
                     locked={isLocked}
+                    isProductChanged={productChangedFromIds.has(wc.card_id)}
                     {...sharedCardProps}
                   />
                 ))}

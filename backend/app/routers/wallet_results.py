@@ -244,6 +244,10 @@ async def wallet_results(
     sub_plan = plan_sub_targeting(sub_cards_for_plan, spend, ref_date, wcids, housing_category_names=housing_names)
 
     plan_rates: dict[int, float] = {s.card_id: s.daily_spend_allocated for s in sub_plan.schedules}
+    # Total wallet daily spend: used for SUB-priority cards because during
+    # their priority window ALL wallet spend flows to them, not just their
+    # normal allocated share.
+    total_daily_spend = sum(spend.values()) / 365.0
     card_daily_rates: dict[int, float] = {}
     for cd in selected_card_data:
         if cd.id in plan_rates:
@@ -262,10 +266,16 @@ async def wallet_results(
             eff_min = wc.sub_min_spend if wc.sub_min_spend is not None else (lib.sub_min_spend if lib else None)
             eff_months = wc.sub_months if wc.sub_months is not None else (lib.sub_months if lib else None)
             eff_sub = wc.sub_points if wc.sub_points is not None else (lib.sub_points if lib else None)
-            if wc.card_id in plan_earn_dates:
-                proj = plan_earn_dates[wc.card_id]
-            elif not eff_sub or not eff_min:
+            if not eff_sub or not eff_min:
                 proj = None
+            elif wc.card_id in sub_priority_card_ids:
+                # During the SUB priority window the LP routes ALL wallet spend
+                # to this card, so use the total daily spend rate — not the
+                # card's normal allocated share or the planner's estimate, both
+                # of which severely under-count how fast the minimum is hit.
+                proj = projected_sub_earn_date(wc.added_date, eff_min, eff_months, total_daily_spend)
+            elif wc.card_id in plan_earn_dates:
+                proj = plan_earn_dates[wc.card_id]
             else:
                 daily_rate = card_daily_rates.get(wc.card_id, 0.0)
                 proj = projected_sub_earn_date(wc.added_date, eff_min, eff_months, daily_rate)

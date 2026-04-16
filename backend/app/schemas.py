@@ -778,7 +778,10 @@ class WalletCardBase(BaseModel):
     sub_earned_date: Optional[date] = None
     sub_projected_earn_date: Optional[date] = None
     closed_date: Optional[date] = None
+    product_changed_date: Optional[date] = None
     acquisition_type: Literal["opened", "product_change"] = "opened"
+    # For product_change cards: library card_id of the card changed FROM.
+    pc_from_card_id: Optional[int] = None
     panel: Literal["in_wallet", "future_cards", "considering"] = "considering"
 
 
@@ -789,6 +792,9 @@ class InitialWalletCardCredit(BaseModel):
 
 class WalletCardCreate(WalletCardBase):
     credits: list[InitialWalletCardCredit] = Field(default_factory=list)
+    # Library card_id of the card being changed FROM (product change only).
+    # When set, the matching wallet card's product_changed_date is auto-populated.
+    pc_from_card_id: Optional[int] = None
 
 
 class WalletCardUpdate(BaseModel):
@@ -807,6 +813,7 @@ class WalletCardUpdate(BaseModel):
     secondary_currency_rate: Optional[float] = Field(default=None, ge=0, le=1)
     sub_earned_date: Optional[date] = None
     closed_date: Optional[date] = None
+    product_changed_date: Optional[date] = None
     acquisition_type: Optional[Literal["opened", "product_change"]] = None
     panel: Optional[Literal["in_wallet", "future_cards", "considering"]] = None
 

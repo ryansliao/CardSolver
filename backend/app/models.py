@@ -675,9 +675,13 @@ class WalletCard(Base):
     sub_earned_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     sub_projected_earn_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     closed_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # Set when this card is the "from" card in a product change; grayed out in UI.
+    product_changed_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     # Acquisition tracking: "opened" = new application, "product_change" = PC from same issuer
     acquisition_type: Mapped[str] = mapped_column(String(20), nullable=False, default="opened")
+    # For product_change cards: the library card_id of the card that was changed FROM.
+    pc_from_card_id: Mapped[Optional[int]] = mapped_column(nullable=True)
 
     # Panel placement:
     #   "in_wallet"    = currently held; included in calculations

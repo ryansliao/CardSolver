@@ -370,6 +370,7 @@ export function WalletCardModal({
           library_credit_id: Number(id),
           value,
         })),
+        pc_from_card_id: acquisitionType === 'product_change' && typeof pcFromCardId === 'number' ? pcFromCardId : undefined,
       })
       return
     }

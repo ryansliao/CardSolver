@@ -206,7 +206,18 @@ def _solve_segment_allocation_lp(
                 if state_key not in cap_state:
                     cap_state[state_key] = float(g_cap_amt)
                 members = []
+                ao = card_all_other[k_idx]
                 for cl in cat_lower_set:
+                    # For top-N groups, only categories that won the top-N
+                    # selection (i.e., have a bonus mult above all_other in
+                    # card_mult) get a capped bonus variable.  Non-top-N
+                    # categories are already at all_other in card_mult and have
+                    # no bonus path here — adding them would let the LP
+                    # incorrectly exploit the cap budget on categories that
+                    # should earn at 1x regardless.
+                    if _topn is not None and _topn > 0:
+                        if card_mult[k_idx].get(cl, ao) <= ao + 1e-9:
+                            continue
                     members.append((k_idx, cl))
                     bonus_mult[(k_idx, cl)] = _bonus_rate_for_pair(k_idx, cl, float(g_mult), g_is_add)
                     pair_is_additive[(k_idx, cl)] = g_is_add
@@ -302,9 +313,17 @@ def _solve_segment_allocation_lp(
         cat_lower = cat_name.strip().lower()
         cpp = card_cpp[k_idx]
         if kind == "e":
-            # The base variable always earns at the card's always-on rate for
-            # this category.
-            mult = card_mult[k_idx].get(cat_lower, card_all_other[k_idx])
+            # For non-additive capped categories the base (overflow) variable
+            # earns at all_other, NOT at card_mult. Using card_mult here would
+            # make the e and b variables identical in the objective so HiGHS
+            # could arbitrarily split spend between them, producing a blended
+            # rate somewhere between all_other and bonus_mult in the output.
+            # Using all_other creates a clear gradient: LP fills b (high rate)
+            # before e (low rate), which is what the cap is supposed to enforce.
+            if not pair_is_additive.get((k_idx, cat_lower), True) and (k_idx, cat_lower) in capped_pairs:
+                mult = card_all_other[k_idx]
+            else:
+                mult = card_mult[k_idx].get(cat_lower, card_all_other[k_idx])
         else:
             mult = bonus_mult.get((k_idx, cat_lower), card_all_other[k_idx])
         # Effective $ earned per $ spent (primary earn + secondary currency bonus).

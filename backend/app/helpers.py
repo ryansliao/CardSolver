@@ -105,7 +105,9 @@ def wc_read(wc: WalletCard, card: Card) -> WalletCardRead:
         sub_earned_date=wc.sub_earned_date,
         sub_projected_earn_date=wc.sub_projected_earn_date,
         closed_date=wc.closed_date,
+        product_changed_date=wc.product_changed_date,
         acquisition_type=cast(Literal["opened", "product_change"], wc.acquisition_type),
+        pc_from_card_id=wc.pc_from_card_id,
         panel=cast(Literal["in_wallet", "future_cards", "considering"], wc.panel),
         credit_total=sum(c.value for c in wc.credit_overrides_rows) if wc.credit_overrides_rows else 0,
     )

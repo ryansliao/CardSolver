@@ -333,8 +333,11 @@ export interface WalletCard {
   /** Auto-calculated projected SUB earn date based on wallet spend profile */
   sub_projected_earn_date: string | null
   closed_date: string | null
+  product_changed_date: string | null
   transfer_enabler: boolean
   acquisition_type: WalletCardAcquisitionType
+  /** For product_change cards: library card_id of the card changed FROM. */
+  pc_from_card_id: number | null
   panel: WalletCardPanel
   photo_slug: string | null
   issuer_name: string | null
@@ -408,6 +411,8 @@ export interface AddCardToWalletPayload {
   panel?: WalletCardPanel
   credits?: InitialWalletCardCredit[]
   priority_category_ids?: number[]
+  /** Library card_id of the card being changed FROM (product change only). */
+  pc_from_card_id?: number
 }
 
 export interface WalletCurrencyBalance {
