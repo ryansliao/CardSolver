@@ -14,6 +14,7 @@ import sys
 from ..database import engine
 from .export import export_all
 from .load import load_all
+from .reset import reset_ids
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -21,6 +22,14 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("export", help="Dump DB reference data to backend/seed/*.yaml")
     sub.add_parser("load", help="Load backend/seed/*.yaml into the DB (idempotent upsert)")
+    sub.add_parser(
+        "reset-ids",
+        help=(
+            "Compact autoincrement IDs for tables historically burned by "
+            "delete-and-recreate seed loads (card_category_multipliers, "
+            "rotating_categories)."
+        ),
+    )
     return parser
 
 
@@ -30,6 +39,8 @@ async def _run(cmd: str) -> None:
             await export_all()
         elif cmd == "load":
             await load_all()
+        elif cmd == "reset-ids":
+            await reset_ids()
     finally:
         await engine.dispose()
 

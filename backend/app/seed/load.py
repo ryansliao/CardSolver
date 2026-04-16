@@ -371,7 +371,8 @@ async def _sync_card_groups_and_multipliers(
 ) -> None:
     """Sync multiplier groups (match by category-set signature to preserve IDs
     referenced by WalletCardGroupSelection) and the category-multiplier rows
-    (full replace — nothing else references them)."""
+    (match in place by (card_id, category_id, multiplier_group_id) so IDs are
+    preserved across re-loads)."""
 
     desired_groups = cd.get("multiplier_groups", []) or []
     desired_mults = cd.get("multipliers", []) or []
@@ -422,9 +423,47 @@ async def _sync_card_groups_and_multipliers(
             db.add(g)
             desired_by_index[i] = g
 
-    # Delete-recreate all category-multiplier rows (no external FKs on them).
-    for m in list(card.multipliers):
-        await db.delete(m)
+    await db.flush()
+
+    # Match existing category-multiplier rows in place by (category_id,
+    # multiplier_group_id). Natural key per dal/card.py:233-236:
+    #   - standalone row (group_id NULL): unique per (card, category)
+    #   - grouped row: unique per (card, category, multiplier_group)
+    existing_mults_by_key: dict[tuple[int, int | None], CardCategoryMultiplier] = {
+        (m.category_id, m.multiplier_group_id): m for m in card.multipliers
+    }
+    desired_keys: set[tuple[int, int | None]] = set()
+
+    for md in desired_mults:
+        gi = md.get("group_index")
+        group_id = desired_by_index[gi].id if gi is not None else None
+        category_id = categories[md["category"]]
+        key = (category_id, group_id)
+        desired_keys.add(key)
+        fields = {
+            "multiplier": md.get("multiplier", 1.0),
+            "is_portal": md.get("is_portal", False),
+            "is_additive": md.get("is_additive", False),
+            "cap_per_billing_cycle": md.get("cap_per_billing_cycle"),
+            "cap_period_months": md.get("cap_period_months"),
+        }
+        match = existing_mults_by_key.get(key)
+        if match is not None:
+            for k, v in fields.items():
+                setattr(match, k, v)
+        else:
+            db.add(
+                CardCategoryMultiplier(
+                    card_id=card.id,
+                    category_id=category_id,
+                    multiplier_group_id=group_id,
+                    **fields,
+                )
+            )
+
+    for key, m in existing_mults_by_key.items():
+        if key not in desired_keys:
+            await db.delete(m)
     await db.flush()
 
     # Delete orphaned groups (not matched to any desired group). May fail if a
@@ -435,23 +474,6 @@ async def _sync_card_groups_and_multipliers(
             await db.delete(g)
     await db.flush()
 
-    for md in desired_mults:
-        gi = md.get("group_index")
-        group_id = desired_by_index[gi].id if gi is not None else None
-        db.add(
-            CardCategoryMultiplier(
-                card_id=card.id,
-                category_id=categories[md["category"]],
-                multiplier=md.get("multiplier", 1.0),
-                is_portal=md.get("is_portal", False),
-                is_additive=md.get("is_additive", False),
-                cap_per_billing_cycle=md.get("cap_per_billing_cycle"),
-                cap_period_months=md.get("cap_period_months"),
-                multiplier_group_id=group_id,
-            )
-        )
-    await db.flush()
-
 
 async def _sync_card_rotating(
     db,
@@ -459,24 +481,37 @@ async def _sync_card_rotating(
     rotating_data: list[dict[str, Any]],
     categories: dict[str, int],
 ) -> None:
+    """Match rotating-category rows in place by their natural key
+    (card_id, year, quarter, spend_category_id) per the UniqueConstraint on
+    RotatingCategory. The row has no non-key value fields, so there's nothing
+    to update — just add missing and delete unmatched."""
     existing = (
         await db.execute(
             select(RotatingCategory).where(RotatingCategory.card_id == card.id)
         )
     ).scalars().all()
-    for r in existing:
-        await db.delete(r)
-    await db.flush()
+    existing_by_key: dict[tuple[int, int, int], RotatingCategory] = {
+        (r.year, r.quarter, r.spend_category_id): r for r in existing
+    }
+    desired_keys: set[tuple[int, int, int]] = set()
 
     for rd in rotating_data:
-        db.add(
-            RotatingCategory(
-                card_id=card.id,
-                year=rd["year"],
-                quarter=rd["quarter"],
-                spend_category_id=categories[rd["category"]],
+        category_id = categories[rd["category"]]
+        key = (rd["year"], rd["quarter"], category_id)
+        desired_keys.add(key)
+        if key not in existing_by_key:
+            db.add(
+                RotatingCategory(
+                    card_id=card.id,
+                    year=rd["year"],
+                    quarter=rd["quarter"],
+                    spend_category_id=category_id,
+                )
             )
-        )
+
+    for key, r in existing_by_key.items():
+        if key not in desired_keys:
+            await db.delete(r)
     await db.flush()
 
 
