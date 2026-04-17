@@ -32,9 +32,9 @@ async def list_wallet_spend_items(
     wallet_service: WalletService = Depends(get_wallet_service),
     spend_service: WalletSpendService = Depends(get_wallet_spend_service),
 ):
-    """List wallet spend items. Auto-creates the 'All Other' item if missing."""
+    """List wallet spend items. Auto-creates items for all user categories if missing."""
     await wallet_service.get_user_wallet(wallet_id, user)
-    await spend_service.ensure_all_other_item(wallet_id)
+    await spend_service.ensure_all_user_categories(wallet_id)
     await db.commit()
     return await spend_service.list_for_wallet(wallet_id)
 
@@ -52,11 +52,11 @@ async def create_wallet_spend_item(
     wallet_service: WalletService = Depends(get_wallet_service),
     spend_service: WalletSpendService = Depends(get_wallet_spend_service),
 ):
-    """Add a spend item to a wallet for a given app spend category."""
+    """Add a spend item to a wallet for a given user spend category."""
     await wallet_service.get_user_wallet(wallet_id, user)
     item = await spend_service.create(
         wallet_id=wallet_id,
-        spend_category_id=payload.spend_category_id,
+        user_spend_category_id=payload.user_spend_category_id,
         amount=payload.amount,
     )
     await db.commit()

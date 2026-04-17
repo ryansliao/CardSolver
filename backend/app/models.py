@@ -42,6 +42,9 @@ from .dal import (
     WalletSpendItem,
     # Wallet portal
     WalletPortalShare,
+    # User spend categories
+    UserSpendCategory,
+    UserSpendCategoryMapping,
 )
 
 __all__ = [
@@ -71,4 +74,6 @@ __all__ = [
     "WalletCardMultiplier",
     "WalletSpendItem",
     "WalletPortalShare",
+    "UserSpendCategory",
+    "UserSpendCategoryMapping",
 ]

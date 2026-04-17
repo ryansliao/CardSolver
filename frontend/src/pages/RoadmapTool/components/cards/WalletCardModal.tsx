@@ -1078,17 +1078,19 @@ export function WalletCardModal({
                       ) : (
                         <ul className="space-y-1 max-h-56 overflow-y-auto border border-slate-600 rounded-lg p-2">
                           {[...walletSpendItems]
+                            .filter((item) => item.user_spend_category != null)
                             .sort((a, b) =>
-                              a.spend_category.category.localeCompare(
-                                b.spend_category.category,
+                              (a.user_spend_category?.name ?? '').localeCompare(
+                                b.user_spend_category?.name ?? '',
                                 undefined,
                                 { sensitivity: 'base' },
                               ),
                             )
                             .map((item) => {
-                              const catId = item.spend_category_id
-                              const claimedByOther = priorityClaimsByOther.has(catId)
-                              const checked = priorityCategoryIds.has(catId)
+                              const userCat = item.user_spend_category!
+                              const earnCatIds = userCat.mappings.map((m) => m.earn_category_id)
+                              const claimedByOther = earnCatIds.some((id) => priorityClaimsByOther.has(id))
+                              const checked = earnCatIds.length > 0 && earnCatIds.every((id) => priorityCategoryIds.has(id))
                               const disabled = claimedByOther && !checked
                               return (
                                 <li key={item.id}>
@@ -1107,14 +1109,17 @@ export function WalletCardModal({
                                       onChange={() => {
                                         setPriorityCategoryIds((prev) => {
                                           const next = new Set(prev)
-                                          if (next.has(catId)) next.delete(catId)
-                                          else next.add(catId)
+                                          if (checked) {
+                                            earnCatIds.forEach((id) => next.delete(id))
+                                          } else {
+                                            earnCatIds.forEach((id) => next.add(id))
+                                          }
                                           return next
                                         })
                                       }}
                                     />
                                     <span className="flex-1 min-w-0 truncate">
-                                      {item.spend_category.category}
+                                      {userCat.name}
                                     </span>
                                     {disabled && (
                                       <span className="text-[10px] text-slate-600 shrink-0">

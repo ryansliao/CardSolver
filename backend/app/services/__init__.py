@@ -16,6 +16,10 @@ from .wallet_portal_service import WalletPortalService, get_wallet_portal_servic
 from .card_service import CardService, get_card_service
 from .credit_service import CreditService, get_credit_service
 from .spend_category_service import SpendCategoryService, get_spend_category_service
+from .user_spend_category_service import (
+    UserSpendCategoryService,
+    get_user_spend_category_service,
+)
 from .currency_service import CurrencyService, get_currency_service
 from .issuer_service import IssuerService, get_issuer_service
 from .travel_portal_service import TravelPortalService, get_travel_portal_service
@@ -46,6 +50,8 @@ __all__ = [
     "get_credit_service",
     "SpendCategoryService",
     "get_spend_category_service",
+    "UserSpendCategoryService",
+    "get_user_spend_category_service",
     "CurrencyService",
     "get_currency_service",
     "IssuerService",

@@ -18,7 +18,8 @@ from ..database import Base
 
 if TYPE_CHECKING:
     from .card import Card, CardCategoryMultiplier
-    from .wallet import WalletCardMultiplier
+    from .user_spend import UserSpendCategoryMapping
+    from .wallet_card_override import WalletCardMultiplier
     from .wallet_spend import WalletSpendItem
 
 
@@ -86,9 +87,14 @@ class NetworkTier(Base):
 
 class SpendCategory(Base):
     """
-    Unified spend category: card multiplier categories AND user-facing spend buckets.
-    The parent_id/children hierarchy is used for the spend picker UI.
-    is_system=True marks "All Other" (cannot be deleted or renamed by users).
+    Granular earn category for card multipliers (~35 categories).
+
+    This is the "backend" tier of the two-tier category system. Card multipliers
+    reference these categories. Users enter spend via UserSpendCategory (simplified
+    15 categories), which maps to these via UserSpendCategoryMapping.
+
+    The parent_id/children hierarchy supports category grouping for rotating cards.
+    is_system=True marks "All Other" and "Foreign Transactions" (cannot be deleted).
     "All Other" is pinned to ID 1, "Travel" to ID 2.
     """
 
@@ -130,7 +136,10 @@ class SpendCategory(Base):
         back_populates="spend_category"
     )
     wallet_spend_items: Mapped[list["WalletSpendItem"]] = relationship(
-        back_populates="spend_category", cascade="all, delete-orphan"
+        back_populates="spend_category"
+    )
+    user_category_mappings: Mapped[list["UserSpendCategoryMapping"]] = relationship(
+        back_populates="earn_category"
     )
 
 

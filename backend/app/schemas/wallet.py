@@ -83,10 +83,6 @@ class WalletBase(BaseModel):
     as_of_date: Optional[date] = None
 
 
-class WalletCreate(WalletBase):
-    pass
-
-
 class WalletUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None

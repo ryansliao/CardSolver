@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
-import type { CardResult, SpendCategory, WalletCard } from '../../../../api/client'
+import { useQuery } from '@tanstack/react-query'
+import type { CardResult, UserSpendCategory, WalletCard } from '../../../../api/client'
+import { walletSpendItemsApi } from '../../../../api/client'
+import { ModalBackdrop } from '../../../../components/ModalBackdrop'
 import { formatMoneyExact, formatPointsExact } from '../../../../utils/format'
-import { useAppSpendCategories } from '../../hooks/useAppSpendCategories'
-import { useWalletSpendCategoriesTable } from '../../hooks/useWalletSpendCategoriesTable'
+import { queryKeys } from '../../lib/queryKeys'
 
 interface Props {
   walletId: number | null
@@ -10,7 +12,6 @@ interface Props {
   walletCards: WalletCard[]
   isTotal: boolean
   totalYears: number
-  onSpendChange: () => void
 }
 
 function CardPhoto({ slug, name }: { slug: string | null; name: string }) {
@@ -36,149 +37,24 @@ function CardPhoto({ slug, name }: { slug: string | null; name: string }) {
   )
 }
 
-function InlineCategoryDropdown({
-  existingCategoryIds,
-  onSelect,
-}: {
-  existingCategoryIds: Set<number>
-  onSelect: (category: SpendCategory) => void
-}) {
-  const [search, setSearch] = useState('')
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
-  const { data: categories = [], isLoading } = useAppSpendCategories()
-
-  const visible = categories.filter((c) => !c.is_system)
-  const searchLower = search.toLowerCase()
-  const filtered = search
-    ? visible.filter(
-        (c) =>
-          c.category.toLowerCase().includes(searchLower) ||
-          c.children.some((ch) => ch.category.toLowerCase().includes(searchLower))
-      )
-    : visible
-
-  return (
-    <div className="border-t border-slate-700 mt-2 pt-2">
-      <input
-        type="search"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search categories…"
-        autoFocus
-        className="w-full bg-slate-800 border border-slate-600 text-white text-xs px-2.5 py-1.5 rounded-lg outline-none focus:border-indigo-500 mb-1"
-      />
-      <div className="max-h-48 overflow-y-auto">
-        {isLoading && <p className="text-slate-500 text-xs px-2 py-1">Loading…</p>}
-        {!isLoading && filtered.length === 0 && (
-          <p className="text-slate-500 text-xs px-2 py-1">No categories match.</p>
-        )}
-        {filtered.map((cat) => {
-          const alreadyAdded = existingCategoryIds.has(cat.id)
-          const hasChildren = cat.children.length > 0
-          const isExpanded = expandedIds.has(cat.id)
-          return (
-            <div key={cat.id}>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => !alreadyAdded && onSelect(cat)}
-                  disabled={alreadyAdded}
-                  className={`flex-1 text-left px-2 py-1 text-xs rounded transition-colors ${
-                    alreadyAdded
-                      ? 'text-slate-600 cursor-default'
-                      : 'text-slate-200 hover:bg-slate-800'
-                  }`}
-                >
-                  {cat.category}
-                </button>
-                {hasChildren && (
-                  <button
-                    onClick={() =>
-                      setExpandedIds((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(cat.id)) next.delete(cat.id)
-                        else next.add(cat.id)
-                        return next
-                      })
-                    }
-                    className="px-1 py-1 text-slate-500 hover:text-slate-300"
-                  >
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                    >
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-              {hasChildren && isExpanded && (
-                <div className="ml-4 border-l border-slate-700">
-                  {cat.children.map((child) => {
-                    const childAdded = existingCategoryIds.has(child.id)
-                    return (
-                      <button
-                        key={child.id}
-                        onClick={() => !childAdded && onSelect(child)}
-                        disabled={childAdded}
-                        className={`block w-full text-left px-2 py-1 text-xs rounded transition-colors ${
-                          childAdded
-                            ? 'text-slate-600 cursor-default'
-                            : 'text-slate-300 hover:bg-slate-800'
-                        }`}
-                      >
-                        {child.category}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
 export function SpendTabContent({
   walletId,
   selectedCards,
   walletCards,
   isTotal,
   totalYears,
-  onSpendChange,
 }: Props) {
-  const {
-    spendItems,
-    isLoading,
-    editingAmountId,
-    amountDraft,
-    setAmountDraft,
-    startEditAmount,
-    commitAmount,
-    cancelEditAmount,
-    showPicker,
-    closePicker,
-    openPicker,
-    handlePickCategory,
-    mutationError,
-    deleteMutationIsPending,
-    requestDeleteItem,
-  } = useWalletSpendCategoriesTable(walletId, onSpendChange)
-
-  const existingCategoryIds = new Set(spendItems.map((i) => i.spend_category_id))
+  const { data: spendItems = [], isLoading } = useQuery({
+    queryKey: queryKeys.walletSpendItems(walletId),
+    queryFn: () => walletSpendItemsApi.list(walletId!),
+    enabled: walletId != null,
+  })
 
   // View mode toggle: per-card (cycle through cards, show earn) vs
   // top-ros (highest return-on-spend card in each category).
   const [viewMode, setViewMode] = useState<'per-card' | 'top-ros'>('top-ros')
   const [includeClosed, setIncludeClosed] = useState(false)
+  const [infoCategory, setInfoCategory] = useState<UserSpendCategory | null>(null)
 
   // Closed / product-changed-away-from cards; matches CardsListPanel dimming.
   const excludedCardIds = useMemo(() => {
@@ -396,73 +272,50 @@ export function SpendTabContent({
               </tr>
             </thead>
             <tbody>
+              {/* Total row */}
+              <tr className="border-b-2 border-slate-700 bg-slate-800/50">
+                <td className="text-left px-3 py-2 text-slate-100 font-semibold border-r border-slate-800/60">
+                  Total
+                </td>
+                <td className="text-center px-2 py-2 tabular-nums border-r border-slate-800/60">
+                  <div className="text-slate-100 font-semibold">
+                    ${spendItems.reduce((sum, item) => sum + (item.amount || 0), 0).toLocaleString()}
+                  </div>
+                </td>
+                <td className="text-center px-3 py-2 text-slate-500" colSpan={viewMode === 'top-ros' ? 2 : 1}>
+                  —
+                </td>
+              </tr>
               {spendItems.map((item) => {
-                const isEditing = editingAmountId === item.id
-                const catName = item.spend_category.category
-                const isSystem = item.spend_category.is_system
+                const catName = item.user_spend_category?.name ?? 'Unknown'
                 const earnRow = earnByCategoryByCard.get(catName)
                 return (
                   <tr key={item.id} className="border-b border-slate-800/60">
                     <td className="text-left px-3 py-2 text-slate-200 border-r border-slate-800/60">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="flex-1 min-w-0 truncate" title={catName}>
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate" title={catName}>
                           {catName}
                         </span>
-                        {!isSystem && (
+                        {item.user_spend_category && item.user_spend_category.mappings.length > 0 && (
                           <button
-                            onClick={() => requestDeleteItem(item)}
-                            disabled={deleteMutationIsPending}
-                            className="p-1 rounded text-slate-700 hover:text-red-400 hover:bg-red-950/40 disabled:opacity-50 shrink-0"
-                            aria-label="Delete spend category"
-                            title="Delete"
+                            type="button"
+                            onClick={() => setInfoCategory(item.user_spend_category)}
+                            className="shrink-0 p-0.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-700/50"
+                            title="View category details"
                           >
-                            <svg
-                              width="13"
-                              height="13"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" />
+                              <path d="M12 16v-4" />
+                              <path d="M12 8h.01" />
                             </svg>
                           </button>
                         )}
                       </div>
                     </td>
                     <td className="text-center px-2 py-2 tabular-nums border-r border-slate-800/60">
-                      <div className="relative w-full">
-                        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 pointer-events-none">
-                          $
-                        </span>
-                        <input
-                          type="number"
-                          min={0}
-                          step="1"
-                          value={
-                            isEditing
-                              ? amountDraft
-                              : item.amount === 0
-                                ? ''
-                                : Math.round(item.amount)
-                          }
-                          placeholder="0"
-                          onFocus={() => startEditAmount(item)}
-                          onChange={(e) => setAmountDraft(e.target.value)}
-                          onBlur={() => commitAmount(item)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
-                            if (e.key === 'Escape') {
-                              cancelEditAmount()
-                              ;(e.currentTarget as HTMLInputElement).blur()
-                            }
-                          }}
-                          className="w-full min-w-0 bg-slate-700 border border-slate-600 text-white text-sm tabular-nums text-right pl-4 pr-1.5 py-0.5 rounded outline-none focus:border-indigo-500 placeholder:text-slate-500"
-                        />
-                      </div>
+                      <span className="text-slate-200">
+                        ${item.amount === 0 ? '0' : Math.round(item.amount).toLocaleString()}
+                      </span>
                     </td>
                     {viewMode === 'per-card' ? (
                       <td className="text-center tabular-nums px-3 py-2 text-slate-200">
@@ -517,50 +370,51 @@ export function SpendTabContent({
                   </tr>
                 )
               })}
-              {spendItems.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={viewMode === 'top-ros' ? 4 : 3}
-                    className="text-center text-slate-500 text-sm py-5"
-                  >
-                    No spend categories yet. Add one to configure your annual spend.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
       )}
 
-      {mutationError && (
-        <p className="text-red-400 text-xs mt-2 shrink-0" role="alert">
-          {mutationError}
-        </p>
-      )}
+      {/* Category Info Modal */}
+      {infoCategory && (
+        <ModalBackdrop onClose={() => setInfoCategory(null)}>
+          <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-xl w-full max-w-md p-5">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">{infoCategory.name}</h3>
+                {infoCategory.description && (
+                  <p className="text-sm text-slate-400 mt-1">{infoCategory.description}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setInfoCategory(null)}
+                className="shrink-0 p-1 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
 
-      {walletId != null && !showPicker && (
-        <button
-          type="button"
-          onClick={openPicker}
-          className="shrink-0 mt-2 w-full text-sm text-slate-500 hover:text-indigo-400 hover:bg-slate-800 rounded-lg py-2 transition-colors"
-        >
-          + Add Spend Category
-        </button>
-      )}
-
-      {showPicker && (
-        <div className="shrink-0">
-          <InlineCategoryDropdown
-            existingCategoryIds={existingCategoryIds}
-            onSelect={(cat) => handlePickCategory(cat)}
-          />
-          <button
-            onClick={closePicker}
-            className="mt-1 w-full text-xs text-slate-500 hover:text-slate-300 py-1"
-          >
-            Cancel
-          </button>
-        </div>
+            <div className="border-t border-slate-700 pt-4">
+              <h4 className="text-sm font-medium text-slate-300 mb-3">Includes spend on:</h4>
+              <ul className="space-y-2">
+                {infoCategory.mappings
+                  .sort((a, b) => b.default_weight - a.default_weight)
+                  .map((mapping) => (
+                    <li key={mapping.id} className="flex items-center justify-between text-sm">
+                      <span className="text-slate-200">{mapping.earn_category.category}</span>
+                      <span className="text-slate-500 tabular-nums">
+                        {Math.round(mapping.default_weight * 100)}%
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          </div>
+        </ModalBackdrop>
       )}
     </div>
   )

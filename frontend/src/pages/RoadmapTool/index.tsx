@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import {
   walletsApi,
   walletCardCategoryPriorityApi,
@@ -28,13 +28,6 @@ type WalletCardModalOpen =
 
 export default function RoadmapToolPage() {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
-  const { walletId: walletIdParam } = useParams<{ walletId: string }>()
-  const selectedWalletId = walletIdParam ? Number(walletIdParam) : null
-  const setSelectedWalletId = (id: number | null) => {
-    if (id == null) navigate('/roadmap-tool')
-    else navigate(`/roadmap-tool/wallets/${id}`)
-  }
   const [walletCardModal, setWalletCardModal] = useState<WalletCardModalOpen | null>(null)
   const [durationYears, setDurationYears] = useState(2)
   const [durationMonths, setDurationMonths] = useState(0)
@@ -50,18 +43,12 @@ export default function RoadmapToolPage() {
     null
   )
 
-  const { data: wallets, isLoading: walletsLoading } = useQuery({
-    queryKey: queryKeys.wallets(),
-    queryFn: () => walletsApi.list(),
+  const { data: wallet, isLoading: walletLoading } = useQuery({
+    queryKey: queryKeys.myWallet(),
+    queryFn: () => walletsApi.getMyWallet(),
   })
 
-  // Default to the most recent wallet when none is selected
-  useEffect(() => {
-    if (selectedWalletId == null && wallets && wallets.length > 0) {
-      const latest = wallets[wallets.length - 1]
-      navigate(`/roadmap-tool/wallets/${latest.id}`, { replace: true })
-    }
-  }, [wallets, selectedWalletId, navigate])
+  const walletId = wallet?.id ?? null
 
   // Warm the global credit library cache so the credits picker inside
   // WalletCardModal renders instantly when a card is opened.
@@ -81,7 +68,7 @@ export default function RoadmapToolPage() {
         queryClient.invalidateQueries({ queryKey: queryKeys.walletCategoryPriorities(walletId) })
       }
 
-      queryClient.invalidateQueries({ queryKey: queryKeys.wallets() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.myWallet() })
       queryClient.invalidateQueries({ queryKey: queryKeys.walletCurrencyBalances(walletId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.walletSettingsCurrencyIds(walletId) })
       setWalletCardModal(null)
@@ -110,7 +97,7 @@ export default function RoadmapToolPage() {
     mutationFn: ({ walletId, cardId }: { walletId: number; cardId: number }) =>
       walletsApi.removeCard(walletId, cardId),
     onSuccess: (_data, { walletId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.wallets() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.myWallet() })
       queryClient.invalidateQueries({ queryKey: queryKeys.walletCurrencyBalances(walletId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.walletSettingsCurrencyIds(walletId) })
       runCalculation()
@@ -132,7 +119,7 @@ export default function RoadmapToolPage() {
     }) => walletsApi.results(walletId, params),
     onSuccess: (data) => {
       setResult(data)
-      queryClient.invalidateQueries({ queryKey: queryKeys.wallets() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.myWallet() })
       queryClient.invalidateQueries({ queryKey: queryKeys.walletCurrencyBalances(data.wallet_id) })
     },
   })
@@ -150,7 +137,7 @@ export default function RoadmapToolPage() {
       payload: UpdateWalletCardPayload
     }) => walletsApi.updateCard(walletId, cardId, payload),
     onSuccess: (_data, { walletId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.wallets() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.myWallet() })
       queryClient.invalidateQueries({ queryKey: queryKeys.roadmap(walletId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.walletCurrencyBalances(walletId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.walletSettingsCurrencyIds(walletId) })
@@ -160,48 +147,45 @@ export default function RoadmapToolPage() {
   })
 
   const { data: roadmap } = useQuery({
-    queryKey: queryKeys.roadmap(selectedWalletId!),
-    queryFn: () => walletsApi.roadmap(selectedWalletId!),
-    enabled: selectedWalletId != null,
+    queryKey: queryKeys.roadmap(walletId!),
+    queryFn: () => walletsApi.roadmap(walletId!),
+    enabled: walletId != null,
   })
 
-  const selectedWallet = wallets?.find((w) => w.id === selectedWalletId)
-
   useEffect(() => {
-    if (selectedWalletId == null || !selectedWallet) return
+    if (walletId == null || !wallet) return
 
-    setDurationYears(selectedWallet.calc_duration_years)
-    setDurationMonths(selectedWallet.calc_duration_months)
-    setForeignSpendPercent(selectedWallet.foreign_spend_percent ?? 0)
+    setDurationYears(wallet.calc_duration_years)
+    setDurationMonths(wallet.calc_duration_months)
+    setForeignSpendPercent(wallet.foreign_spend_percent ?? 0)
 
-    if (selectedWallet.calc_start_date) {
-      // Auto-run the last calculation from today
+    if (wallet.calc_start_date) {
       resultsMutation.mutate({
-        walletId: selectedWalletId,
+        walletId: walletId,
         params: {
           start_date: today(),
-          duration_years: selectedWallet.calc_duration_years,
-          duration_months: selectedWallet.calc_duration_months,
+          duration_years: wallet.calc_duration_years,
+          duration_months: wallet.calc_duration_months,
         },
       })
     }
-  }, [selectedWalletId, selectedWallet?.id])
+  }, [walletId, wallet?.id])
 
   function runCalculation(years = durationYears, months = durationMonths) {
-    if (selectedWalletId == null) return
+    if (walletId == null) return
     if (years * 12 + months === 0) return
     resultsMutation.mutate({
-      walletId: selectedWalletId,
+      walletId: walletId,
       params: { start_date: today(), duration_years: years, duration_months: months },
     })
   }
 
   const isBusy = updateWalletCardMutation.isPending || removeCardMutation.isPending || resultsMutation.isPending
 
-  if (walletsLoading) {
+  if (walletLoading) {
     return (
       <div className="max-w-screen-xl mx-auto w-full shrink-0">
-        <div className="text-center text-slate-400 py-20">Loading wallets…</div>
+        <div className="text-center text-slate-400 py-20">Loading wallet…</div>
       </div>
     )
   }
@@ -213,43 +197,17 @@ export default function RoadmapToolPage() {
           <div className="h-full bg-indigo-500 animate-progress-bar" />
         </div>
       )}
-      <header className="mb-6 shrink-0 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-white">Wallet Roadmap Tool</h1>
-          <p className="text-slate-400 text-sm mt-1">
-            Add cards to your future wallet and see how much value they will provide.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <label htmlFor="wallet-select" className="sr-only">
-            Wallet
-          </label>
-          <select
-            id="wallet-select"
-            className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-2 min-w-[10rem] max-w-[16rem]"
-            value={selectedWalletId ?? ''}
-            onChange={(e) => {
-              const v = e.target.value
-              setSelectedWalletId(v === '' ? null : Number(v))
-              setResult(null)
-            }}
-          >
-            <option value="">
-              {wallets?.length === 0 ? 'No wallets — create one' : 'Select wallet…'}
-            </option>
-            {wallets?.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      <header className="mb-6 shrink-0">
+        <h1 className="text-2xl font-bold text-white">Wallet Roadmap Tool</h1>
+        <p className="text-slate-400 text-sm mt-1">
+          Add cards to your future wallet and see how much value they will provide.
+        </p>
       </header>
 
       <div className="min-w-0 flex-1 min-h-0 flex flex-col">
-        {!selectedWallet ? (
+        {!wallet ? (
           <div className="bg-slate-900 border border-slate-700 rounded-xl p-8 text-center text-slate-500 shrink-0">
-            Select a wallet or <Link to="/wallets" className="text-indigo-400 hover:text-indigo-300">create one</Link> to get started.
+            Add cards and spending in your <Link to="/profile" className="text-indigo-400 hover:text-indigo-300">profile</Link> to get started.
           </div>
         ) : (
           <>
@@ -257,7 +215,7 @@ export default function RoadmapToolPage() {
               className="grid flex-1 min-h-0 gap-6 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-2 xl:grid-rows-1"
             >
               <WalletResultsAndCurrenciesPanel
-                walletId={selectedWalletId}
+                walletId={walletId}
                 result={result?.wallet ?? null}
                 resultsError={
                   resultsMutation.isError
@@ -270,12 +228,11 @@ export default function RoadmapToolPage() {
                 durationYears={durationYears}
                 durationMonths={durationMonths}
                 photoSlugs={Object.fromEntries(
-                  (selectedWallet?.wallet_cards ?? []).map((wc) => [wc.card_id, wc.photo_slug])
+                  (wallet?.wallet_cards ?? []).map((wc) => [wc.card_id, wc.photo_slug])
                 )}
-                walletCards={selectedWallet?.wallet_cards ?? []}
+                walletCards={wallet?.wallet_cards ?? []}
                 onOpenSettings={() => setShowSettingsModal(true)}
                 onCppChange={() => runCalculation()}
-                onSpendChange={() => runCalculation()}
               />
 
               {/* Mirror the tab column on the Results panel so both inner panels
@@ -283,7 +240,7 @@ export default function RoadmapToolPage() {
               <div className="flex h-full min-w-0 min-h-0 items-stretch">
                 <div className="flex-1 min-w-0 min-h-0">
                   <CardsListPanel
-                    wallet={selectedWallet}
+                    wallet={wallet}
                     roadmap={roadmap}
                     inWalletLocked
                     closeCardId={closeCardId}
@@ -294,7 +251,7 @@ export default function RoadmapToolPage() {
                     onSetCloseDateInput={setCloseDateInput}
                     onUpdateCard={(cardId, payload) => {
                       updateWalletCardMutation.mutate(
-                        { walletId: selectedWallet.id, cardId, payload },
+                        { walletId: wallet.id, cardId, payload },
                         {
                           onSuccess: () => {
                             setCloseCardId(null)
@@ -304,7 +261,7 @@ export default function RoadmapToolPage() {
                       )
                     }}
                     onRemoveCard={(cardId) => {
-                      const wc = selectedWallet.wallet_cards.find((c) => c.card_id === cardId)
+                      const wc = wallet.wallet_cards.find((c) => c.card_id === cardId)
                       setPendingRemoval({
                         cardId,
                         cardName: wc?.card_name ?? `Card #${cardId}`,
@@ -329,21 +286,21 @@ export default function RoadmapToolPage() {
         />
       )}
 
-      {pendingRemoval && selectedWallet && (
+      {pendingRemoval && wallet && (
         <DeleteCardWarningModal
           cardName={pendingRemoval.cardName}
           isLoading={removeCardMutation.isPending}
           onClose={() => setPendingRemoval(null)}
           onConfirm={() => {
             removeCardMutation.mutate(
-              { walletId: selectedWallet.id, cardId: pendingRemoval.cardId },
+              { walletId: wallet.id, cardId: pendingRemoval.cardId },
               { onSuccess: () => setPendingRemoval(null) },
             )
           }}
         />
       )}
 
-      {showSettingsModal && selectedWallet && (
+      {showSettingsModal && wallet && (
         <WalletSettingsModal
           durationYears={durationYears}
           durationMonths={durationMonths}
@@ -356,32 +313,32 @@ export default function RoadmapToolPage() {
           onForeignSpendChange={(pct) => setForeignSpendPercent(pct)}
           onForeignSpendCommit={(pct) => {
             setForeignSpendPercent(pct)
-            walletsApi.update(selectedWallet.id, { foreign_spend_percent: pct })
+            walletsApi.update(wallet.id, { foreign_spend_percent: pct })
             runCalculation()
           }}
           onClose={() => setShowSettingsModal(false)}
         />
       )}
 
-      {walletCardModal && selectedWallet && (
+      {walletCardModal && wallet && (
         <WalletCardModal
           key={walletCardModal.mode === 'add' ? 'add' : walletCardModal.walletCard.id}
           mode={walletCardModal.mode}
-          walletId={selectedWallet.id}
+          walletId={wallet.id}
           walletCard={
             walletCardModal.mode === 'edit' ? walletCardModal.walletCard : undefined
           }
-          existingCardIds={selectedWallet.wallet_cards.map((wc) => wc.card_id)}
-          walletCardIds={selectedWallet.wallet_cards.map((wc) => wc.card_id)}
+          existingCardIds={wallet.wallet_cards.map((wc) => wc.card_id)}
+          walletCardIds={wallet.wallet_cards.map((wc) => wc.card_id)}
           onClose={() => setWalletCardModal(null)}
           onAdd={(payload) =>
-            addCardMutation.mutate({ walletId: selectedWallet.id, payload })
+            addCardMutation.mutate({ walletId: wallet.id, payload })
           }
           onSaveEdit={(payload) => {
             if (walletCardModal.mode !== 'edit') return
             updateWalletCardMutation.mutate(
               {
-                walletId: selectedWallet.id,
+                walletId: wallet.id,
                 cardId: walletCardModal.walletCard.card_id,
                 payload,
               },

@@ -46,6 +46,9 @@ def projected_sub_earn_date(
     if not sub_min_spend or daily_spend_rate <= 0:
         return None
     days_to_earn = math.ceil(sub_min_spend / daily_spend_rate)
+    # Guard against overflow (max ~3650000 days until year 9999)
+    if days_to_earn > 3650000:
+        return None
     projected = added_date + timedelta(days=days_to_earn)
     if sub_months:
         window_end = add_months(added_date, sub_months)

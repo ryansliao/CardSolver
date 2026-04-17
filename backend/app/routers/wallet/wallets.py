@@ -11,7 +11,6 @@ from ...schemas import (
     WalletCardCreate,
     WalletCardRead,
     WalletCardUpdate,
-    WalletCreate,
     WalletRead,
     WalletUpdate,
 )
@@ -27,50 +26,27 @@ from ...services import (
 router = APIRouter(tags=["wallets"])
 
 
-@router.get("/wallets", response_model=list[WalletRead])
-async def list_wallets(
-    user: User = Depends(get_current_user),
-    wallet_service: WalletService = Depends(get_wallet_service),
-):
-    """List wallets for the authenticated user."""
-    wallets = await wallet_service.list_for_user(user.id)
-    out = []
-    for w in wallets:
-        read = WalletRead.model_validate(w)
-        read.wallet_cards = [wc_read(wc_item, wc_item.card) for wc_item in w.wallet_cards]
-        out.append(read)
-    return out
-
-
-@router.post(
-    "/wallets",
-    response_model=WalletRead,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_wallet(
-    payload: WalletCreate,
+@router.get("/wallet", response_model=WalletRead)
+async def get_my_wallet(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     wallet_service: WalletService = Depends(get_wallet_service),
     spend_service: WalletSpendService = Depends(get_wallet_spend_service),
 ):
-    wallet = await wallet_service.create(
-        user_id=user.id,
-        name=payload.name,
-        description=payload.description,
-        as_of_date=payload.as_of_date,
-    )
-    await spend_service.ensure_all_other_item(wallet.id)
-    await db.commit()
-    await db.refresh(wallet)
-    return WalletRead(
-        id=wallet.id,
-        user_id=wallet.user_id,
-        name=wallet.name,
-        description=wallet.description,
-        as_of_date=wallet.as_of_date,
-        wallet_cards=[],
-    )
+    """Get the authenticated user's wallet, creating one if none exists."""
+    wallet = await wallet_service.get_for_user(user.id)
+    if not wallet:
+        wallet = await wallet_service.create(
+            user_id=user.id,
+            name="My Wallet",
+            description=None,
+        )
+        await spend_service.ensure_all_other_item(wallet.id)
+        await db.commit()
+        wallet = await wallet_service.get_with_cards(wallet.id)
+    read = WalletRead.model_validate(wallet)
+    read.wallet_cards = [wc_read(wc_item, wc_item.card) for wc_item in wallet.wallet_cards]
+    return read
 
 
 @router.get("/wallets/{wallet_id}", response_model=WalletRead)
@@ -102,21 +78,6 @@ async def update_wallet(
     read = WalletRead.model_validate(wallet)
     read.wallet_cards = [wc_read(wc_item, wc_item.card) for wc_item in wallet.wallet_cards]
     return read
-
-
-@router.delete(
-    "/wallets/{wallet_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-async def delete_wallet(
-    wallet_id: int,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    wallet_service: WalletService = Depends(get_wallet_service),
-):
-    wallet = await wallet_service.get_user_wallet(wallet_id, user)
-    await wallet_service.delete(wallet)
-    await db.commit()
 
 
 @router.post(

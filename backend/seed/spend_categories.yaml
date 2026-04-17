@@ -73,3 +73,7 @@ spend_categories:
   is_housing: true
 - category: Mortgage
   is_housing: true
+- category: Office Supplies
+- category: Shipping
+- category: Advertising
+- category: Software

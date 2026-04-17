@@ -56,6 +56,8 @@ from .roadmap import (
 )
 from .spend import (
     SpendCategoryRead,
+    UserSpendCategoryMappingRead,
+    UserSpendCategoryRead,
     WalletSpendItemCreate,
     WalletSpendItemRead,
     WalletSpendItemUpdate,
@@ -72,7 +74,6 @@ from .wallet import (
     WalletCardCreate,
     WalletCardRead,
     WalletCardUpdate,
-    WalletCreate,
     WalletRead,
     WalletSettingsCurrencyIds,
     WalletUpdate,
@@ -140,6 +141,8 @@ __all__ = [
     "RoadmapRuleStatus",
     # Spend
     "SpendCategoryRead",
+    "UserSpendCategoryMappingRead",
+    "UserSpendCategoryRead",
     "WalletSpendItemCreate",
     "WalletSpendItemRead",
     "WalletSpendItemUpdate",
@@ -154,7 +157,6 @@ __all__ = [
     "WalletCardCreate",
     "WalletCardRead",
     "WalletCardUpdate",
-    "WalletCreate",
     "WalletRead",
     "WalletSettingsCurrencyIds",
     "WalletUpdate",

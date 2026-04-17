@@ -235,16 +235,44 @@ export interface SpendCategory {
   children: SpendCategory[]
 }
 
+export interface SpendCategoryFlat {
+  id: number
+  category: string
+  parent_id: number | null
+  is_system: boolean
+  is_housing: boolean
+  is_foreign_eligible: boolean
+}
+
+export interface UserSpendCategoryMapping {
+  id: number
+  earn_category_id: number
+  default_weight: number
+  earn_category: SpendCategoryFlat
+}
+
+export interface UserSpendCategory {
+  id: number
+  name: string
+  description: string | null
+  display_order: number
+  is_system: boolean
+  mappings: UserSpendCategoryMapping[]
+}
+
 export interface WalletSpendItem {
   id: number
   wallet_id: number
-  spend_category_id: number
-  spend_category: SpendCategory
+  user_spend_category_id: number | null
+  user_spend_category: UserSpendCategory | null
   amount: number
+  // Legacy fields for backward compatibility
+  spend_category_id: number | null
+  spend_category: SpendCategory | null
 }
 
 export interface CreateWalletSpendItemPayload {
-  spend_category_id: number
+  user_spend_category_id: number
   amount?: number
 }
 
@@ -377,12 +405,6 @@ export interface WalletResultResponse {
   wallet: WalletResult
 }
 
-export interface CreateWalletPayload {
-  name: string
-  description?: string | null
-  as_of_date?: string | null
-}
-
 export interface UpdateWalletPayload {
   name?: string
   description?: string | null
@@ -452,14 +474,10 @@ export interface UpdateWalletCardPayload {
 }
 
 export const walletsApi = {
-  list: () =>
-    request<Wallet[]>('/wallets'),
   get: (id: number) => request<Wallet>(`/wallets/${id}`),
-  create: (payload: CreateWalletPayload) =>
-    request<Wallet>('/wallets', { method: 'POST', body: JSON.stringify(payload) }),
+  getMyWallet: () => request<Wallet>('/wallet'),
   update: (id: number, payload: UpdateWalletPayload) =>
     request<Wallet>(`/wallets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  delete: (id: number) => request<void>(`/wallets/${id}`, { method: 'DELETE' }),
   addCard: (walletId: number, payload: AddCardToWalletPayload) =>
     request<WalletCard>(`/wallets/${walletId}/cards`, {
       method: 'POST',
@@ -644,6 +662,11 @@ export const creditsApi = {
 
 export const appSpendCategoriesApi = {
   list: () => request<SpendCategory[]>('/app-spend-categories'),
+}
+
+export const userSpendCategoriesApi = {
+  list: () => request<UserSpendCategory[]>('/user-spend-categories'),
+  listForInput: () => request<UserSpendCategory[]>('/user-spend-categories/input'),
 }
 
 export const walletSpendItemsApi = {

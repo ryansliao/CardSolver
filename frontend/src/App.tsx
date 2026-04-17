@@ -2,7 +2,6 @@ import { Component, type ErrorInfo, type FormEvent, type ReactNode, useEffect, u
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Route, Routes, Navigate, NavLink, Link } from 'react-router-dom'
 import RoadmapTool from './pages/RoadmapTool/index'
-import MyWallets from './pages/MyWallets/index'
 import Home from './pages/Home'
 import Profile from './pages/Profile'
 import { AuthProvider, useAuth } from './auth/AuthContext'
@@ -295,32 +294,18 @@ function Nav() {
         CardSolver
       </Link>
       {isAuthenticated && (
-        <>
-          <NavLink
-            to="/wallets"
-            className={({ isActive }) =>
-              `text-sm font-medium px-5 py-2 rounded-full transition-colors ${
-                isActive
-                  ? 'text-white bg-slate-800'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`
-            }
-          >
-            My Wallets
-          </NavLink>
-          <NavLink
-            to="/roadmap-tool"
-            className={({ isActive }) =>
-              `text-sm font-medium px-5 py-2 rounded-full transition-colors ${
-                isActive
-                  ? 'text-white bg-slate-800'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`
-            }
-          >
-            Roadmap Tool
-          </NavLink>
-        </>
+        <NavLink
+          to="/roadmap-tool"
+          className={({ isActive }) =>
+            `text-sm font-medium px-5 py-2 rounded-full transition-colors ${
+              isActive
+                ? 'text-white bg-slate-800'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800'
+            }`
+          }
+        >
+          Roadmap Tool
+        </NavLink>
       )}
       <div className="flex-1" />
       {!isLoading && (
@@ -388,20 +373,11 @@ export default function App() {
                 <div className="flex-1 min-h-0 min-w-0 flex flex-col">
                   <Routes>
                     <Route path="/" element={<Home />} />
-                    <Route path="/profile" element={<Profile />} />
                     <Route
-                      path="/wallets"
+                      path="/profile"
                       element={
                         <AuthGate>
-                          <MyWallets />
-                        </AuthGate>
-                      }
-                    />
-                    <Route
-                      path="/wallets/:walletId"
-                      element={
-                        <AuthGate>
-                          <MyWallets />
+                          <Profile />
                         </AuthGate>
                       }
                     />

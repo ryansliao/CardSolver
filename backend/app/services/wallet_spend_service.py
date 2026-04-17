@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from ..constants import ALL_OTHER_CATEGORY
 from ..database import get_db
-from ..models import SpendCategory, Wallet, WalletSpendItem
+from ..models import SpendCategory, UserSpendCategory, UserSpendCategoryMapping, Wallet, WalletSpendItem
 from .base import BaseService
 
 
@@ -20,41 +20,43 @@ class WalletSpendService(BaseService[WalletSpendItem]):
 
     @staticmethod
     def load_opts():
-        """Eager-load options for spend items with category hierarchy."""
+        """Eager-load options for spend items with user category and mappings."""
         return [
-            selectinload(WalletSpendItem.spend_category)
-            .selectinload(SpendCategory.children)
-            .selectinload(SpendCategory.children),
+            selectinload(WalletSpendItem.user_spend_category)
+            .selectinload(UserSpendCategory.mappings)
+            .selectinload(UserSpendCategoryMapping.earn_category),
+            # Legacy support
+            selectinload(WalletSpendItem.spend_category),
         ]
 
     async def list_for_wallet(self, wallet_id: int) -> list[WalletSpendItem]:
-        """List spend items for a wallet, ordered by amount desc then category name.
+        """List spend items for a wallet, ordered by display_order (All Other first).
 
         Args:
             wallet_id: The wallet ID.
 
         Returns:
-            List of spend items with spend_category eager-loaded.
+            List of spend items with user_spend_category eager-loaded.
         """
         result = await self.db.execute(
             select(WalletSpendItem)
             .options(*self.load_opts())
             .where(WalletSpendItem.wallet_id == wallet_id)
-            .join(WalletSpendItem.spend_category)
-            .order_by(WalletSpendItem.amount.desc(), SpendCategory.category)
+            .outerjoin(WalletSpendItem.user_spend_category)
+            .order_by(UserSpendCategory.display_order)
         )
         return list(result.scalars().all())
 
-    async def get_by_wallet_and_category(
+    async def get_by_wallet_and_user_category(
         self,
         wallet_id: int,
-        spend_category_id: int,
+        user_spend_category_id: int,
     ) -> Optional[WalletSpendItem]:
-        """Find a spend item by wallet and category.
+        """Find a spend item by wallet and user category.
 
         Args:
             wallet_id: The wallet ID.
-            spend_category_id: The spend category ID.
+            user_spend_category_id: The user spend category ID.
 
         Returns:
             The spend item if found, None otherwise.
@@ -62,45 +64,45 @@ class WalletSpendService(BaseService[WalletSpendItem]):
         result = await self.db.execute(
             select(WalletSpendItem).where(
                 WalletSpendItem.wallet_id == wallet_id,
-                WalletSpendItem.spend_category_id == spend_category_id,
+                WalletSpendItem.user_spend_category_id == user_spend_category_id,
             )
         )
         return result.scalar_one_or_none()
 
-    async def get_spend_category_or_422(self, category_id: int) -> SpendCategory:
-        """Fetch a spend category or raise 422.
+    async def get_user_spend_category_or_422(self, category_id: int) -> UserSpendCategory:
+        """Fetch a user spend category or raise 422.
 
         Args:
-            category_id: The spend category ID.
+            category_id: The user spend category ID.
 
         Returns:
-            The spend category.
+            The user spend category.
 
         Raises:
             HTTPException: 422 if not found.
         """
         result = await self.db.execute(
-            select(SpendCategory).where(SpendCategory.id == category_id)
+            select(UserSpendCategory).where(UserSpendCategory.id == category_id)
         )
-        sc = result.scalar_one_or_none()
-        if not sc:
+        usc = result.scalar_one_or_none()
+        if not usc:
             raise HTTPException(
                 status_code=422,
-                detail=f"SpendCategory id={category_id} not found",
+                detail=f"UserSpendCategory id={category_id} not found",
             )
-        return sc
+        return usc
 
     async def create(
         self,
         wallet_id: int,
-        spend_category_id: int,
+        user_spend_category_id: int,
         amount: float,
     ) -> WalletSpendItem:
         """Create a new spend item.
 
         Args:
             wallet_id: The wallet ID.
-            spend_category_id: The spend category ID.
+            user_spend_category_id: The user spend category ID.
             amount: The annual spend amount.
 
         Returns:
@@ -109,24 +111,24 @@ class WalletSpendService(BaseService[WalletSpendItem]):
         Raises:
             HTTPException: 403 if category is system, 409 if already exists.
         """
-        sc = await self.get_spend_category_or_422(spend_category_id)
+        usc = await self.get_user_spend_category_or_422(user_spend_category_id)
 
-        if sc.is_system:
+        if usc.is_system:
             raise HTTPException(
                 status_code=403,
-                detail=f"'{sc.category}' is a system category; update its amount via PUT instead",
+                detail=f"'{usc.name}' is a system category; update its amount via PUT instead",
             )
 
-        existing = await self.get_by_wallet_and_category(wallet_id, spend_category_id)
+        existing = await self.get_by_wallet_and_user_category(wallet_id, user_spend_category_id)
         if existing:
             raise HTTPException(
                 status_code=409,
-                detail=f"A spend item for '{sc.category}' already exists in this wallet",
+                detail=f"A spend item for '{usc.name}' already exists in this wallet",
             )
 
         item = WalletSpendItem(
             wallet_id=wallet_id,
-            spend_category_id=spend_category_id,
+            user_spend_category_id=user_spend_category_id,
             amount=amount,
         )
         self.db.add(item)
@@ -168,7 +170,10 @@ class WalletSpendService(BaseService[WalletSpendItem]):
         """
         result = await self.db.execute(
             select(WalletSpendItem)
-            .options(selectinload(WalletSpendItem.spend_category))
+            .options(
+                selectinload(WalletSpendItem.user_spend_category),
+                selectinload(WalletSpendItem.spend_category),  # legacy
+            )
             .where(
                 WalletSpendItem.id == item_id,
                 WalletSpendItem.wallet_id == wallet_id,
@@ -204,17 +209,17 @@ class WalletSpendService(BaseService[WalletSpendItem]):
         Raises:
             HTTPException: 403 if the item is for a system category.
         """
-        if item.spend_category and item.spend_category.is_system:
+        if item.user_spend_category and item.user_spend_category.is_system:
             raise HTTPException(
                 status_code=403,
-                detail=f"The '{item.spend_category.category}' item cannot be deleted",
+                detail=f"The '{item.user_spend_category.name}' item cannot be deleted",
             )
         await self.db.delete(item)
 
-    async def ensure_all_other_item(self, wallet_id: int) -> None:
-        """Ensure the wallet has a WalletSpendItem for the 'All Other' category.
+    async def ensure_all_user_categories(self, wallet_id: int) -> None:
+        """Ensure the wallet has a WalletSpendItem for every user spend category.
 
-        Creates one with amount=0 if missing. Idempotent.
+        Creates items with amount=0 for any missing categories. Idempotent.
 
         Args:
             wallet_id: The wallet ID.
@@ -226,28 +231,30 @@ class WalletSpendService(BaseService[WalletSpendItem]):
         if wallet_row.scalar_one_or_none() is None:
             return
 
-        # Find 'All Other' category
-        sc_result = await self.db.execute(
-            select(SpendCategory).where(SpendCategory.category == ALL_OTHER_CATEGORY)
+        # Get all user spend categories
+        usc_result = await self.db.execute(
+            select(UserSpendCategory).order_by(UserSpendCategory.display_order)
         )
-        sc = sc_result.scalar_one_or_none()
-        if sc is None:
-            return
+        all_categories = list(usc_result.scalars().all())
 
-        # Check if item already exists
-        existing = await self.db.execute(
-            select(WalletSpendItem).where(
-                WalletSpendItem.wallet_id == wallet_id,
-                WalletSpendItem.spend_category_id == sc.id,
+        # Get existing spend items for this wallet
+        existing_result = await self.db.execute(
+            select(WalletSpendItem.user_spend_category_id).where(
+                WalletSpendItem.wallet_id == wallet_id
             )
         )
-        if existing.scalar_one_or_none() is not None:
-            return
+        existing_ids = set(existing_result.scalars().all())
 
-        # Create the item
-        self.db.add(
-            WalletSpendItem(wallet_id=wallet_id, spend_category_id=sc.id, amount=0.0)
-        )
+        # Create missing items
+        for usc in all_categories:
+            if usc.id not in existing_ids:
+                self.db.add(
+                    WalletSpendItem(
+                        wallet_id=wallet_id,
+                        user_spend_category_id=usc.id,
+                        amount=0.0,
+                    )
+                )
 
 
 def get_wallet_spend_service(db: AsyncSession = Depends(get_db)) -> WalletSpendService:

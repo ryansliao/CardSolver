@@ -32,6 +32,7 @@ from .wallet_card_override import (
 )
 from .wallet_spend import WalletSpendItem
 from .wallet_portal import WalletPortalShare
+from .user_spend import UserSpendCategory, UserSpendCategoryMapping
 
 __all__ = [
     # User
@@ -71,4 +72,7 @@ __all__ = [
     "WalletSpendItem",
     # Wallet portal
     "WalletPortalShare",
+    # User spend categories
+    "UserSpendCategory",
+    "UserSpendCategoryMapping",
 ]

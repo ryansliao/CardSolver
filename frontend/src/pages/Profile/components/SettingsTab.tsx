@@ -1,22 +1,15 @@
-import { useAuth } from '../auth/AuthContext'
-import { Navigate } from 'react-router-dom'
+import { useAuth } from '../../../auth/AuthContext'
 
-export default function Profile() {
-  const { user, isAuthenticated, isLoading, signOut } = useAuth()
+export function SettingsTab() {
+  const { user, signOut } = useAuth()
 
-  if (isLoading) {
-    return <div className="text-center text-slate-400 py-20">Loading...</div>
-  }
-
-  if (!isAuthenticated || !user) {
-    return <Navigate to="/" replace />
-  }
+  if (!user) return null
 
   return (
-    <div className="max-w-lg mx-auto mt-12">
-      <h1 className="text-2xl font-bold text-white mb-8">Profile Settings</h1>
+    <div className="max-w-lg">
+      <h2 className="text-xl font-bold text-white mb-6">Settings</h2>
 
-      <div className="bg-slate-900 border border-slate-700 rounded-xl p-6">
+      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
         <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-700">
           {user.picture ? (
             <img
@@ -57,7 +50,7 @@ export default function Profile() {
           <button
             type="button"
             onClick={signOut}
-            className="text-sm font-medium px-5 py-2 rounded-full text-red-400 hover:text-red-300 hover:bg-slate-800 transition-colors"
+            className="text-sm font-medium px-5 py-2 rounded-full text-red-400 hover:text-red-300 hover:bg-slate-700 transition-colors"
           >
             Sign out
           </button>

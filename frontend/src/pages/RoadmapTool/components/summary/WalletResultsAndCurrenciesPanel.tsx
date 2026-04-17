@@ -50,7 +50,6 @@ interface Props {
   walletCards?: WalletCard[]
   onOpenSettings: () => void
   onCppChange: () => void
-  onSpendChange: () => void
 }
 
 export function WalletResultsAndCurrenciesPanel({
@@ -64,7 +63,6 @@ export function WalletResultsAndCurrenciesPanel({
   walletCards,
   onOpenSettings,
   onCppChange,
-  onSpendChange,
 }: Props) {
   const [editingCurrencyId, setEditingCurrencyId] = useState<number | null>(null)
   const [activeTab, setActiveTab] = useState<WalletSummaryTab>('summary')
@@ -504,7 +502,6 @@ export function WalletResultsAndCurrenciesPanel({
                 walletCards={walletCards ?? []}
                 isTotal={false}
                 totalYears={totalYears}
-                onSpendChange={onSpendChange}
               />
             )}
 

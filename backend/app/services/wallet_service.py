@@ -78,6 +78,38 @@ class WalletService(BaseService[Wallet]):
         )
         return list(result.scalars().all())
 
+    async def get_for_user(self, user_id: int) -> Optional[Wallet]:
+        """Get the user's single wallet with eager-loaded relationships.
+
+        Args:
+            user_id: The user's ID.
+
+        Returns:
+            The user's wallet if it exists, None otherwise.
+        """
+        result = await self.db.execute(
+            select(Wallet)
+            .options(*self.wallet_load_opts())
+            .where(Wallet.user_id == user_id)
+            .order_by(Wallet.id)
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def user_has_wallet(self, user_id: int) -> bool:
+        """Check if user already has a wallet.
+
+        Args:
+            user_id: The user's ID.
+
+        Returns:
+            True if user has a wallet, False otherwise.
+        """
+        result = await self.db.execute(
+            select(Wallet.id).where(Wallet.user_id == user_id).limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
     async def get_with_cards(self, wallet_id: int) -> Wallet:
         """Load a wallet with all card relationships eager-loaded.
 

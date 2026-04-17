@@ -24,6 +24,8 @@ from ..models import (
     NetworkTier,
     RotatingCategory,
     SpendCategory,
+    UserSpendCategory,
+    UserSpendCategoryMapping,
     Wallet,
     WalletCardCategoryPriority,
     WalletCardCredit,
@@ -151,21 +153,75 @@ class CalculatorDataService:
     # -------------------------------------------------------------------------
 
     async def load_wallet_spend_items(self, wallet_id: int) -> dict[str, float]:
-        """Load spend dict for a wallet: category_name -> amount."""
+        """Load spend dict for a wallet: earn_category_name -> amount.
+
+        User spend (stored per user_spend_category_id) is expanded to granular
+        earn categories using the mapping weights. For example, if the user has
+        $1000 in "Groceries" (user category) and the mappings are:
+          Groceries -> Groceries (75%), Wholesale Clubs (20%), Online Groceries (5%)
+        The result will be:
+          {"Groceries": 750, "Wholesale Clubs": 200, "Online Groceries": 50}
+        """
+        # Load wallet spend items with user category
         result = await self.db.execute(
             select(WalletSpendItem)
-            .options(selectinload(WalletSpendItem.spend_category))
+            .options(
+                selectinload(WalletSpendItem.user_spend_category),
+                selectinload(WalletSpendItem.spend_category),  # legacy fallback
+            )
             .where(WalletSpendItem.wallet_id == wallet_id)
         )
         items = result.scalars().all()
+
+        # Collect user category IDs that need mapping expansion
+        user_cat_ids = {
+            item.user_spend_category_id
+            for item in items
+            if item.user_spend_category_id is not None
+        }
+
+        # Load mappings for all user categories in one query
+        mappings_by_user_cat: dict[int, list[tuple[str, float]]] = {}
+        if user_cat_ids:
+            mapping_result = await self.db.execute(
+                select(UserSpendCategoryMapping)
+                .options(selectinload(UserSpendCategoryMapping.earn_category))
+                .where(UserSpendCategoryMapping.user_category_id.in_(user_cat_ids))
+            )
+            for mapping in mapping_result.scalars().all():
+                earn_cat_name = mapping.earn_category.category
+                mappings_by_user_cat.setdefault(mapping.user_category_id, []).append(
+                    (earn_cat_name, mapping.default_weight)
+                )
+
         spend: dict[str, float] = {}
         for item in items:
-            cat_name = (
-                item.spend_category.category
-                if item.spend_category
-                else ALL_OTHER_CATEGORY
-            )
-            spend[cat_name] = spend.get(cat_name, 0.0) + item.amount
+            if item.user_spend_category_id is not None:
+                # New path: expand user category to earn categories via mappings
+                mappings = mappings_by_user_cat.get(item.user_spend_category_id, [])
+                if mappings:
+                    # Normalize weights to sum to 1.0
+                    total_weight = sum(w for _, w in mappings)
+                    for earn_cat_name, weight in mappings:
+                        normalized = weight / total_weight if total_weight > 0 else 0
+                        spend[earn_cat_name] = (
+                            spend.get(earn_cat_name, 0.0) + item.amount * normalized
+                        )
+                else:
+                    # No mappings found - fall back to All Other
+                    spend[ALL_OTHER_CATEGORY] = (
+                        spend.get(ALL_OTHER_CATEGORY, 0.0) + item.amount
+                    )
+            elif item.spend_category is not None:
+                # Legacy path: direct spend_category_id (for backward compat)
+                cat_name = item.spend_category.category
+                spend[cat_name] = spend.get(cat_name, 0.0) + item.amount
+            else:
+                # Neither set - fall back to All Other
+                spend[ALL_OTHER_CATEGORY] = (
+                    spend.get(ALL_OTHER_CATEGORY, 0.0) + item.amount
+                )
+
         return spend
 
     # -------------------------------------------------------------------------
