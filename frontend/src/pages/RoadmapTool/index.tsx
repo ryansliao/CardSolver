@@ -12,14 +12,14 @@ import {
   type WalletResultResponse,
 } from '../../api/client'
 import { today } from '../../utils/format'
-import { WalletCardModal } from './components/cards/WalletCardModal'
+import { WalletCardModal } from '../../components/cards/WalletCardModal'
+import { DeleteCardWarningModal } from '../../components/cards/DeleteCardWarningModal'
 import { WalletSettingsModal } from './components/wallet/WalletSettingsModal'
 import { WalletResultsAndCurrenciesPanel } from './components/summary/WalletResultsAndCurrenciesPanel'
 import { CardsListPanel } from './components/cards/CardsListPanel'
-import { DeleteCardWarningModal } from './components/cards/DeleteCardWarningModal'
-import { ApplicationRuleWarningModal } from './components/roadmap/ApplicationRuleWarningModal'
-import { useCreditLibrary } from './hooks/useCreditLibrary'
-import { queryKeys } from './lib/queryKeys'
+import { ApplicationRuleWarningModal } from './components/ApplicationRuleWarningModal'
+import { useCreditLibrary } from '../../hooks/useCreditLibrary'
+import { queryKeys } from '../../lib/queryKeys'
 
 
 type WalletCardModalOpen =

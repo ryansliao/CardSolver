@@ -1,7 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
-// Note: useRef is used here to track which data has been hydrated into the form,
-// preventing re-runs when the card library re-fetches without the user changing selection.
 import {
   type AddCardToWalletPayload,
   type CardCredit,
@@ -15,12 +13,12 @@ import {
   walletCardCreditApi,
   walletCardGroupSelectionApi,
   walletSpendItemsApi,
-} from '../../../../api/client'
-import { ModalBackdrop } from '../../../../components/ModalBackdrop'
-import { formatMoney, today } from '../../../../utils/format'
-import { useCardLibrary } from '../../hooks/useCardLibrary'
+} from '../../api/client'
+import { ModalBackdrop } from '../ModalBackdrop'
+import { formatMoney, today } from '../../utils/format'
+import { useCardLibrary } from '../../pages/RoadmapTool/hooks/useCardLibrary'
 import { useCreditLibrary } from '../../hooks/useCreditLibrary'
-import { buildWalletCardFields, walletFormToUpdatePayload } from '../../lib/walletCardForm'
+import { buildWalletCardFields, walletFormToUpdatePayload } from '../../pages/RoadmapTool/lib/walletCardForm'
 import { queryKeys } from '../../lib/queryKeys'
 
 // ---------------------------------------------------------------------------

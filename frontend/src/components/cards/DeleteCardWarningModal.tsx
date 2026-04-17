@@ -1,4 +1,4 @@
-import { ModalBackdrop } from '../../../../components/ModalBackdrop'
+import { ModalBackdrop } from '../ModalBackdrop'
 
 interface Props {
   cardName: string
@@ -7,12 +7,6 @@ interface Props {
   isLoading: boolean
 }
 
-/**
- * Confirmation dialog shown before removing a card from a wallet. Removing a
- * wallet card is destructive — it cascades and deletes per-wallet credit
- * overrides, multiplier overrides, and group selections
- * for that card — so we ask the user to confirm.
- */
 export function DeleteCardWarningModal({ cardName, onConfirm, onClose, isLoading }: Props) {
   return (
     <ModalBackdrop

@@ -1,5 +1,5 @@
 import type { UserSpendCategory } from '../../../../api/client'
-import { useUserSpendCategories } from '../../hooks/useUserSpendCategories'
+import { useUserSpendCategories } from '../../../../hooks/useUserSpendCategories'
 
 interface Props {
   existingCategoryIds: Set<number>

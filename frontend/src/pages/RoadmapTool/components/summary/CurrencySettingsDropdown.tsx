@@ -7,7 +7,7 @@ import {
   type WalletCurrencyBalance,
 } from '../../../../api/client'
 import { InfoIconButton, InfoPopover } from '../../../../components/InfoPopover'
-import { queryKeys } from '../../lib/queryKeys'
+import { queryKeys } from '../../../../lib/queryKeys'
 import { WalletPortalSharesEditor } from './WalletPortalSharesEditor'
 
 interface CurrencySettingsDropdownProps {

@@ -5,8 +5,8 @@ import {
   type UserSpendCategory,
   type WalletSpendItem,
 } from '../../../api/client'
-import { useUserSpendCategories } from '../../RoadmapTool/hooks/useUserSpendCategories'
-import { queryKeys } from '../../RoadmapTool/lib/queryKeys'
+import { useUserSpendCategories } from '../../../hooks/useUserSpendCategories'
+import { queryKeys } from '../../../lib/queryKeys'
 import { ModalBackdrop } from '../../../components/ModalBackdrop'
 
 interface SpendingTabProps {

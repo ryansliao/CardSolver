@@ -4,7 +4,7 @@ import type { CardResult, UserSpendCategory, WalletCard } from '../../../../api/
 import { walletSpendItemsApi } from '../../../../api/client'
 import { ModalBackdrop } from '../../../../components/ModalBackdrop'
 import { formatMoneyExact, formatPointsExact } from '../../../../utils/format'
-import { queryKeys } from '../../lib/queryKeys'
+import { queryKeys } from '../../../../lib/queryKeys'
 
 interface Props {
   walletId: number | null

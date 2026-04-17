@@ -7,10 +7,10 @@ import {
   type UpdateWalletCardPayload,
   type WalletCard,
 } from '../../../api/client'
-import { WalletCardModal } from '../../RoadmapTool/components/cards/WalletCardModal'
-import { DeleteCardWarningModal } from '../../RoadmapTool/components/cards/DeleteCardWarningModal'
-import { useCreditLibrary } from '../../RoadmapTool/hooks/useCreditLibrary'
-import { queryKeys } from '../../RoadmapTool/lib/queryKeys'
+import { WalletCardModal } from '../../../components/cards/WalletCardModal'
+import { DeleteCardWarningModal } from '../../../components/cards/DeleteCardWarningModal'
+import { useCreditLibrary } from '../../../hooks/useCreditLibrary'
+import { queryKeys } from '../../../lib/queryKeys'
 import { formatMoney } from '../../../utils/format'
 import { CardPhoto } from './CardPhoto'
 

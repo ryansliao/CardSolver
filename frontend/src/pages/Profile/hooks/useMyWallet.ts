@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { walletsApi } from '../../../api/client'
 import { useAuth } from '../../../auth/AuthContext'
-import { queryKeys } from '../../RoadmapTool/lib/queryKeys'
+import { queryKeys } from '../../../lib/queryKeys'
 
 export function useMyWallet() {
   const { isAuthenticated } = useAuth()

@@ -7,7 +7,7 @@ import {
   walletsApi,
 } from '../../../../api/client'
 import { useCardLibrary } from '../../hooks/useCardLibrary'
-import { queryKeys } from '../../lib/queryKeys'
+import { queryKeys } from '../../../../lib/queryKeys'
 
 /**
  * Per-wallet, per-travel-portal share editor.

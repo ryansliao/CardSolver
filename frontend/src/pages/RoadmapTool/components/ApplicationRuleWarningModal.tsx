@@ -1,4 +1,4 @@
-import type { RoadmapRuleStatus } from '../../../../api/client'
+import type { RoadmapRuleStatus } from '../../../api/client'
 
 interface Props {
   violations: RoadmapRuleStatus[]
