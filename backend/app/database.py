@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.schema import CreateColumn
 
 load_dotenv()
 
@@ -71,6 +72,44 @@ async def create_tables() -> None:
         from . import models  # noqa: F401 — ensure models are registered
         await conn.run_sync(Base.metadata.create_all)
     await _run_migrations()
+    await _auto_add_missing_columns()
+
+
+async def _auto_add_missing_columns() -> None:
+    """Add columns defined on mapped models but missing from the live DB.
+
+    Additive-only: never drops, renames, or retypes existing columns. Those
+    still require an explicit backend/migrations/*.sql file. Covers the common
+    case of adding a new nullable column to a user-data table without hand-
+    rolling a migration. A NOT NULL column with no ``server_default`` will
+    fail here if the table already has rows — that's by design; write a
+    migration with an explicit backfill in that case.
+    """
+    from . import models  # noqa: F401 — ensure mappers are registered
+
+    async with engine.begin() as conn:
+        result = await conn.execute(text(
+            """
+            SELECT LOWER(o.name) AS table_name, LOWER(c.name) AS column_name
+            FROM sys.columns c
+            INNER JOIN sys.objects o ON c.object_id = o.object_id
+            WHERE o.type = 'U'
+            """
+        ))
+        live: dict[str, set[str]] = {}
+        for row in result:
+            live.setdefault(row.table_name, set()).add(row.column_name)
+
+        for table in Base.metadata.sorted_tables:
+            existing = live.get(table.name.lower())
+            if existing is None:
+                continue  # table didn't exist pre-create_all; nothing to patch
+            for col in table.columns:
+                if col.name.lower() in existing:
+                    continue
+                column_ddl = str(CreateColumn(col).compile(dialect=engine.dialect))
+                logger.info("Auto-migrate: ALTER TABLE %s ADD %s", table.name, col.name)
+                await conn.execute(text(f"ALTER TABLE {table.name} ADD {column_ddl}"))
 
 
 async def _run_migrations() -> None:
