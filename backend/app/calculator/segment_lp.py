@@ -38,7 +38,9 @@ def _solve_segment_allocation_lp(
       - pooled cap constraints on non-rotating capped groups
       - frequency-weighted allocation for rotating groups: each card can
         capture at most p_C share of category spend at the full bonus rate
-      - per-category cap constraints on rotating groups
+      - pooled cap constraints on rotating groups (one cap per group per
+        period, shared across every category in the rotating universe on
+        that card)
       - SUB priority filtering (when SUB-priority cards are present, they
         are the only candidates)
       - segment-prorated cap budgets that flow forward via cap_state
@@ -157,16 +159,21 @@ def _solve_segment_allocation_lp(
                 # Frequency-weighted allocation: rotating cards capture only
                 # their frequency share of category spend at the FULL bonus
                 # rate (not EV-blended). The frequency constraint is enforced
-                # via upper bounds on the card's allocation variables.
+                # via upper bounds on the card's allocation variables. The
+                # cap is **pooled** across every category in the rotating
+                # group on this card per period (one constraint per group),
+                # mirroring how the issuer enforces the cap on combined
+                # rotating-bonus spend per quarter.
                 rot_lookup = {(k or "").strip().lower(): float(v) for k, v in g_rot_weights.items()}
+                state_key = ("rot", g_id, period_start)
+                if state_key not in cap_state:
+                    cap_state[state_key] = float(g_cap_amt)
+                rot_members: list[tuple[int, str]] = []
                 for cl in cat_lower_set:
                     p_c = rot_lookup.get(cl, 0.0)
                     if p_c <= 0.0:
                         # No bonus path for this category; it earns base only.
                         continue
-                    state_key = ("rot", g_id, period_start, cl)
-                    if state_key not in cap_state:
-                        cap_state[state_key] = float(g_cap_amt)
                     # Use the FULL bonus rate since frequency is enforced via
                     # upper bounds on allocation, not via EV-blended rates.
                     active_bonus_rate = _bonus_rate_for_pair(
@@ -176,12 +183,13 @@ def _solve_segment_allocation_lp(
                     pair_is_additive[(k_idx, cl)] = g_is_add
                     capped_pairs.add((k_idx, cl))
                     rotating_freq[(k_idx, cl)] = p_c
-                    if cap_state[state_key] > 0:
-                        constraints.append(_CapConstraint(
-                            members=[(k_idx, cl)],
-                            remaining=cap_state[state_key],
-                            state_key=state_key,
-                        ))
+                    rot_members.append((k_idx, cl))
+                if rot_members and cap_state[state_key] > 0:
+                    constraints.append(_CapConstraint(
+                        members=rot_members,
+                        remaining=cap_state[state_key],
+                        state_key=state_key,
+                    ))
             else:
                 # Pooled non-rotating cap.
                 state_key = ("pool", g_id, period_start)

@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
 import { useMyWallet } from './hooks/useMyWallet'
 import { WalletTab } from './components/WalletTab'
@@ -9,7 +8,14 @@ import { TABS, type Tab } from './lib/constants'
 
 export default function Profile() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-  const [activeTab, setActiveTab] = useState<Tab>('wallet')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const activeTab: Tab =
+    tabParam === 'spending' || tabParam === 'settings' ? tabParam : 'wallet'
+  const setActiveTab = (tab: Tab) => {
+    if (tab === 'wallet') setSearchParams({}, { replace: true })
+    else setSearchParams({ tab }, { replace: true })
+  }
 
   const { data: wallet, isLoading: walletLoading } = useMyWallet()
 

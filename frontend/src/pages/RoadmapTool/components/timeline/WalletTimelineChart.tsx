@@ -101,6 +101,15 @@ function groupBalanceDollars(group: GroupData): number {
   return (group.totalBalance * cpp) / 100
 }
 
+/** Sum of per-card effective annual fee across all cards earning this
+ * currency. Used as a tiebreaker when ordering zero-balance currencies. */
+function groupCombinedEaf(group: GroupData): number {
+  return group.cards.reduce((s, { cr }) => {
+    if (!cr) return s
+    return s + (cr.card_effective_annual_fee ?? 0)
+  }, 0)
+}
+
 
 function formatGroupIncome(group: GroupData): string | null {
   const { rewardKind, cards } = group
@@ -363,6 +372,11 @@ export function WalletTimelineChart({
       const ba = groupBalanceDollars(a)
       const bb = groupBalanceDollars(b)
       if (ba !== bb) return bb - ba
+      if (ba === 0 && bb === 0) {
+        const ea = groupCombinedEaf(a)
+        const eb = groupCombinedEaf(b)
+        if (ea !== eb) return ea - eb
+      }
       const da = groupAnnualDollars(a)
       const db = groupAnnualDollars(b)
       if (da !== db) return db - da

@@ -523,7 +523,7 @@ class CalculatorDataService:
 
         # Build multiplier groups
         multiplier_groups_list = self._build_multiplier_groups(
-            card, rotation_counts, total_history_q, sc_by_id, children_by_parent
+            card, rotation_counts, total_history_q
         )
 
         # Network name
@@ -652,8 +652,6 @@ class CalculatorDataService:
         card: Card,
         rotation_counts: dict[int, int],
         total_history_q: int,
-        sc_by_id: dict[int, SpendCategory],
-        children_by_parent: dict[int, list[SpendCategory]],
     ) -> list[
         tuple[
             float,
@@ -694,16 +692,12 @@ class CalculatorDataService:
                     count = rotation_counts.get(cm.category_id, 0)
                     if cm.category_id in group_cat_ids:
                         rotation_weights[cat_name] = count / total_history_q
-
-                # Hierarchical expansion for ancestors
-                ancestor_weights = self._compute_ancestor_weights(
-                    grp, rotation_counts, total_history_q, sc_by_id
-                )
-                for ancestor_name, w in ancestor_weights.items():
-                    if ancestor_name not in rotation_weights:
-                        rotation_weights[ancestor_name] = min(1.0, w)
-                        if ancestor_name not in cats:
-                            cats.append(ancestor_name)
+                # Note: rotation weights are NOT propagated up to ancestor
+                # categories. The issuer pays the bonus only on the explicit
+                # leaf category that's currently active (e.g. Hotels), not on
+                # the parent (e.g. Travel). Propagating up would make generic
+                # "Other Travel" spend earn the rotating Hotels bonus, which
+                # is incorrect.
 
             multiplier_groups_list.append(
                 (
@@ -720,42 +714,6 @@ class CalculatorDataService:
             )
 
         return multiplier_groups_list
-
-    def _compute_ancestor_weights(
-        self,
-        grp,
-        rotation_counts: dict[int, int],
-        total_history_q: int,
-        sc_by_id: dict[int, SpendCategory],
-    ) -> dict[str, float]:
-        """Compute rotation weights for ancestor categories."""
-        ancestor_weights: dict[str, float] = {}
-        group_cat_ids = {c.category_id for c in getattr(grp, "categories", [])}
-
-        for cm in getattr(grp, "categories", []):
-            if cm.category_id not in group_cat_ids:
-                continue
-            leaf_count = rotation_counts.get(cm.category_id, 0)
-            if leaf_count <= 0:
-                continue
-            leaf_weight = leaf_count / total_history_q
-
-            current = sc_by_id.get(cm.category_id)
-            visited: set[int] = set()
-            while current is not None and current.parent_id is not None:
-                parent = sc_by_id.get(current.parent_id)
-                if parent is None or parent.id in visited:
-                    break
-                visited.add(parent.id)
-                if (parent.category or "").strip().lower() == "all other":
-                    current = parent
-                    continue
-                ancestor_weights[parent.category] = (
-                    ancestor_weights.get(parent.category, 0.0) + leaf_weight
-                )
-                current = parent
-
-        return ancestor_weights
 
 
 def get_calculator_data_service(

@@ -19,12 +19,116 @@ from .currency import (
     _conversion_rate,
     _secondary_currency_comparison_bonus,
 )
-from .multipliers import _multiplier_for_category, _pct_bonus, _get_category_appearance_rate
+from .multipliers import (
+    _all_other_multiplier,
+    _get_category_appearance_rate,
+    _multiplier_for_category,
+    _pct_bonus,
+)
 from .types import CardData
 
 # Duplicated here to avoid importing from compute.py (which imports from this
 # module). Must match the value in compute.py exactly.
 FOREIGN_CAT_PREFIX = "__foreign__"
+
+
+def _rotating_cap_info(
+    card: CardData, category: str
+) -> tuple[int, float, float, float] | None:
+    """Return ``(group_id, annual_bonus_cap_dollars, bonus_mult, overflow_mult)``
+    for the rotating group containing ``category`` on ``card``.
+
+    Returns ``None`` when the category is not in any rotating group on the
+    card, when the matching group has no per-period cap, or when the group
+    has no group_id (which would prevent pooling).
+
+    The annual cap is ``cap_amt × (12 / cap_months)``, the per-period cap
+    grossed up to a year. The cap is pooled across all categories in the
+    same rotating group — at most ``cap_amt`` of bonus-rate spend per
+    period across the entire group, so at most ``annual_cap`` per year.
+
+    The bonus rate matches ``_build_effective_multipliers`` for rotating
+    groups: additive groups stack the premium on the always-on rate;
+    non-additive groups use the group multiplier as a replacement. The
+    overflow rate is the card's always-on rate for the category (the explicit
+    rate when set, otherwise All Other).
+    """
+    base_cat = (
+        category[len(FOREIGN_CAT_PREFIX):]
+        if category.startswith(FOREIGN_CAT_PREFIX)
+        else category
+    )
+    cat_lower = (base_cat or "").strip().lower()
+    if not cat_lower:
+        return None
+    for (
+        g_mult, g_cats, _topn, gid,
+        cap_amt, cap_months, is_rotating, _rot, is_add,
+    ) in card.multiplier_groups:
+        if not is_rotating or gid is None:
+            continue
+        cats_lower = {(c or "").strip().lower() for c in g_cats}
+        if cat_lower not in cats_lower:
+            continue
+        if cap_amt is None or not cap_months or cap_months <= 0:
+            return None
+        annual_cap = float(cap_amt) * (12.0 / float(cap_months))
+        overflow_mult = _all_other_multiplier(card.multipliers)
+        for ek, ev in card.multipliers.items():
+            if (ek or "").strip().lower() == cat_lower:
+                overflow_mult = ev
+                break
+        bonus_mult = (overflow_mult + g_mult) if is_add else g_mult
+        return gid, annual_cap, bonus_mult, overflow_mult
+    return None
+
+
+def _pooled_rotating_blends(
+    card: CardData,
+    captures: list[tuple[str, float, float]],
+) -> dict[str, float]:
+    """Return ``{category: effective_mult}`` for rotating categories on
+    ``card`` where the pooled per-group annual cap binds.
+
+    ``captures`` is a list of ``(category, captured_dollars, bonus_mult)``
+    rows — one per spend category that landed on this card. Categories not
+    in any rotating group are ignored, and rotating groups whose total
+    captured spend stays at or below the annual cap return no entries (the
+    caller falls back to the original ``bonus_mult``).
+
+    When the pool binds, each member category gets a proportional share of
+    the bonus budget and the rest earns at its own overflow rate. The
+    spend-weighted blend lets the caller keep the simple ``captured × mult``
+    math while reflecting the cap.
+
+    The segmented path enforces caps per period itself, so callers in that
+    path must NOT use this helper.
+    """
+    grouped: dict[int, list[tuple[str, float, float, float]]] = {}
+    annual_caps: dict[int, float] = {}
+    for cat, captured, bonus_mult in captures:
+        if captured <= 0:
+            continue
+        info = _rotating_cap_info(card, cat)
+        if info is None:
+            continue
+        gid, annual_cap, _bonus, overflow_mult = info
+        grouped.setdefault(gid, []).append((cat, captured, bonus_mult, overflow_mult))
+        annual_caps[gid] = annual_cap
+
+    out: dict[str, float] = {}
+    for gid, items in grouped.items():
+        cap = annual_caps[gid]
+        total = sum(captured for _c, captured, _b, _o in items)
+        if total <= cap or total <= 0:
+            continue
+        for cat, captured, bonus_mult, overflow_mult in items:
+            cap_share = (captured / total) * cap
+            overflow_share = captured - cap_share
+            out[cat] = (
+                cap_share * bonus_mult + overflow_share * overflow_mult
+            ) / captured
+    return out
 
 
 def _portal_blended_multiplier(card: CardData, category: str, base_mult: float) -> float:
@@ -238,7 +342,7 @@ def calc_annual_point_earn_allocated(
     """
     if len(selected_cards) <= 1:
         return calc_annual_point_earn(card, spend)
-    cat_pts = 0.0
+    per_cat: list[tuple[str, float, float]] = []
     for cat, s in spend.items():
         if s <= 0:
             continue
@@ -248,8 +352,12 @@ def calc_annual_point_earn_allocated(
         )
         for c, share, mult in shares:
             if c.id == card.id:
-                cat_pts += s * share * mult
+                per_cat.append((cat, s * share, mult))
                 break
+    blends = _pooled_rotating_blends(card, per_cat)
+    cat_pts = 0.0
+    for cat, captured, mult in per_cat:
+        cat_pts += captured * blends.get(cat, mult)
     return float(card.annual_bonus) + cat_pts + _pct_bonus(card, cat_pts)
 
 
@@ -313,16 +421,20 @@ def calc_category_earn_breakdown(
             if pts > 0:
                 result.append((cat, round(pts, 2)))
     else:
+        per_cat: list[tuple[str, float, float]] = []
         for cat, s in spend.items():
             if s <= 0:
                 continue
             shares = _compute_category_shares(selected_cards, spend, cat, wallet_currency_ids, sub_priority_card_ids)
             for c, share, mult in shares:
                 if c.id == card.id:
-                    pts = s * share * mult
-                    if pts > 0:
-                        result.append((cat, round(pts, 2)))
+                    per_cat.append((cat, s * share, mult))
                     break
+        blends = _pooled_rotating_blends(card, per_cat)
+        for cat, captured, mult in per_cat:
+            pts = captured * blends.get(cat, mult)
+            if pts > 0:
+                result.append((cat, round(pts, 2)))
     if card.annual_bonus > 0:
         result.append(("Annual Bonus", float(card.annual_bonus)))
     # Percentage-based bonus line items

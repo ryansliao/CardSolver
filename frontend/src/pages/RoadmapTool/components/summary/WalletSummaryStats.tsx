@@ -120,7 +120,7 @@ export function WalletSummaryStats({
             <div className="bg-slate-700/60 self-stretch my-1" />
             <div className="px-1 py-0.5 text-center min-w-0 flex flex-col justify-center gap-1">
               <div className="flex items-center justify-center gap-1 h-5">
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap">Recurring Point Income</p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap">Recurring Income</p>
                 <InfoIconButton onClick={() => setStatTopic('income')} label="How Recurring Point Income is calculated" />
               </div>
               {result ? (

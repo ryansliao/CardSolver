@@ -154,14 +154,17 @@ def _segment_card_earn_pts_per_cat(
     - **Rotating capped group (Discover IT, Chase Freedom Flex):** uses
       frequency-weighted allocation where spend is split based on activation
       probability. The card captures p_C share of category spend and earns at
-      the full bonus rate on that share (up to the cap). Spend above the cap
-      earns at the overflow rate. Categories with p_C = 0 (never historically
-      active) get no bonus. There is no pooling across categories within the
-      rotating group; each gets its own per-period budget.
+      the full bonus rate on that share. Categories with p_C = 0 (never
+      historically active) get no bonus. The cap is **pooled** across all
+      categories in the group per period — at most ``cap_amt`` of bonus-rate
+      spend per period across the entire rotating group. When the pool binds,
+      bonus dollars are distributed proportionally across categories that
+      received seg-allocated spend (matching the non-rotating pooled flavor),
+      and overflow earns at each category's overflow rate.
 
     Both flavors share `cap_state`, keyed by:
       - non-rotating: ``("pool", group_id, period_start)`` → remaining $
-      - rotating:     ``("rot", group_id, period_start, category_name)`` → remaining $
+      - rotating:     ``("rot",  group_id, period_start)`` → remaining $
 
     The dict is mutated as caps are consumed; callers pass a fresh dict per
     (focal card, calc) pair so multi-segment cap periods share the budget
@@ -202,13 +205,16 @@ def _segment_card_earn_pts_per_cat(
             portal_lookup[cl] = (float(premium), bool(p_is_add))
 
     # Pass 1: walk every spend category, classify, and stash results we'll
-    # finalize in pass 2 (so non-rotating pooled groups can split the cap
-    # proportionally across all contributing categories).
+    # finalize in pass 2 (so pooled groups — both non-rotating and rotating
+    # — can split the cap proportionally across all contributing categories).
     out: dict[str, float] = {}
     # group_id -> list of (cat_name, seg_alloc_dollars, group_mult, cat_mult, is_additive)
     # for pooled groups. cat_mult is the always-on rate for that category on this card
     # (already includes uncapped additive premiums); is_additive comes from the group.
     pooled_pending: dict[int, list[tuple[str, float, float, float, bool]]] = {}
+    # Same shape as pooled_pending but for rotating groups (pool-shared cap
+    # across the group's categories per period).
+    rotating_pending: dict[int, list[tuple[str, float, float, float, bool]]] = {}
 
     for cat, s in spend.items():
         if s <= 0:
@@ -298,17 +304,12 @@ def _segment_card_earn_pts_per_cat(
                 if pts > 0:
                     out[cat] = out.get(cat, 0.0) + pts
                 continue
-            key = ("rot", gid, period_start, cat_lower)
-            if key not in cap_state:
-                cap_state[key] = float(g_cap_amt)
-            remaining = cap_state[key]
-            bonus_dollars = min(seg_alloc_dollars, remaining)
-            overflow_dollars = seg_alloc_dollars - bonus_dollars
-            cap_state[key] = remaining - bonus_dollars
-            # Use the full bonus rate since frequency is in the allocation share
-            pts = bonus_dollars * bonus_rate + overflow_dollars * overflow_rate
-            if pts > 0:
-                out[cat] = out.get(cat, 0.0) + pts
+            # Pool by group: stash for proportional finalization in pass 2 so
+            # the cap is shared across every rotating category that received
+            # seg-allocated spend on this card.
+            rotating_pending.setdefault(gid, []).append(
+                (cat, seg_alloc_dollars, g_mult, cat_mult, is_additive)
+            )
             continue
 
         # Non-rotating pooled cap: stash for proportional finalization in pass 2.
@@ -316,55 +317,62 @@ def _segment_card_earn_pts_per_cat(
             (cat, seg_alloc_dollars, g_mult, cat_mult, is_additive)
         )
 
-    # Pass 2: finalize pooled groups, splitting the remaining cap
-    # proportionally to each category's seg-allocated spend.
-    for gid, items in pooled_pending.items():
-        g_mult, g_cap_amt, g_cap_months, _is_rot, _rot, g_is_add = capped_groups[gid]
-        period_start, _ = _cap_period_bounds(seg_start, g_cap_months)
-        key = ("pool", gid, period_start)
-        if key not in cap_state:
-            cap_state[key] = g_cap_amt
-        remaining = cap_state[key]
+    # Per-category effective rates: additive groups stack the premium on
+    # top of cat_mult, non-additive groups use g_mult / all_other.
+    def _bonus_rate(group_m: float, cat_m: float, item_is_add: bool) -> float:
+        return cat_m + group_m if item_is_add else group_m
 
-        total_alloc = sum(d for _c, d, _m, _cm, _ia in items)
-        if total_alloc <= 0:
-            continue
+    def _overflow_rate(cat_m: float, item_is_add: bool) -> float:
+        return cat_m if item_is_add else all_other
 
-        # Per-category effective rates: additive groups stack the premium on
-        # top of cat_mult, non-additive groups use g_mult / all_other.
-        def _bonus_rate(group_m: float, cat_m: float, item_is_add: bool) -> float:
-            return cat_m + group_m if item_is_add else group_m
+    def _finalize_pool(
+        pending: dict[int, list[tuple[str, float, float, float, bool]]],
+        key_prefix: str,
+    ) -> None:
+        """Pass 2: split the remaining per-period cap proportionally across
+        the categories that received seg-allocated spend in this group."""
+        for gid, items in pending.items():
+            _g_mult, g_cap_amt, g_cap_months, _is_rot, _rot, _g_is_add = capped_groups[gid]
+            period_start, _ = _cap_period_bounds(seg_start, g_cap_months)
+            key = (key_prefix, gid, period_start)
+            if key not in cap_state:
+                cap_state[key] = g_cap_amt
+            remaining = cap_state[key]
 
-        def _overflow_rate(cat_m: float, item_is_add: bool) -> float:
-            return cat_m if item_is_add else all_other
+            total_alloc = sum(d for _c, d, _m, _cm, _ia in items)
+            if total_alloc <= 0:
+                continue
 
-        if remaining <= 0:
-            # Cap fully consumed by an earlier segment in this period.
-            for cat_name, alloc_d, _gm, cat_m, item_is_add in items:
-                pts = alloc_d * _overflow_rate(cat_m, item_is_add)
-                if pts > 0:
-                    out[cat_name] = out.get(cat_name, 0.0) + pts
-            continue
+            if remaining <= 0:
+                # Cap fully consumed by an earlier segment in this period.
+                for cat_name, alloc_d, _gm, cat_m, item_is_add in items:
+                    pts = alloc_d * _overflow_rate(cat_m, item_is_add)
+                    if pts > 0:
+                        out[cat_name] = out.get(cat_name, 0.0) + pts
+                continue
 
-        if total_alloc <= remaining:
-            # Whole group fits under the cap; everything earns at bonus rate.
-            for cat_name, alloc_d, gm, cat_m, item_is_add in items:
-                pts = alloc_d * _bonus_rate(gm, cat_m, item_is_add)
-                if pts > 0:
-                    out[cat_name] = out.get(cat_name, 0.0) + pts
-            cap_state[key] = remaining - total_alloc
-        else:
-            # Cap binds: each category gets a proportional share of remaining.
-            for cat_name, alloc_d, gm, cat_m, item_is_add in items:
-                bonus_share = alloc_d / total_alloc * remaining
-                overflow = alloc_d - bonus_share
-                pts = (
-                    bonus_share * _bonus_rate(gm, cat_m, item_is_add)
-                    + overflow * _overflow_rate(cat_m, item_is_add)
-                )
-                if pts > 0:
-                    out[cat_name] = out.get(cat_name, 0.0) + pts
-            cap_state[key] = 0.0
+            if total_alloc <= remaining:
+                # Whole group fits under the cap; everything earns at bonus rate.
+                for cat_name, alloc_d, gm, cat_m, item_is_add in items:
+                    pts = alloc_d * _bonus_rate(gm, cat_m, item_is_add)
+                    if pts > 0:
+                        out[cat_name] = out.get(cat_name, 0.0) + pts
+                cap_state[key] = remaining - total_alloc
+            else:
+                # Cap binds: each category gets a proportional share of remaining.
+                for cat_name, alloc_d, gm, cat_m, item_is_add in items:
+                    bonus_share = alloc_d / total_alloc * remaining
+                    overflow = alloc_d - bonus_share
+                    pts = (
+                        bonus_share * _bonus_rate(gm, cat_m, item_is_add)
+                        + overflow * _overflow_rate(cat_m, item_is_add)
+                    )
+                    if pts > 0:
+                        out[cat_name] = out.get(cat_name, 0.0) + pts
+                cap_state[key] = 0.0
+
+    _finalize_pool(pooled_pending, "pool")
+    _finalize_pool(rotating_pending, "rot")
 
     return out
 
