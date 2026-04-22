@@ -16,7 +16,19 @@ issuers:
     description: American Express generally caps cardholders at 5 open credit cards (charge cards not counted). Having 5+
       open Amex credit cards usually results in denial.
 - name: Bank of America
-  application_rules: []
+  application_rules:
+  - rule_name: 2/2
+    max_count: 2
+    period_days: 60
+    description: Bank of America limits approvals to 2 new cards per 2-month rolling window.
+  - rule_name: 3/12
+    max_count: 3
+    period_days: 365
+    description: Bank of America limits approvals to 3 new cards per 12-month rolling window.
+  - rule_name: 4/24
+    max_count: 4
+    period_days: 730
+    description: Bank of America limits approvals to 4 new cards per 24-month rolling window.
 - name: Barclays
   application_rules: []
 - name: Capital One
