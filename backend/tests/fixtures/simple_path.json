@@ -14,6 +14,7 @@
       "card_effective_annual_fee": -672.5,
       "card_id": 101,
       "card_name": "Chase Sapphire Preferred",
+      "card_sub_eaf_contribution": 576.0,
       "category_earn": [
         [
           "Travel",
@@ -43,6 +44,7 @@
       "secondary_currency_net_earn": 0.0,
       "secondary_currency_value_dollars": 0.0,
       "selected": true,
+      "sub_eaf_contribution": 576.0,
       "sub_extra_spend": 0.0,
       "sub_opp_cost_dollars": 0.0,
       "sub_opp_cost_gross_dollars": 0.0,
@@ -64,6 +66,7 @@
       "card_effective_annual_fee": -1146.5,
       "card_id": 102,
       "card_name": "Amex Gold",
+      "card_sub_eaf_contribution": 561.0,
       "category_earn": [
         [
           "Dining",
@@ -97,6 +100,7 @@
       "secondary_currency_net_earn": 0.0,
       "secondary_currency_value_dollars": 0.0,
       "selected": true,
+      "sub_eaf_contribution": 561.0,
       "sub_extra_spend": 0.0,
       "sub_opp_cost_dollars": 0.0,
       "sub_opp_cost_gross_dollars": 0.0,
@@ -118,6 +122,7 @@
       "card_effective_annual_fee": -300.0,
       "card_id": 103,
       "card_name": "Citi Double Cash",
+      "card_sub_eaf_contribution": 0.0,
       "category_earn": [
         [
           "All Other",
@@ -141,6 +146,7 @@
       "secondary_currency_net_earn": 0.0,
       "secondary_currency_value_dollars": 0.0,
       "selected": true,
+      "sub_eaf_contribution": 0.0,
       "sub_extra_spend": 0.0,
       "sub_opp_cost_dollars": 0.0,
       "sub_opp_cost_gross_dollars": 0.0,
@@ -166,5 +172,6 @@
   "total_effective_annual_fee": -2119.0,
   "total_points_earned": 234000.0,
   "total_reward_value_usd": 4658.0,
+  "total_sub_eaf_contribution": 1137.0,
   "years_counted": 2
 }

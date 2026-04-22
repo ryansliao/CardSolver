@@ -1048,13 +1048,13 @@ cards:
   multipliers:
   - category: Airlines
     multiplier: 3.0
+    is_portal: true
   - category: Dining
     multiplier: 2.0
   - category: Groceries
     multiplier: 2.0
   - category: Hotels
-    multiplier: 2.0
-    is_portal: true
+    multiplier: 3.0
   travel_portals:
   - Delta
 - name: Delta SkyMiles Reserve

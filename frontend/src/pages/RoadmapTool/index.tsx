@@ -96,7 +96,10 @@ function walletCalcSignature(
     durationYears,
     durationMonths,
     foreign_spend_percent: wallet.foreign_spend_percent,
-    include_subs: wallet.include_subs,
+    // include_subs is deliberately absent: the backend now always computes
+    // with SUBs included and returns sub_eaf_contribution so the frontend
+    // can apply the wallet-level "Include SUBs" toggle as a pure display
+    // switch. Adding it here would falsely mark results stale on toggle.
     cards,
     spend,
   })
@@ -416,7 +419,6 @@ export default function RoadmapToolPage() {
                 includeSubs={wallet.include_subs ?? true}
                 onIncludeSubsChange={(v) => {
                   updateWalletSettingMutation.mutate({ walletId: wallet.id, include_subs: v })
-                  setInSigDirty(true)
                 }}
                 resultsError={
                   resultsMutation.isError
@@ -484,6 +486,7 @@ export default function RoadmapToolPage() {
                     durationMonths={durationMonths}
                     isUpdating={updateWalletCardMutation.isPending}
                     isStale={isStale}
+                    includeSubs={wallet.include_subs ?? true}
                     onToggleEnabled={(cardId, enabled) =>
                       updateWalletCardMutation.mutate({
                         walletId: wallet.id,

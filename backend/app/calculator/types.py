@@ -251,6 +251,14 @@ class CardResult:
     # Gross dollar opportunity cost (best alternative earn on the extra spend,
     # before crediting back the sub_spend_earn earned on the target card)
     sub_opp_cost_gross_dollars: float = 0.0
+    # Dollars-per-wallet-year that SUB-related terms contributed to
+    # effective_annual_fee. Adding this to effective_annual_fee yields the
+    # value that would have been produced if SUBs were excluded from EAF.
+    # The calculator always includes SUBs; the wallet-level "Include SUBs"
+    # toggle is applied as a pure display switch on the frontend.
+    sub_eaf_contribution: float = 0.0
+    # Card-year basis variant, paired with card_effective_annual_fee.
+    card_sub_eaf_contribution: float = 0.0
     avg_spend_multiplier: float = 0.0
     cents_per_point: float = 0.0
     # Effective currency name (may differ from default when upgrade is active)
@@ -284,6 +292,10 @@ class WalletResult:
     total_effective_annual_fee: float
     total_points_earned: float
     total_annual_pts: float
+    # Sum of CardResult.sub_eaf_contribution across selected cards; frontend
+    # adds this to total_effective_annual_fee when the wallet-level "Include
+    # SUBs" toggle is off, so toggling is a display-only switch.
+    total_sub_eaf_contribution: float = 0.0
     # Sum of projection-period reward units for cash-kind cards only (× cpp/100 = dollars).
     total_cash_reward_dollars: float = 0.0
     # Σ (total_points × cents_per_point / 100) over selected cards — comparable across currencies.

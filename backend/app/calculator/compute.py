@@ -192,7 +192,6 @@ def compute_wallet(
     housing_category_names: set[str] | None = None,
     foreign_spend_pct: float = 0.0,
     foreign_eligible_categories: set[str] | None = None,
-    include_subs: bool = True,
 ) -> WalletResult:
     """
     Compute results for every card in `all_cards`.
@@ -207,16 +206,13 @@ def compute_wallet(
     bucket by the wallet-level ``foreign_spend_pct``; everything else stays
     100% domestic. Pass ``None`` to split every category (legacy behaviour).
 
-    include_subs: wallet-wide toggle for whether Sign Up Bonuses contribute to
-    effective annual fee. When False, the SUB bonus, sub_spend_earn,
-    sub_cash, sub_secondary_points, and SUB opportunity cost are stripped
-    from the EAF dollar formula on both the simple and segmented paths. The
-    toggle intentionally leaves allocation, SUB-window priority routing, and
-    per-card recurring income (``annual_point_earn``) untouched — those
-    reflect the wallet's earning behaviour, which does not change just
-    because the user wants to exclude welcome offers from EAF. Balances
-    (``total_points`` / ``currency_pts``) and manually tracked
-    WalletCurrencyBalance rows are also unaffected.
+    SUB-related dollar contributions (sub bonus, sub_spend_earn, sub_cash,
+    sub_secondary SUB, and SUB opportunity cost) are always included in the
+    returned ``effective_annual_fee``. Each ``CardResult`` also carries a
+    ``sub_eaf_contribution`` field surfacing the dollars-per-year portion of
+    EAF attributable to those SUB terms. The wallet-level "Include SUBs"
+    toggle is applied on the frontend as a pure display switch, adding that
+    contribution back to EAF when off — it does not branch the calculation.
     """
     selected_cards = [c for c in all_cards if c.id in selected_ids]
 
@@ -458,13 +454,17 @@ def compute_wallet(
             card_active_years = float(years)
 
         if use_segmentation:
-            net_annual, annual_point_earn, annual_point_earn_for_balance = _segmented_card_net_per_year(
+            (
+                net_annual,
+                annual_point_earn,
+                annual_point_earn_for_balance,
+                sub_contrib_per_wallet_year,
+            ) = _segmented_card_net_per_year(
                 card, selected_cards, spend,
                 window_start, window_end,  # type: ignore[arg-type]
                 precomputed_seg_alloc=seg_alloc_cache,
                 precomputed_seg_alloc_balance=seg_alloc_cache_balance,
                 housing_spend=housing_spend_total,
-                include_subs=include_subs,
             )
             effective_annual_fee = round(-net_annual, 4)
             # Per-card EAF: re-annualize using the card's own active years.
@@ -472,6 +472,14 @@ def compute_wallet(
             total_years_window = (window_end - window_start).days / 365.25  # type: ignore[operator]
             card_net_annual = net_annual * total_years_window / card_active_years
             card_effective_annual_fee = round(-card_net_annual, 4)
+            # sub_eaf_contribution: dollars the "Include SUBs" toggle would
+            # strip from EAF when off. The wallet-year basis pairs with
+            # effective_annual_fee; the card-year basis scales by the same
+            # wallet/card years ratio used for card_effective_annual_fee.
+            sub_eaf_contribution = round(sub_contrib_per_wallet_year, 4)
+            card_sub_eaf_contribution = round(
+                sub_contrib_per_wallet_year * total_years_window / card_active_years, 4,
+            )
             # total_points: the displayed "annual point income" multiplied by
             # the card's active years in the window, plus one-time SUB. This
             # is what the user reads as "balance": a card earning X/year and
@@ -494,24 +502,24 @@ def compute_wallet(
                 card, spend, selected_cards, active_wallet_currency_ids,
                 for_balance=True,
             )
-            net_annual = _average_annual_net_dollars(
+            net_annual, sub_contrib_per_wallet_year = _average_annual_net_dollars(
                 card, spend, years, active_wallet_currency_ids, selected_cards,
                 precomputed_earn=annual_point_earn,
                 housing_spend=housing_spend_total,
-                include_subs=include_subs,
             )
             effective_annual_fee = round(-net_annual, 4)
             card_effective_annual_fee = effective_annual_fee
+            sub_eaf_contribution = round(sub_contrib_per_wallet_year, 4)
+            card_sub_eaf_contribution = sub_eaf_contribution
             total_points = calc_total_points(
                 card, selected_cards, spend, years, active_wallet_currency_ids,
                 precomputed_earn=annual_point_earn_for_balance,
             )
         credit_val = calc_credit_valuation(card)
         sub_extra = calc_sub_extra_spend(card, spend, selected_cards, active_wallet_currency_ids)
-        if include_subs:
-            gross_opp, net_opp = calc_sub_opportunity_cost(card, selected_cards, spend, active_wallet_currency_ids)
-        else:
-            gross_opp, net_opp = 0.0, 0.0
+        gross_opp, net_opp = calc_sub_opportunity_cost(
+            card, selected_cards, spend, active_wallet_currency_ids,
+        )
         avg_mult = calc_avg_spend_multiplier(card, spend)
         if use_segmentation:
             # Time-weighted breakdown: reads from the same per-segment LP cache
@@ -615,6 +623,8 @@ def compute_wallet(
                 sub_spend_earn=reported_sub_spend_earn,
                 sub_opp_cost_dollars=net_opp,
                 sub_opp_cost_gross_dollars=gross_opp,
+                sub_eaf_contribution=sub_eaf_contribution,
+                card_sub_eaf_contribution=card_sub_eaf_contribution,
                 avg_spend_multiplier=round(avg_mult, 4),
                 cents_per_point=eff_currency.cents_per_point,
                 effective_currency_name=eff_currency.name,
@@ -637,6 +647,9 @@ def compute_wallet(
     selected_results = [r for r in card_results if r.selected]
     total_effective_annual_fee = round(
         sum(r.effective_annual_fee for r in selected_results), 4
+    )
+    total_sub_eaf_contribution = round(
+        sum(r.sub_eaf_contribution for r in selected_results), 4
     )
     points_only = [r for r in selected_results if r.effective_reward_kind != "cash"]
     cash_only = [r for r in selected_results if r.effective_reward_kind == "cash"]
@@ -681,6 +694,7 @@ def compute_wallet(
         total_effective_annual_fee=total_effective_annual_fee,
         total_points_earned=total_points_earned,
         total_annual_pts=total_annual_pts,
+        total_sub_eaf_contribution=total_sub_eaf_contribution,
         total_cash_reward_dollars=total_cash_reward_dollars,
         total_reward_value_usd=total_reward_value_usd,
         currency_pts=currency_pts,

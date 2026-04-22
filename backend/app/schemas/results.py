@@ -35,6 +35,12 @@ class CardResultSchema(BaseModel):
     sub_opp_cost_dollars: float = 0.0
     # Gross opportunity cost in dollars (what the wallet would have earned)
     sub_opp_cost_gross_dollars: float = 0.0
+    # Dollars-per-wallet-year that SUB-related terms added to effective_annual_fee.
+    # Frontend adds this to effective_annual_fee when the "Include SUBs" toggle
+    # is off, making the toggle a pure display switch (no recalculation needed).
+    sub_eaf_contribution: float = 0.0
+    # Card-year basis variant, paired with card_effective_annual_fee.
+    card_sub_eaf_contribution: float = 0.0
     avg_spend_multiplier: float = 0.0
     cents_per_point: float = 0.0
     # Effective currency name (may differ when cashback converts to points)
@@ -63,6 +69,8 @@ class WalletResultSchema(BaseModel):
     total_effective_annual_fee: float
     total_points_earned: float
     total_annual_pts: float
+    # Sum of CardResultSchema.sub_eaf_contribution across selected cards.
+    total_sub_eaf_contribution: float = 0.0
     total_cash_reward_dollars: float = 0.0
     total_reward_value_usd: float = 0.0
     # currency name -> total points over the projection window (spend + bonuses, by effective currency).

@@ -5,13 +5,18 @@ import { InfoIconButton, InfoPopover } from '../../../../components/InfoPopover'
 
 type StatTopic = 'eaf' | 'income' | 'fees' | 'duration' | 'subs' | null
 
-/** Annual recurring point income for a card.
+/** Annual income in the card's effective currency points.
  *
  * `annual_point_earn` is already per-year on both the simple and segmented
- * calculator paths and excludes one-time SUB bonuses / first-year matches,
- * so it's the recurring category earn rate. */
-function cardAnnualPointIncome(c: CardResult): number {
-  return c.annual_point_earn
+ * calculator paths and excludes one-time SUB bonuses / first-year matches.
+ * When `includeSubs` is on, the SUB dollar contribution (``sub_eaf_contribution``)
+ * is converted back to effective-currency points and added in, amortized over
+ * the projection window — mirroring how SUBs feed into EAF. */
+function cardAnnualPointIncome(c: CardResult, includeSubs: boolean): number {
+  if (!includeSubs) return c.annual_point_earn
+  const subDollars = c.sub_eaf_contribution ?? 0
+  if (!subDollars || !c.cents_per_point) return c.annual_point_earn
+  return c.annual_point_earn + (subDollars * 100) / c.cents_per_point
 }
 
 function formatDuration(years: number, months: number): string {
@@ -52,12 +57,18 @@ export function WalletSummaryStats({
 
   const { totalEffectiveAF, totalAnnualPoints, totalAnnualFees } = useMemo(() => {
     const selected = result?.card_results.filter((c) => c.selected) ?? []
+    // The backend always includes SUBs in effective_annual_fee. Adding back
+    // sub_eaf_contribution when the toggle is off yields the "without SUBs"
+    // EAF — a pure display switch, no recalc needed.
+    const subAdjust = includeSubs
+      ? 0
+      : selected.reduce((s, c) => s + (c.sub_eaf_contribution ?? 0), 0)
     return {
       totalAnnualFees: selected.reduce((s, c) => s + c.annual_fee, 0),
-      totalEffectiveAF: selected.reduce((s, c) => s + c.effective_annual_fee, 0),
-      totalAnnualPoints: selected.reduce((s, c) => s + cardAnnualPointIncome(c), 0),
+      totalEffectiveAF: selected.reduce((s, c) => s + c.effective_annual_fee, 0) + subAdjust,
+      totalAnnualPoints: selected.reduce((s, c) => s + cardAnnualPointIncome(c, includeSubs), 0),
     }
-  }, [result])
+  }, [result, includeSubs])
 
   const hasStats = !!result || isCalculating
 
@@ -124,8 +135,8 @@ export function WalletSummaryStats({
             <div className="bg-slate-700/60 self-stretch my-1" />
             <div className="px-1 py-0.5 text-center min-w-0 flex flex-col justify-center gap-1">
               <div className="flex items-center justify-center gap-1 h-5">
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap">Recurring Income</p>
-                <InfoIconButton onClick={() => setStatTopic('income')} label="How Recurring Point Income is calculated" />
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap">Income</p>
+                <InfoIconButton onClick={() => setStatTopic('income')} label="How Income is calculated" />
               </div>
               {result ? (
                 <p className="text-xl font-bold text-white tabular-nums truncate">
@@ -305,12 +316,13 @@ export function WalletSummaryStats({
         )}
 
         {statTopic === 'income' && (
-          <InfoPopover title="Recurring Point Income" onClose={() => setStatTopic(null)}>
+          <InfoPopover title="Income" onClose={() => setStatTopic(null)}>
             <p>
-              Recurring points and miles earned per year from category spend
-              across all selected cards. Excludes one-time sign-up bonuses
-              and first-year matches — those roll into the EAF calculation
-              and currency balance totals separately.
+              Points and miles earned per year from category spend across all
+              selected cards. When the Sign Up Bonus toggle is on, one-time
+              sign-up bonuses and first-year matches are amortised over the
+              projection window and included here; when off, only recurring
+              category earn is shown.
             </p>
             <div>
               <p className="text-slate-300 font-medium mb-1">How it's allocated</p>

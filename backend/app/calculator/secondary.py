@@ -127,8 +127,7 @@ def _average_annual_net_dollars(
     selected_cards: list[CardData],
     precomputed_earn: Optional[float] = None,
     housing_spend: float = 0.0,
-    include_subs: bool = True,
-) -> float:
+) -> tuple[float, float]:
     """
     Average annual net dollar benefit over `years`, amortising SUB and first-year fee.
 
@@ -142,6 +141,15 @@ def _average_annual_net_dollars(
 
     housing_spend: total annual housing spend (Rent + Mortgage) in the wallet,
     used for secondary currency conversion cap calculations.
+
+    Returns a tuple ``(net_per_year, sub_contribution_per_year)``:
+      - ``net_per_year``: full average-annual net benefit, SUBs included
+      - ``sub_contribution_per_year``: dollars-per-year portion of net_per_year
+        attributable to SUB-related terms (sub_spend_earn × rate × cpp,
+        sub_points × cpp, sub_cash, sub_secondary_points × secondary cpp),
+        each amortised by ``/ years``. Adding this back to
+        ``effective_annual_fee (= -net_per_year)`` yields the EAF the user
+        would see with SUBs excluded.
 
     Formula:
       ( effective_earn * cpp / 100 * years
@@ -161,11 +169,12 @@ def _average_annual_net_dollars(
     annual_credits, annual_credits_skip, one_time_credits = _credit_annual_and_one_time_totals(card)
 
     rate = _conversion_rate(card, wallet_currency_ids)
-    # When the SUB is not earnable (or the wallet-level include_subs toggle is
-    # off), exclude the SUB bonus and its earn contribution from the EAF
-    # formula. Allocation and balance code paths still see the card's real
-    # SUB fields; only the EV dollar value is stripped here.
-    sub_counts = card.sub_earnable and include_subs
+    # SUB-related terms. When ``sub_earnable`` is False the calculator already
+    # cannot count the SUB (user can't hit the minimum spend) — those dollars
+    # remain zero. The wallet-level "Include SUBs" toggle is handled on the
+    # frontend by subtracting ``sub_contribution_per_year`` from the reported
+    # EAF, so we always include earnable SUBs here.
+    sub_counts = card.sub_earnable
     effective_sub = (card.sub_spend_earn * rate) if sub_counts else 0.0
     effective_sub_pts = card.sub_points if sub_counts else 0
     effective_sub_cash = card.sub_cash if sub_counts else 0.0
@@ -219,4 +228,10 @@ def _average_annual_net_dollars(
         + accel_bonus_dollars_annual * years
         - total_fees
     ) / years
-    return value
+    sub_contribution_per_year = (
+        effective_sub / 100 * cpp
+        + effective_sub_pts * cpp / 100
+        + effective_sub_cash
+        + effective_sub_secondary_dollars
+    ) / years
+    return value, sub_contribution_per_year

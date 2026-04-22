@@ -42,11 +42,11 @@ def _segmented_card_net_per_year(
     precomputed_seg_alloc: list[dict[int, dict[str, float]]] | None = None,
     precomputed_seg_alloc_balance: list[dict[int, dict[str, float]]] | None = None,
     housing_spend: float = 0.0,
-    include_subs: bool = True,
-) -> tuple[float, float, float]:
+) -> tuple[float, float, float, float]:
     """
-    Returns (average_annual_net_dollars, annualized_point_earn, annualized_point_earn_for_balance)
-    for `card` using true daily proration over [window_start, window_end).
+    Returns (average_annual_net_dollars, annualized_point_earn,
+    annualized_point_earn_for_balance, sub_contribution_per_year) for `card`
+    using true daily proration over [window_start, window_end).
 
     - Earn and annual credits: accumulated per segment × (seg_days / 365.25)
     - Fees: prorated by the card's actual active days in the window
@@ -60,6 +60,14 @@ def _segmented_card_net_per_year(
     annualized_point_earn uses wallet CPP for allocation (for EV display).
     annualized_point_earn_for_balance uses default CPP for allocation so that
     balance/point totals are independent of wallet CPP overrides.
+
+    ``sub_contribution_per_year`` is the dollars-per-year amount contributed
+    by SUB-related one-time terms (sub_points, sub_cash, sub_secondary_points).
+    The segmented SUB-ROS boost already embeds sub_spend_earn in segment earn,
+    so only the one-time bonus itself is tracked here. Adding this value back
+    to ``effective_annual_fee`` yields the EAF the user would see with SUBs
+    excluded — the wallet-level "Include SUBs" toggle is a display switch on
+    the frontend and does not branch the calculation.
 
     precomputed_seg_alloc / precomputed_seg_alloc_balance: optional pre-solved
     per-segment allocations from compute_wallet's LP optimizer. When provided,
@@ -76,11 +84,11 @@ def _segmented_card_net_per_year(
         earn_for_balance = _effective_annual_earn_allocated(
             card, spend, selected_cards, wallet_currency_ids, for_balance=True
         )
-        net = _average_annual_net_dollars(
+        net, sub_contrib = _average_annual_net_dollars(
             card, spend, 1, wallet_currency_ids, selected_cards, precomputed_earn=earn,
             housing_spend=housing_spend,
         )
-        return net, earn, earn_for_balance
+        return net, earn, earn_for_balance, sub_contrib
 
     total_years = total_days / 365.25
     active_wallet_currency_ids = _wallet_currency_ids(selected_cards)
@@ -168,23 +176,28 @@ def _segmented_card_net_per_year(
     # would double-count the cost already reflected in other cards' reduced
     # segment earn.
     #
-    # ``include_subs`` gates the EAF contribution only; allocation and segment
-    # routing above still honor the card's real SUB state, so recurring income
-    # and balances don't shift when the user toggles SUBs off.
-    sub_counts = card.sub_earnable and include_subs
+    # The wallet-level "Include SUBs" toggle is applied by the frontend as a
+    # pure display switch, subtracting ``sub_contribution_per_year`` (derived
+    # below) from EAF when off. The calculator always includes earnable SUBs.
+    sub_counts = card.sub_earnable
+    sub_bonus_dollars = 0.0
     if sub_counts and card.sub_points:
         earned = card.sub_projected_earn_date
         if earned is None or window_start <= earned <= window_end:
             eff_currency = _effective_currency(card, active_wallet_currency_ids)
-            total_earn_dollars += card.sub_points * eff_currency.cents_per_point / 100.0
-    if sub_counts and card.sub_cash:
-        total_credits += card.sub_cash
+            sub_bonus_dollars = card.sub_points * eff_currency.cents_per_point / 100.0
+            total_earn_dollars += sub_bonus_dollars
+    sub_cash_dollars = card.sub_cash if sub_counts and card.sub_cash else 0.0
+    if sub_cash_dollars:
+        total_credits += sub_cash_dollars
     # Secondary-currency SUB (e.g. Bilt Cash): value at face via the secondary
     # currency's CPP, subject to the same housing-spend cap as earned secondary.
+    sub_secondary_dollars = 0.0
     if sub_counts and card.sub_secondary_points > 0 and card.secondary_currency is not None:
         cap_blocks = card.secondary_currency_cap_rate > 0 and housing_spend <= 0
         if not cap_blocks:
-            total_credits += card.sub_secondary_points * card.secondary_currency.cents_per_point / 100.0
+            sub_secondary_dollars = card.sub_secondary_points * card.secondary_currency.cents_per_point / 100.0
+            total_credits += sub_secondary_dollars
 
     # First-year-only percentage bonus: one-time earn based on annualized category
     # earn rate, counted once regardless of window length (like SUB).
@@ -233,4 +246,11 @@ def _segmented_card_net_per_year(
         total_earn_dollars += sec.bonus_pts_annual * eff_currency_sec.cents_per_point / 100.0 * active_years
 
     total_net = total_earn_dollars + total_credits - total_fee
-    return total_net / total_years, annualized_earn_pts, annualized_earn_pts_for_balance
+    sub_total_dollars = sub_bonus_dollars + sub_cash_dollars + sub_secondary_dollars
+    sub_contribution_per_year = sub_total_dollars / total_years
+    return (
+        total_net / total_years,
+        annualized_earn_pts,
+        annualized_earn_pts_for_balance,
+        sub_contribution_per_year,
+    )

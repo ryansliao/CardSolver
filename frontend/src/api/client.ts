@@ -322,6 +322,12 @@ export interface CardResult {
   sub_spend_earn: number
   sub_opp_cost_dollars: number
   sub_opp_cost_gross_dollars: number
+  /** Dollars/year from SUB terms baked into effective_annual_fee.
+   * Frontend adds this to EAF when the "Include SUBs" toggle is off, so
+   * toggling is a pure display switch (no recalculation required). */
+  sub_eaf_contribution: number
+  /** Card-year basis variant, paired with card_effective_annual_fee. */
+  card_sub_eaf_contribution: number
   avg_spend_multiplier: number
   cents_per_point: number
   effective_currency_name: string
@@ -347,6 +353,8 @@ export interface WalletResult {
   total_effective_annual_fee: number
   total_points_earned: number
   total_annual_pts: number
+  /** Sum of CardResult.sub_eaf_contribution across selected cards. */
+  total_sub_eaf_contribution?: number
   total_cash_reward_dollars?: number
   total_reward_value_usd?: number
   currency_pts: Record<string, number>
