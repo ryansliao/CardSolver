@@ -1,16 +1,23 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   walletsApi,
   walletCardCategoryPriorityApi,
+  walletCardCreditApi,
+  walletCppApi,
+  walletPortalShareApi,
   walletSpendItemsApi,
   type AddCardToWalletPayload,
+  type CurrencyRead,
   type RoadmapResponse,
   type RoadmapRuleStatus,
   type UpdateWalletCardPayload,
   type Wallet,
   type WalletCard,
+  type WalletCardCategoryPriority,
+  type WalletCardCreditOverride,
+  type WalletPortalShare,
   type WalletResultResponse,
   type WalletSpendItem,
 } from '../../api/client'
@@ -62,9 +69,18 @@ function walletCalcSignature(
   durationYears: number,
   durationMonths: number,
   spendItems: WalletSpendItem[] | undefined,
+  walletCurrencies: CurrencyRead[] | undefined,
+  portalShares: WalletPortalShare[] | undefined,
+  categoryPriorities: WalletCardCategoryPriority[] | undefined,
+  creditOverridesByCardId: Map<number, WalletCardCreditOverride[]>,
 ): string {
   if (!wallet) return ''
+  // Only serialize cards that would participate in the calc. Disabled cards
+  // are filtered by the backend's `active_wallet_cards` predicate, so edits
+  // to them can't change results — leave them out of the signature so those
+  // edits don't falsely trip the "out of date" warning.
   const cards = [...(wallet.wallet_cards ?? [])]
+    .filter((wc) => wc.is_enabled)
     .map((wc) => ({
       card_id: wc.card_id,
       is_enabled: wc.is_enabled,
@@ -92,6 +108,52 @@ function walletCalcSignature(
       amount: it.amount,
     }))
     .sort((a, b) => (a.user_spend_category_id ?? 0) - (b.user_spend_category_id ?? 0))
+  // Wallet-scoped overrides that used to trip a sticky `outOfSigDirty` flag.
+  // Folding them into the signature lets reverting a change back to its last-
+  // calculated value clear the "out of date" warning automatically.
+  const activeCardIds = new Set(cards.map((c) => c.card_id))
+  const cppOverrides = [...(walletCurrencies ?? [])]
+    .map((c) => ({
+      currency_id: c.id,
+      cpp: c.user_cents_per_point ?? c.cents_per_point,
+    }))
+    .sort((a, b) => a.currency_id - b.currency_id)
+  const portals = [...(portalShares ?? [])]
+    .map((p) => ({ travel_portal_id: p.travel_portal_id, share: p.share }))
+    .sort((a, b) => a.travel_portal_id - b.travel_portal_id)
+  // Key category priorities by library card_id (not wallet_card_id) so they
+  // stay stable across add/remove cycles, and skip priorities on disabled
+  // cards (those don't affect the calc).
+  const prioritiesByCardId = new Map<number, number[]>()
+  const walletCardIdToCardId = new Map<number, number>()
+  for (const wc of wallet.wallet_cards ?? []) {
+    walletCardIdToCardId.set(wc.id, wc.card_id)
+  }
+  for (const pr of categoryPriorities ?? []) {
+    const cardId = walletCardIdToCardId.get(pr.wallet_card_id)
+    if (cardId == null || !activeCardIds.has(cardId)) continue
+    const list = prioritiesByCardId.get(cardId) ?? []
+    list.push(pr.spend_category_id)
+    prioritiesByCardId.set(cardId, list)
+  }
+  const priorities = [...prioritiesByCardId.entries()]
+    .map(([cardId, ids]) => ({ card_id: cardId, ids: [...ids].sort((a, b) => a - b) }))
+    .sort((a, b) => a.card_id - b.card_id)
+  // Per-card credit overrides — same treatment as priorities: drop disabled
+  // cards, sort by library credit id for stability. Values include the dollar
+  // amount so editing a credit's value (not just toggling it) invalidates
+  // the result.
+  const credits: { card_id: number; overrides: { library_credit_id: number; value: number }[] }[] = []
+  for (const [cardId, rows] of creditOverridesByCardId) {
+    if (!activeCardIds.has(cardId)) continue
+    credits.push({
+      card_id: cardId,
+      overrides: [...rows]
+        .map((o) => ({ library_credit_id: o.library_credit_id, value: o.value }))
+        .sort((a, b) => a.library_credit_id - b.library_credit_id),
+    })
+  }
+  credits.sort((a, b) => a.card_id - b.card_id)
   return JSON.stringify({
     durationYears,
     durationMonths,
@@ -102,6 +164,10 @@ function walletCalcSignature(
     // switch. Adding it here would falsely mark results stale on toggle.
     cards,
     spend,
+    cppOverrides,
+    portals,
+    priorities,
+    credits,
   })
 }
 
@@ -115,15 +181,12 @@ export default function RoadmapToolPage() {
   const [result, setResult] = useState<WalletResultResponse | null>(null)
   // Signature of wallet + duration at the last successful calc.
   const [snapshotSignature, setSnapshotSignature] = useState<string | null>(null)
-  // Edits to fields that are in the signature (toggle, duration, added/closed
-  // date, SUB overrides, annual fee overrides, …). Set eagerly for instant
-  // feedback; auto-clears when the signature returns to the snapshot, so a
-  // toggle-off/toggle-on round-trip clears the "out of date" warning.
+  // Eager drift flag: set right after a mutation succeeds so the amber
+  // "Calculate" button appears before the wallet query refetches. Auto-clears
+  // when the signature returns to the snapshot, so a toggle-off/toggle-on
+  // round-trip (or any other revert to the calculated value) clears the
+  // warning automatically.
   const [inSigDirty, setInSigDirty] = useState(false)
-  // Edits to fields that aren't in the signature (wallet CPP overrides, per-card
-  // credits/multipliers/group selections/priorities saved through the modal).
-  // Only the next successful calc clears these.
-  const [outOfSigDirty, setOutOfSigDirty] = useState(false)
   const [mainView, setMainView] = useState<MainView>('timeline')
   const [applicationRuleWarnings, setApplicationRuleWarnings] = useState<RoadmapRuleStatus[] | null>(
     null
@@ -155,12 +218,95 @@ export default function RoadmapToolPage() {
     enabled: walletId != null,
   })
 
+  // Pull in the wallet-scoped override collections so the signature can tell
+  // when the user has reverted a CPP/portal/priority edit back to its last-
+  // calculated value — at which point the "out of date" warning disappears.
+  const { data: walletCurrencies } = useQuery({
+    queryKey: queryKeys.walletCurrencies(walletId),
+    queryFn: () => walletCppApi.listCurrencies(walletId!),
+    enabled: walletId != null,
+  })
+  const { data: portalShares } = useQuery({
+    queryKey: queryKeys.walletPortalShares(walletId),
+    queryFn: () => walletPortalShareApi.list(walletId!),
+    enabled: walletId != null,
+  })
+  const { data: categoryPriorities } = useQuery({
+    queryKey: queryKeys.walletCategoryPriorities(walletId),
+    queryFn: () => walletCardCategoryPriorityApi.list(walletId!),
+    enabled: walletId != null,
+  })
+
+  // Credits live on their own per-card endpoint. Fan out a query per enabled
+  // wallet card so the main signature can see every credit value; ReactQuery
+  // caches them so opening the WalletCardModal is still instant.
+  const enabledWalletCardIds = useMemo(
+    () =>
+      (wallet?.wallet_cards ?? [])
+        .filter((wc) => wc.is_enabled)
+        .map((wc) => wc.card_id)
+        .sort((a, b) => a - b),
+    [wallet],
+  )
+  const creditQueries = useQueries({
+    queries: enabledWalletCardIds.map((cardId) => ({
+      queryKey: queryKeys.walletCardCredits(walletId, cardId),
+      queryFn: () => walletCardCreditApi.list(walletId!, cardId),
+      enabled: walletId != null,
+    })),
+  })
+  const creditOverridesByCardId = useMemo(() => {
+    const m = new Map<number, WalletCardCreditOverride[]>()
+    enabledWalletCardIds.forEach((cardId, idx) => {
+      const rows = creditQueries[idx]?.data
+      if (rows) m.set(cardId, rows)
+    })
+    return m
+  }, [creditQueries, enabledWalletCardIds])
+
   const currentSignature = useMemo(
-    () => walletCalcSignature(wallet ?? null, durationYears, durationMonths, spendItems),
-    [wallet, durationYears, durationMonths, spendItems],
+    () =>
+      walletCalcSignature(
+        wallet ?? null,
+        durationYears,
+        durationMonths,
+        spendItems,
+        walletCurrencies,
+        portalShares,
+        categoryPriorities,
+        creditOverridesByCardId,
+      ),
+    [
+      wallet,
+      durationYears,
+      durationMonths,
+      spendItems,
+      walletCurrencies,
+      portalShares,
+      categoryPriorities,
+      creditOverridesByCardId,
+    ],
   )
   const signatureMatchesSnapshot =
     snapshotSignature !== null && currentSignature === snapshotSignature
+
+  // Whether a given wallet card is calc-relevant: either it was calculated in
+  // the last result, or it would be calculated by the next calc (is_enabled).
+  // Edits to cards outside this set can't change the displayed or next result,
+  // so we don't mark them as triggering staleness.
+  const isCardRelevant = useMemo(() => {
+    const lastCalcIds = new Set<number>(
+      (result?.wallet.card_results ?? [])
+        .filter((cr) => cr.selected)
+        .map((cr) => cr.card_id),
+    )
+    const activeIds = new Set<number>(
+      (wallet?.wallet_cards ?? [])
+        .filter((wc) => wc.is_enabled)
+        .map((wc) => wc.card_id),
+    )
+    return (cardId: number) => lastCalcIds.has(cardId) || activeIds.has(cardId)
+  }, [result, wallet])
 
   // When the wallet/duration state returns to the snapshot (e.g. the user
   // toggled a card off and then back on), drop the in-signature dirty flag.
@@ -175,7 +321,6 @@ export default function RoadmapToolPage() {
   // A result exists but something calc-affecting has drifted since it ran.
   // Falls back to false (no stale warning) when no calc has ever run.
   const isStale =
-    outOfSigDirty ||
     inSigDirty ||
     (snapshotSignature !== null && currentSignature !== snapshotSignature)
 
@@ -186,23 +331,25 @@ export default function RoadmapToolPage() {
   const addCardMutation = useMutation({
     mutationFn: ({ walletId, payload }: { walletId: number; payload: AddCardToWalletPayload }) =>
       walletsApi.addCard(walletId, payload),
-    onSuccess: async (_data, { walletId, payload }) => {
+    onSuccess: async (data, { walletId, payload }) => {
       const prev = queryClient.getQueryData<RoadmapResponse>(queryKeys.roadmap(walletId))
       const prevViolatedIds = new Set(
         (prev?.rule_statuses ?? []).filter((r) => r.is_violated).map((r) => r.rule_id)
       )
 
+      // New cards default to is_enabled=true backend-side; inspect the server
+      // response to catch any explicit override and skip staleness when the
+      // card was added disabled (won't be in any calc).
+      const addedActive = data.is_enabled !== false
+
       if (payload.priority_category_ids && payload.priority_category_ids.length > 0) {
         await walletCardCategoryPriorityApi.set(walletId, payload.card_id, payload.priority_category_ids)
         queryClient.invalidateQueries({ queryKey: queryKeys.walletCategoryPriorities(walletId) })
-        // priorities are tied to this card — not in the wallet signature, so
-        // flag out-of-band until the next calc.
-        setOutOfSigDirty(true)
       }
 
       queryClient.invalidateQueries({ queryKey: queryKeys.myWallet() })
       setWalletCardModal(null)
-      setInSigDirty(true)
+      if (addedActive) setInSigDirty(true)
 
       try {
         await queryClient.invalidateQueries({ queryKey: queryKeys.roadmap(walletId) })
@@ -225,9 +372,10 @@ export default function RoadmapToolPage() {
   const removeCardMutation = useMutation({
     mutationFn: ({ walletId, cardId }: { walletId: number; cardId: number }) =>
       walletsApi.removeCard(walletId, cardId),
-    onSuccess: () => {
+    onSuccess: (_data, { cardId }) => {
+      const wasRelevant = isCardRelevant(cardId)
       queryClient.invalidateQueries({ queryKey: queryKeys.myWallet() })
-      setInSigDirty(true)
+      if (wasRelevant) setInSigDirty(true)
     },
   })
 
@@ -261,7 +409,6 @@ export default function RoadmapToolPage() {
       setSnapshotSignature(sig)
       if (sig != null) writeStoredSnapshotSig(data.wallet_id, sig)
       setInSigDirty(false)
-      setOutOfSigDirty(false)
       queryClient.setQueryData(queryKeys.walletLatestResults(data.wallet_id), data)
       queryClient.invalidateQueries({ queryKey: queryKeys.myWallet() })
     },
@@ -283,11 +430,17 @@ export default function RoadmapToolPage() {
       cardId: number
       payload: UpdateWalletCardPayload
     }) => walletsApi.updateCard(walletId, cardId, payload),
-    onSuccess: (_data, { walletId }) => {
+    onSuccess: (data, { walletId, cardId }) => {
+      // Edit affects calc iff the card is calc-relevant before the edit (so
+      // the current result depends on it) or after (so the next result will).
+      // `isCardRelevant` covers the "before" case; `data.is_enabled` covers
+      // the "after" case, including the re-enable flip.
+      const wasRelevant = isCardRelevant(cardId)
+      const isNowActive = data.is_enabled
       queryClient.invalidateQueries({ queryKey: queryKeys.myWallet() })
       queryClient.invalidateQueries({ queryKey: queryKeys.roadmap(walletId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.walletCardCredits(walletId, null) })
-      setInSigDirty(true)
+      if (wasRelevant || isNowActive) setInSigDirty(true)
     },
   })
 
@@ -329,11 +482,26 @@ export default function RoadmapToolPage() {
             latestResult.duration_years,
             latestResult.duration_months,
             spendItems,
+            walletCurrencies,
+            portalShares,
+            categoryPriorities,
+            creditOverridesByCardId,
           ),
       )
     }
     setHasHydrated(true)
-  }, [hasHydrated, latestResultFetched, latestResult, spendItemsFetched, spendItems, wallet])
+  }, [
+    hasHydrated,
+    latestResultFetched,
+    latestResult,
+    spendItemsFetched,
+    spendItems,
+    wallet,
+    walletCurrencies,
+    portalShares,
+    categoryPriorities,
+    creditOverridesByCardId,
+  ])
 
   function runCalculation(years = durationYears, months = durationMonths) {
     if (walletId == null) return
@@ -544,7 +712,11 @@ export default function RoadmapToolPage() {
           walletId={wallet.id}
           currencyId={editingCurrencyId}
           onClose={() => setEditingCurrencyId(null)}
-          onCppChange={() => setOutOfSigDirty(true)}
+          // CPP and portal-share edits flow into the wallet signature now,
+          // so the button turns amber via signature mismatch and clears when
+          // the user reverts back to the calculated value — no extra dirty
+          // flag needed here.
+          onCppChange={() => {}}
         />
       )}
 
@@ -571,11 +743,11 @@ export default function RoadmapToolPage() {
           }
           onSaveEdit={(payload) => {
             if (walletCardModal.mode !== 'edit') return
-            // Modal save can also mutate per-card credits/multipliers/group
-            // selections/priorities before reaching this handler. Those aren't
-            // in the wallet signature, so mark out-of-sig dirty to keep the
-            // calc flagged as stale until the next run.
-            setOutOfSigDirty(true)
+            // Every field the modal can mutate — wallet card props, credits,
+            // and category priorities — is now part of the wallet signature,
+            // so the amber Calculate button turns on via sig mismatch and
+            // clears the moment the user reverts back to the calculated
+            // value. No separate sticky flag needed.
             updateWalletCardMutation.mutate(
               {
                 walletId: wallet.id,

@@ -13,7 +13,49 @@ from typing import Literal, cast
 
 from ..models import Card, Wallet, WalletCard
 from .results import CardResultSchema, CategoryEarnItem, WalletResultSchema
-from .wallet import WalletCardRead, WalletRead
+from .wallet import CreditTotalByCurrency, WalletCardRead, WalletRead
+
+
+def _build_credit_totals(wc: WalletCard) -> list[CreditTotalByCurrency]:
+    """Aggregate a wallet card's credit override values by the credit's native
+    currency. Cash credits bucket under ``kind="cash"`` (currency_id=None);
+    points credits bucket per currency so the UI can render ``pts`` alongside
+    ``$``. Credits without a resolved currency (legacy rows) are treated as
+    cash for backwards compatibility — ``wallet_card_credits.value`` was
+    dollars before ``credit_currency_id`` was introduced.
+    """
+    if not wc.credit_overrides_rows:
+        return []
+
+    buckets: dict[tuple[str, int | None], CreditTotalByCurrency] = {}
+    for row in wc.credit_overrides_rows:
+        lib = row.library_credit
+        currency = lib.credit_currency if lib is not None else None
+        if currency is not None and currency.reward_kind == "points":
+            key = ("points", currency.id)
+            name = currency.name
+            kind = "points"
+            cur_id: int | None = currency.id
+        else:
+            key = ("cash", None)
+            name = currency.name if currency is not None else None
+            kind = "cash"
+            cur_id = currency.id if currency is not None else None
+        existing = buckets.get(key)
+        if existing is None:
+            buckets[key] = CreditTotalByCurrency(
+                kind=kind,
+                currency_id=cur_id,
+                currency_name=name,
+                value=float(row.value or 0),
+            )
+        else:
+            existing.value += float(row.value or 0)
+    # Stable ordering: cash first, then points sorted by currency name.
+    return sorted(
+        buckets.values(),
+        key=lambda e: (0 if e.kind == "cash" else 1, e.currency_name or ""),
+    )
 
 
 def wc_read(wc: WalletCard, card: Card) -> WalletCardRead:
@@ -55,7 +97,7 @@ def wc_read(wc: WalletCard, card: Card) -> WalletCardRead:
         pc_from_card_id=wc.pc_from_card_id,
         panel=cast(Literal["in_wallet", "future_cards", "considering"], wc.panel),
         is_enabled=bool(wc.is_enabled),
-        credit_total=sum(c.value for c in wc.credit_overrides_rows) if wc.credit_overrides_rows else 0,
+        credit_totals=_build_credit_totals(wc),
     )
 
 

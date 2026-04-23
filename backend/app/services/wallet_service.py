@@ -31,8 +31,12 @@ class WalletService(BaseService[Wallet]):
         """Eager-load options for wallet with cards."""
         wc_chain = selectinload(Wallet.wallet_cards)
         wc_card = wc_chain.selectinload(WalletCard.card)
+        wc_credits = wc_chain.selectinload(WalletCard.credit_overrides_rows)
         return [
-            wc_chain.selectinload(WalletCard.credit_overrides_rows),
+            wc_credits,
+            wc_credits.selectinload(WalletCardCredit.library_credit).selectinload(
+                Credit.credit_currency
+            ),
             wc_card,
             wc_card.selectinload(Card.issuer),
             wc_card.selectinload(Card.network_tier),
@@ -222,6 +226,34 @@ class WalletService(BaseService[Wallet]):
             raise HTTPException(
                 status_code=404,
                 detail=f"Card {card_id} not in wallet {wallet_id}",
+            )
+        return wc
+
+    async def get_wallet_card_with_credits(
+        self,
+        wallet_card_id: int,
+    ) -> WalletCard:
+        """Reload a WalletCard with its credit overrides (and each override's
+        library credit + currency) eager-loaded.
+
+        Used by mutating endpoints that return ``WalletCardRead`` — the read
+        schema needs ``credit_overrides_rows[].library_credit.credit_currency``
+        to split credit totals by currency kind.
+        """
+        result = await self.db.execute(
+            select(WalletCard)
+            .options(
+                selectinload(WalletCard.credit_overrides_rows)
+                .selectinload(WalletCardCredit.library_credit)
+                .selectinload(Credit.credit_currency)
+            )
+            .where(WalletCard.id == wallet_card_id)
+        )
+        wc = result.scalar_one_or_none()
+        if not wc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Wallet card {wallet_card_id} not found",
             )
         return wc
 

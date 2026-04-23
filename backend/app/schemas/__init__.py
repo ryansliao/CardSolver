@@ -68,6 +68,7 @@ from .travel_portal import (
     WalletPortalShareRead,
 )
 from .wallet import (
+    CreditTotalByCurrency,
     InitialWalletCardCredit,
     WalletBase,
     WalletCardBase,
@@ -142,6 +143,7 @@ __all__ = [
     "WalletPortalSharePayload",
     "WalletPortalShareRead",
     # Wallet
+    "CreditTotalByCurrency",
     "InitialWalletCardCredit",
     "WalletBase",
     "WalletCardBase",

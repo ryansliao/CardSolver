@@ -90,7 +90,7 @@ async def add_card_to_wallet(
     wc_obj = await wallet_service.add_card_to_wallet(wallet_id, payload)
 
     await db.commit()
-    await db.refresh(wc_obj, attribute_names=["credit_overrides_rows"])
+    wc_obj = await wallet_service.get_wallet_card_with_credits(wc_obj.id)
 
     card = await wallet_service.get_card_or_404(wc_obj.card_id)
     return wc_read(wc_obj, card)
@@ -120,7 +120,7 @@ async def update_wallet_card(
     )
 
     await db.commit()
-    await db.refresh(wc_obj, attribute_names=["credit_overrides_rows"])
+    wc_obj = await wallet_service.get_wallet_card_with_credits(wc_obj.id)
 
     card = await wallet_service.get_card_or_404(wc_obj.card_id)
     return wc_read(wc_obj, card)

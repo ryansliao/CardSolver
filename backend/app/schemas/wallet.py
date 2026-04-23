@@ -67,6 +67,18 @@ class WalletCardUpdate(BaseModel):
     is_enabled: Optional[bool] = None
 
 
+class CreditTotalByCurrency(BaseModel):
+    """One row of `WalletCardRead.credit_totals` — the sum of a wallet card's
+    credit override values grouped by the credit's native currency. Cash
+    credits aggregate under ``kind="cash"``; points credits aggregate per
+    points currency so the UI can render pts alongside $."""
+    model_config = ConfigDict(from_attributes=True)
+    kind: Literal["cash", "points"]
+    currency_id: Optional[int]
+    currency_name: Optional[str]
+    value: float
+
+
 class WalletCardRead(WalletCardBase):
     """Wallet card read model. Always built via ``schemas.builders.wc_read`` —
     the enriched fields below are derived from the joined library Card and
@@ -81,7 +93,7 @@ class WalletCardRead(WalletCardBase):
     photo_slug: Optional[str]  # from library Card.photo_slug (may be None)
     issuer_name: Optional[str]  # from library Card → Issuer.name (may be None)
     network_tier_name: Optional[str]  # from library Card → NetworkTier.name (may be None)
-    credit_total: float  # sum of wallet card credit override values
+    credit_totals: list[CreditTotalByCurrency]  # per-currency sums of override values
 
 
 class WalletBase(BaseModel):

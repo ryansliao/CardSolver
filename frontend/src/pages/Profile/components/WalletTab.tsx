@@ -11,7 +11,7 @@ import { WalletCardModal } from '../../../components/cards/WalletCardModal'
 import { DeleteCardWarningModal } from '../../../components/cards/DeleteCardWarningModal'
 import { useCreditLibrary } from '../../../hooks/useCreditLibrary'
 import { queryKeys } from '../../../lib/queryKeys'
-import { formatMoney } from '../../../utils/format'
+import { formatMoney, formatPoints, pointsUnitLabel } from '../../../utils/format'
 import { CardPhoto } from './CardPhoto'
 
 type WalletCardModalOpen = { mode: 'add' } | { mode: 'edit'; walletCard: WalletCard }
@@ -136,12 +136,19 @@ export function WalletTab({ walletId, walletCards, isLoading }: WalletTabProps) 
                   </div>
                   <div className="text-right shrink-0 mr-1">
                     <p className="text-xs tabular-nums text-white">
-                      {wc.credit_total > 0 && (
-                        <>
-                          Credits: <span className="text-emerald-400">{formatMoney(wc.credit_total)}</span>
-                          <span className="text-slate-600 mx-1.5">·</span>
-                        </>
-                      )}
+                      {wc.credit_totals
+                        .filter((t) => t.value > 0)
+                        .map((t) => (
+                          <span key={`${t.kind}-${t.currency_id ?? 'cash'}`}>
+                            Credits:{' '}
+                            <span className="text-emerald-400">
+                              {t.kind === 'cash'
+                                ? formatMoney(t.value)
+                                : `${formatPoints(t.value)} ${pointsUnitLabel(t.currency_name)}`}
+                            </span>
+                            <span className="text-slate-600 mx-1.5">·</span>
+                          </span>
+                        ))}
                       Annual Fee: {(wc.annual_fee ?? 0) > 0 ? <span className="text-red-400">{formatMoney(wc.annual_fee ?? 0)}</span> : <span className="text-emerald-400">$0</span>}
                     </p>
                   </div>

@@ -18,6 +18,7 @@ from ..database import Base
 
 if TYPE_CHECKING:
     from .card import Card
+    from .currency import Currency
     from .wallet_card_override import WalletCardCredit
 
 
@@ -43,6 +44,9 @@ class Credit(Base):
     # Points currencies = value is in points, resolved via CPP.
     credit_currency_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("currencies.id", ondelete="SET NULL"), nullable=True
+    )
+    credit_currency: Mapped[Optional["Currency"]] = relationship(
+        foreign_keys=[credit_currency_id]
     )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

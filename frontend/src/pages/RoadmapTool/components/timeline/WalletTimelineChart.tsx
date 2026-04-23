@@ -6,7 +6,7 @@ import type {
   WalletCard,
   WalletResult,
 } from '../../../../api/client'
-import { formatMoney, formatMoneyCompact, formatPoints, formatPointsExact, today } from '../../../../utils/format'
+import { formatMoney, formatMoneyCompact, formatPoints, formatPointsExact, pointsUnitLabel, today } from '../../../../utils/format'
 import { useCardLibrary } from '../../hooks/useCardLibrary'
 
 interface Props {
@@ -79,8 +79,9 @@ function annualIncomePoints(c: CardResult | null, includeSubs: boolean): number 
   return c.annual_point_earn + (subDollars * 100) / c.cents_per_point
 }
 
-/** Format a card's annual income using the same "Pts/Year" / "/Year" suffix
- * as the currency group header so the two read consistently. */
+/** Format a card's annual income. Cash cards: "$X /Year". Points/miles
+ * cards: "X Pts/Year" or "X Miles/Year" based on the effective currency
+ * name (airline mileage programs get "Miles"). */
 function formatCardIncome(c: CardResult | null, includeSubs: boolean): string | null {
   const pts = annualIncomePoints(c, includeSubs)
   if (pts == null || c == null) return null
@@ -89,7 +90,7 @@ function formatCardIncome(c: CardResult | null, includeSubs: boolean): string | 
     return `${formatMoney(dollars)} /Year`
   }
   const rounded = Math.round(pts)
-  return `${formatPoints(rounded)} Pts/Year`
+  return `${formatPoints(rounded)} ${pointsUnitLabel(c.effective_currency_name)}/Year`
 }
 
 /** Annual dollar value of a group, regardless of reward kind. Sums only
@@ -144,7 +145,7 @@ function formatGroupIncome(group: GroupData, includeSubs: boolean): string | nul
     0,
   )
   const rounded = Math.round(pts)
-  return `${formatPoints(rounded)} Pts/Year`
+  return `${formatPoints(rounded)} /Year`
 }
 
 /** Format a single secondary-currency annual total, e.g. "$25 Bilt Cash /Year".
@@ -873,12 +874,16 @@ function CardRow({
                     {formatSecondaryAnnual(secondary)}
                   </>
                 )}
-                {wc.credit_total > 0 && (
-                  <>
-                    <span className="mx-1 text-slate-700">·</span>
-                    {formatMoney(wc.credit_total)} Credits
-                  </>
-                )}
+                {wc.credit_totals
+                  .filter((t) => t.value > 0)
+                  .map((t) => (
+                    <span key={`${t.kind}-${t.currency_id ?? 'cash'}`}>
+                      <span className="mx-1 text-slate-700">·</span>
+                      {t.kind === 'cash'
+                        ? `${formatMoney(t.value)} Credits`
+                        : `${formatPoints(t.value)} ${pointsUnitLabel(t.currency_name)} Credits`}
+                    </span>
+                  ))}
               </div>
             )}
           </div>

@@ -401,7 +401,14 @@ export interface WalletCard {
   photo_slug: string | null
   issuer_name: string | null
   network_tier_name: string | null
-  credit_total: number
+  credit_totals: CreditTotalByCurrency[]
+}
+
+export interface CreditTotalByCurrency {
+  kind: 'cash' | 'points'
+  currency_id: number | null
+  currency_name: string | null
+  value: number
 }
 
 export interface Wallet {

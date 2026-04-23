@@ -37,6 +37,16 @@ export function formatPoints(n: number): string {
   return n.toLocaleString('en-US', { maximumFractionDigits: 0 })
 }
 
+/** Label for a points-denominated currency: "Miles" for airline mileage
+ * programs (name contains "miles" or "mileage"), "Pts" otherwise. The DB
+ * lumps both under `reward_kind="points"`, so the distinction is inferred
+ * from the currency name. */
+export function pointsUnitLabel(currencyName: string | null | undefined): string {
+  if (!currencyName) return 'Pts'
+  const n = currencyName.toLowerCase()
+  return n.includes('miles') || n.includes('mileage') ? 'Miles' : 'Pts'
+}
+
 /** Return today's date as a YYYY-MM-DD string (local time). */
 export function today(): string {
   const d = new Date()
