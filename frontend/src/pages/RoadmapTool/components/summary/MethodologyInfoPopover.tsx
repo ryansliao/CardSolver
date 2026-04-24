@@ -7,82 +7,60 @@ interface Props {
 
 export function MethodologyInfoPopover({ anchorEl, onClose }: Props) {
   return (
-    <InfoQuoteBox anchorEl={anchorEl} title="Calculation Methodology" onClose={onClose}>
+    <InfoQuoteBox anchorEl={anchorEl} title="How the Roadmap Is Calculated" onClose={onClose}>
+      <p>
+        The roadmap turns your cards, spending, and time horizon into the
+        rewards, credits, fees, and Effective Annual Fee shown in the
+        summary and timeline.
+      </p>
       <div>
-        <p className="text-slate-300 font-medium mb-1">Category allocation</p>
+        <p className="text-slate-300 font-medium mb-1">How spend is assigned</p>
         <p>
-          Each spend category is awarded to the card(s) with the highest
-          {' '}<span className="font-mono text-[11px] text-slate-300">multiplier x CPP x earn_bonus_factor + secondary_bonus</span>.
-          Tied cards split the category dollars evenly. The LP optimizer
-          solves this per time segment when cards have date context.
+          Each dollar of spend goes to the card that earns the most on
+          it — no double-counting across cards. If two cards tie, the
+          dollars are split evenly.
         </p>
       </div>
       <div>
-        <p className="text-slate-300 font-medium mb-1">Time segmentation</p>
+        <p className="text-slate-300 font-medium mb-1">Time periods</p>
         <p>
-          When cards have open/close dates, the projection window is split
-          into segments at every card activation, closure, SUB earn, and
-          cap period boundary. Each segment solves its own allocation with
-          only the cards active during that period.
+          Cards only count during the periods they're active. When cards
+          have start or close dates, the projection is split into chunks
+          at every card open, close, sign-up-bonus earn, and cap reset,
+          and each chunk uses only the cards active then.
         </p>
       </div>
       <div>
-        <p className="text-slate-300 font-medium mb-1">Currency upgrades</p>
+        <p className="text-slate-300 font-medium mb-1">Sign-up bonuses</p>
         <p>
-          If a card's currency converts to a higher-value currency earned by
-          another wallet card (e.g. UR Cash to Chase UR via Sapphire), the
-          earn is converted at the upgrade rate and valued at the target CPP.
+          Sign-up bonus minimums are tracked against their deadlines,
+          and priority spend is steered to cards with an active offer.
+          The lost value from diverting that spend away from your
+          best-earning card is deducted.
         </p>
       </div>
       <div>
-        <p className="text-slate-300 font-medium mb-1">SUB tracking</p>
+        <p className="text-slate-300 font-medium mb-1">Fees, credits, and perks</p>
         <p>
-          The SUB planner schedules spend across cards to hit sign-up bonus
-          minimums before their deadlines. Cards needing extra spend get
-          priority allocation during their SUB window. The opportunity cost
-          of redirecting spend is tracked separately.
+          Annual fees, statement credits, first-year fee waivers, and
+          one-time perks all get netted in. One-time perks are spread
+          evenly across the projection years.
         </p>
       </div>
       <div>
-        <p className="text-slate-300 font-medium mb-1">Bilt 2.0 housing</p>
+        <p className="text-slate-300 font-medium mb-1">Foreign spend and point upgrades</p>
         <p>
-          Cards with the Bilt housing mechanic choose between tiered
-          housing earn (0.5x-1.25x on rent/mortgage based on non-housing
-          spend ratio) and Bilt Cash mode (three-tier bonus on non-housing
-          from converting Bilt Cash via housing payments). The calculator
-          picks whichever mode yields higher dollar value.
+          Foreign-transaction rules split eligible categories into
+          domestic and foreign portions, favoring no-fee Visa/Mastercard
+          cards abroad. Point-upgrade pairings (e.g. Freedom + Sapphire)
+          boost the value of cards whose points become worth more when
+          paired with a premium card in the wallet.
         </p>
       </div>
-      <div>
-        <p className="text-slate-300 font-medium mb-1">Housing processing fee</p>
-        <p>
-          Rent and mortgage payments via credit card typically incur a ~3%
-          processing fee from the payment platform. Cards that waive this
-          fee (Bilt) compete at full value on housing categories; other
-          cards are penalized by the fee amount, which usually makes their
-          1-1.5x earn net-negative.
-        </p>
-      </div>
-      <div>
-        <p className="text-slate-300 font-medium mb-1">Foreign spend</p>
-        <p>
-          When a wallet-level foreign spend percentage is set, eligible
-          categories are split into domestic and foreign buckets. Cards
-          without a foreign transaction fee and on Visa/Mastercard networks
-          are preferred for the foreign portion.
-        </p>
-      </div>
-      <div>
-        <p className="text-slate-300 font-medium mb-1">EAF formula</p>
-        <p className="px-2 py-1 bg-slate-800 rounded font-mono text-[11px] text-slate-300 leading-snug">
-          (earn x cpp + sub + credits - fees) / years
-        </p>
-        <p className="mt-1">
-          A negative EAF means the card returns more value than it costs.
-          One-time benefits (SUB, first-year bonus) are amortised over the
-          projection duration.
-        </p>
-      </div>
+      <p>
+        For more detail on any of the numbers, click the ⓘ next to the
+        stat you're curious about.
+      </p>
     </InfoQuoteBox>
   )
 }

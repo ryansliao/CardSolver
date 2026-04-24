@@ -226,7 +226,7 @@ export function WalletSummaryStats({
         className={`shrink-0 w-44 bg-slate-900 border rounded-xl px-3 py-2 flex flex-col justify-center transition-colors ${panelBorder}`}
       >
         <div className="flex items-center gap-1 mb-2.5">
-          <span className="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap">Sign Up Bonuses</span>
+          <span className="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap">Sign-Up Bonuses</span>
           <InfoIconButton
             onClick={(e) => {
               const anchor = e.currentTarget
@@ -324,28 +324,26 @@ export function WalletSummaryStats({
       {statTopic?.name === 'eaf' && (
         <InfoQuoteBox anchorEl={statTopic.anchor} title="Effective Annual Fee" onClose={() => setStatTopic(null)}>
           <p>
-            The wallet's net annual cost (or value) after credits, sign-up
-            bonuses, and category earn are subtracted from annual fees.
-            A negative value means the wallet returns more than it costs.
+            The wallet's true yearly cost (or value) once you net out
+            rewards, credits, and sign-up bonuses against the annual fees
+            you pay. A negative number means the wallet pays you more than
+            it costs.
           </p>
           <div>
-            <p className="text-slate-300 font-medium mb-1">Per-card formula</p>
-            <p className="px-2 py-1 bg-slate-800 rounded font-mono text-[11px] text-slate-300 leading-snug">
-              −(category_earn × cpp + sub/years + credits − fees) / years
-            </p>
-            <p className="mt-1">
-              One-time benefits (SUB, first-year bonus, one-time credits)
-              are amortised over the projection duration. Recurring credits
-              and category earn count fully each year.
+            <p className="text-slate-300 font-medium mb-1">How it's averaged</p>
+            <p>
+              One-time perks — sign-up bonuses, first-year bonuses, one-time
+              credits — are spread evenly across the projection years.
+              Annual fees, recurring credits, and everyday rewards count
+              fully each year.
             </p>
           </div>
           <div>
             <p className="text-slate-300 font-medium mb-1">Wallet total</p>
             <p>
-              Sum of every selected card's individual EAF. Each category's
-              spend is allocated to the card with the best
-              {' '}<span className="font-mono text-[11px] text-slate-300">multiplier × CPP</span>,
-              so the same dollar isn't double-counted across cards.
+              Each dollar of spend is assigned to the card that earns the
+              most on it, so no dollar is double-counted. The wallet total
+              is the sum of every selected card's individual value.
             </p>
           </div>
         </InfoQuoteBox>
@@ -354,28 +352,27 @@ export function WalletSummaryStats({
       {statTopic?.name === 'income' && (
         <InfoQuoteBox anchorEl={statTopic.anchor} title="Income" onClose={() => setStatTopic(null)}>
           <p>
-            Points and miles earned per year from category spend across all
-            selected cards. When the Sign Up Bonus toggle is on, one-time
-            sign-up bonuses and first-year matches are amortised over the
-            projection window and included here; when off, only recurring
-            category earn is shown.
+            Rewards earned per year from your spending, across every card
+            in the wallet. With the Sign Up Bonus toggle on, sign-up
+            bonuses and first-year matches are spread across the projection
+            and counted here too; with it off, only your everyday rewards
+            show up.
           </p>
           <div>
-            <p className="text-slate-300 font-medium mb-1">How it's allocated</p>
+            <p className="text-slate-300 font-medium mb-1">How spend is assigned</p>
             <p>
-              Each spend category goes to the card(s) with the highest
-              {' '}<span className="font-mono text-[11px] text-slate-300">multiplier × CPP</span>{' '}
-              score. Tied cards split the category dollars evenly. Annual
-              bonuses (fixed and percentage-based) are added on top.
+              Each category goes to whichever card earns the most on it.
+              If two cards tie, the dollars are split evenly. Flat annual
+              point bonuses are added on top.
             </p>
           </div>
           <div>
-            <p className="text-slate-300 font-medium mb-1">Currency upgrades</p>
+            <p className="text-slate-300 font-medium mb-1">Point upgrades</p>
             <p>
-              When a card's currency converts to another currency in the
-              wallet (e.g. Chase Freedom UR Cash → Chase UR with a Sapphire),
-              earn is converted at the upgrade rate and valued at the
-              target's CPP.
+              Some cards earn points that become more valuable when paired
+              with a premium card (e.g. Chase Freedom's UR Cash is worth
+              more when you also hold a Sapphire). When that pairing
+              exists, the earn is upgraded and valued at the higher rate.
             </p>
           </div>
         </InfoQuoteBox>
@@ -384,25 +381,25 @@ export function WalletSummaryStats({
       {statTopic?.name === 'fees' && (
         <InfoQuoteBox anchorEl={statTopic.anchor} title="Annual Fees" onClose={() => setStatTopic(null)}>
           <p>
-            Sum of the listed annual fee for every active card in the wallet,
-            before any credits, sign-up bonuses, or category earn are netted
-            out. This is what you'd pay your issuers each year.
+            Sum of the listed annual fee for every active card — what
+            you'd pay your card issuers each year, before credits,
+            sign-up bonuses, or rewards are netted out.
           </p>
           <div>
-            <p className="text-slate-300 font-medium mb-1">First-year fee</p>
+            <p className="text-slate-300 font-medium mb-1">First-year waivers</p>
             <p>
-              Cards with a first-year fee waiver still appear at their full
-              annual fee here. The waiver is reflected in the EAF
-              calculation, where year-1 uses the waived fee and subsequent
-              years use the recurring fee.
+              Cards with a waived first-year fee still show at their full
+              fee here. The waiver only affects the Effective Annual Fee,
+              where year 1 uses the waived amount and later years use the
+              recurring fee.
             </p>
           </div>
           <div>
             <p className="text-slate-300 font-medium mb-1">Disabled cards</p>
             <p>
-              Cards toggled off in the timeline are excluded from all wallet
-              totals. Re-enable them to include their fees and earn in the
-              summary.
+              Cards toggled off in the timeline don't count toward any
+              wallet totals. Turn them back on to include their fees and
+              rewards.
             </p>
           </div>
         </InfoQuoteBox>
@@ -411,36 +408,33 @@ export function WalletSummaryStats({
       {statTopic?.name === 'subs' && (
         <InfoQuoteBox anchorEl={statTopic.anchor} title="Sign Up Bonuses" onClose={() => setStatTopic(null)}>
           <p>
-            Controls whether Sign Up Bonuses count toward the wallet's
-            effective annual fee and recurring income across the roadmap.
-            Toggle off to see the wallet's steady-state value — how it earns
-            once all SUBs have been claimed and the welcome period is over.
+            Controls whether sign-up bonuses affect the wallet's Effective
+            Annual Fee and income. Turn off to see what the wallet looks
+            like once every welcome offer has been claimed — its long-term,
+            steady-state value.
           </p>
           <div>
-            <p className="text-slate-300 font-medium mb-1">When included</p>
+            <p className="text-slate-300 font-medium mb-1">When on</p>
             <p>
-              SUB bonuses (points and cash) are amortised into EAF, the SUB
-              spend requirement pulls allocation priority during its window
-              (inflating recurring income for the card with an active SUB),
-              and SUB opportunity cost is deducted from the best alternative
-              card.
+              Sign-up bonuses are spread across the projection and counted
+              toward income. Cards with an active sign-up offer get
+              priority for spend during their window (which boosts their
+              income those months). The lost value from diverting spend
+              away from your best-earning card is deducted.
             </p>
           </div>
           <div>
-            <p className="text-slate-300 font-medium mb-1">When excluded</p>
+            <p className="text-slate-300 font-medium mb-1">When off</p>
             <p>
-              Every card is evaluated as if it had no welcome offer: no SUB
-              amortisation in EAF, no SUB-window allocation boost, and no
-              opportunity cost. Useful for comparing cards on their long-term
-              merits.
+              Every card is treated as if it had no welcome offer. Useful
+              for comparing cards purely on long-term value.
             </p>
           </div>
           <div>
-            <p className="text-slate-300 font-medium mb-1">What stays the same</p>
+            <p className="text-slate-300 font-medium mb-1">What doesn't change</p>
             <p>
-              Currency balances you track manually are unaffected. The
-              roadmap's SUB earned-date markers and 5/24 status also ignore
-              this toggle.
+              Point balances you track manually. The timeline's SUB
+              earned-date markers and 5/24 status also aren't affected.
             </p>
           </div>
         </InfoQuoteBox>
@@ -449,25 +443,26 @@ export function WalletSummaryStats({
       {statTopic?.name === 'duration' && (
         <InfoQuoteBox anchorEl={statTopic.anchor} title="Time Horizon" onClose={() => setStatTopic(null)}>
           <p>
-            How long to project the wallet's value. The calculator amortizes
-            one-time benefits (sign-up bonuses, first-year bonuses, first-year
-            fee waivers, one-time credits) across this period to produce an
-            average annual EAF.
+            How many years to project the wallet's value. One-time perks
+            — sign-up bonuses, first-year rewards, first-year fee waivers,
+            one-time credits — are spread across this period to produce
+            an average annual value.
           </p>
           <div>
-            <p className="text-slate-300 font-medium mb-1">Effect on EAF</p>
+            <p className="text-slate-300 font-medium mb-1">Why it matters</p>
             <p>
-              Longer horizons spread one-time benefits thinner, so cards with
-              big SUBs look less valuable per year. Recurring benefits (annual
-              fees, statement credits, category earn) are unaffected.
+              Longer projections spread one-time perks thinner, so cards
+              with big sign-up bonuses look less valuable per year.
+              Recurring stuff — annual fees, statement credits, everyday
+              rewards — isn't affected.
             </p>
           </div>
           <div>
-            <p className="text-slate-300 font-medium mb-1">Effect on roadmap</p>
+            <p className="text-slate-300 font-medium mb-1">Future cards</p>
             <p>
-              Cards with future <span className="text-slate-300">added_date</span> only count from when they
-              become active, so a longer window lets future cards contribute
-              proportionally more to the wallet total.
+              A card with a future start date only contributes from when
+              it becomes active, so a longer window gives those cards more
+              time to pay off.
             </p>
           </div>
         </InfoQuoteBox>

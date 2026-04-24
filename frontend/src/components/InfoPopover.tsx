@@ -156,8 +156,8 @@ export function InfoQuoteBox({
       {pos.placement === 'bottom' && (
         <div
           aria-hidden
-          className="absolute w-3 h-3 bg-slate-900 border-l border-t border-slate-700 rotate-45"
-          style={{ left: pos.arrowLeft - 6, top: -6 }}
+          className="absolute z-10 w-3 h-3 bg-slate-900 border-l border-t border-slate-700 rotate-45"
+          style={{ left: pos.arrowLeft - 6, top: -5 }}
         />
       )}
       <div className="relative bg-slate-900 border border-slate-700 rounded-lg shadow-xl shadow-black/40 px-4 py-3">
@@ -169,8 +169,8 @@ export function InfoQuoteBox({
       {pos.placement === 'top' && (
         <div
           aria-hidden
-          className="absolute w-3 h-3 bg-slate-900 border-r border-b border-slate-700 rotate-45"
-          style={{ left: pos.arrowLeft - 6, bottom: -6 }}
+          className="absolute z-10 w-3 h-3 bg-slate-900 border-r border-b border-slate-700 rotate-45"
+          style={{ left: pos.arrowLeft - 6, bottom: -5 }}
         />
       )}
     </div>,

@@ -179,9 +179,11 @@ export function WalletPortalSharesEditor({
           onClose={() => setInfoAnchor(null)}
         >
           <p>
-            What fraction of your travel-coverable spend in this currency do
-            you book through each travel portal? Cards earn elevated rates
-            only on the portal portion.
+            What share of your travel spend do you book through each
+            travel portal (like Chase Travel or Amex Travel)? Cards only
+            earn their boosted portal rate on the portion you actually
+            book through the portal — the rest earns the normal travel
+            rate.
           </p>
         </InfoQuoteBox>
       )}

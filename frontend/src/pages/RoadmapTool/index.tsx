@@ -529,40 +529,40 @@ export default function RoadmapToolPage() {
       )}
       <header className="mb-3 shrink-0 flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-white">Roadmap Tool</h1>
+          <h1 className="text-2xl font-bold text-white">Roadmap Tool</h1>
+        </div>
+        {wallet && (
+          <div className="shrink-0 flex items-center gap-2">
             <InfoIconButton
               onClick={(e) => {
                 const anchor = e.currentTarget
                 setMethodologyAnchor((cur) => (cur ? null : anchor))
               }}
-              label="Calculation methodology"
+              label="How the roadmap is calculated"
               size={18}
               active={!!methodologyAnchor}
             />
-          </div>
-        </div>
-        {wallet && (
-          <button
-            type="button"
-            onClick={calculateNow}
-            disabled={resultsMutation.isPending || !isStale}
-            aria-live="polite"
-            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              resultsMutation.isPending
-                ? 'bg-slate-700 text-slate-400 cursor-wait'
+            <button
+              type="button"
+              onClick={calculateNow}
+              disabled={resultsMutation.isPending || !isStale}
+              aria-live="polite"
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                resultsMutation.isPending
+                  ? 'bg-slate-700 text-slate-400 cursor-wait'
+                  : isStale
+                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-900 shadow-sm shadow-amber-900/40'
+                  : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+              }`}
+              title={isStale ? 'Results are out of date — click to recalculate' : 'Results are up to date'}
+            >
+              {resultsMutation.isPending
+                ? 'Calculating…'
                 : isStale
-                ? 'bg-amber-500 hover:bg-amber-400 text-slate-900 shadow-sm shadow-amber-900/40'
-                : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-            }`}
-            title={isStale ? 'Results are out of date — click to recalculate' : 'Results are up to date'}
-          >
-            {resultsMutation.isPending
-              ? 'Calculating…'
-              : isStale
-              ? 'Calculate'
-              : 'Up to Date'}
-          </button>
+                ? 'Calculate'
+                : 'Up to Date'}
+            </button>
+          </div>
         )}
       </header>
 

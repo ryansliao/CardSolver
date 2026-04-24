@@ -87,7 +87,7 @@ export function CurrencySettingsDropdown({ walletId, currencyId, leftGutterPx, o
                         const anchor = e.currentTarget
                         setNoTransferAnchor((cur) => (cur ? null : anchor))
                       }}
-                      label="Without a transfer-enabling card"
+                      label="Without a premium card"
                       size={11}
                       active={!!noTransferAnchor}
                     />
@@ -128,18 +128,23 @@ export function CurrencySettingsDropdown({ walletId, currencyId, leftGutterPx, o
       {noTransferAnchor && currency && (
         <InfoQuoteBox
           anchorEl={noTransferAnchor}
-          title="Without a Transfer Enabler"
+          title="Without a Premium Card"
           onClose={() => setNoTransferAnchor(null)}
         >
           <p>
+            These points reach their full value when you can transfer them
+            to airline and hotel partners, which requires a specific
+            premium card in your wallet (e.g. a Sapphire for Chase UR).
+          </p>
+          <p>
             {currency.no_transfer_rate != null ? (
               <>
-                Without a transfer-enabling card in the wallet, this currency is
-                valued at{' '}
+                Without one, points can only be redeemed as cash back, so
+                they're worth{' '}
                 <span className="text-amber-300 font-medium">
                   {Math.round(currency.no_transfer_rate * 100)}%
                 </span>{' '}
-                of its CPP (
+                of their full value (
                 <span className="text-amber-300 font-medium">
                   {(myCpp * currency.no_transfer_rate).toFixed(2)}¢
                 </span>{' '}
@@ -147,8 +152,8 @@ export function CurrencySettingsDropdown({ walletId, currencyId, leftGutterPx, o
               </>
             ) : (
               <>
-                Without a transfer-enabling card in the wallet, this currency is
-                valued at{' '}
+                Without one, points can only be redeemed as cash back, so
+                they're worth{' '}
                 <span className="text-amber-300 font-medium">
                   {currency.no_transfer_cpp}¢
                 </span>{' '}
@@ -156,7 +161,7 @@ export function CurrencySettingsDropdown({ walletId, currencyId, leftGutterPx, o
               </>
             )}
           </p>
-          <p>Full CPP requires a transfer-enabling card in the wallet.</p>
+          <p>Add the premium card to the wallet to unlock full value.</p>
         </InfoQuoteBox>
       )}
     </div>

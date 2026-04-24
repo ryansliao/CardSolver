@@ -150,33 +150,33 @@ export function SpendingTab({ walletId }: SpendingTabProps) {
           onClose={() => setForeignAnchor(null)}
         >
           <p>
-            Percentage of your total spend that occurs as foreign transactions.
-            Each spend category is split: the foreign portion is allocated
-            separately from the domestic portion.
+            What percentage of your yearly spend happens abroad. Each
+            category is split into a domestic part and a foreign part,
+            and the calculator assigns them separately.
           </p>
           <div>
-            <p className="text-slate-300 font-medium mb-1">FTF priority</p>
+            <p className="text-slate-300 font-medium mb-1">Card priority</p>
             <p>
-              Foreign spend goes to no-FTF cards first. If any no-FTF Visa or
-              Mastercard exists in the wallet, it gets priority over no-FTF
-              cards on other networks (e.g. American Express).
+              Foreign spend goes to cards with no foreign-transaction fee.
+              If the wallet has a no-fee Visa or Mastercard, that gets
+              priority over no-fee cards on other networks (like Amex),
+              since Visa/Mastercard are more widely accepted overseas.
             </p>
           </div>
           <div>
-            <p className="text-slate-300 font-medium mb-1">Per-category multiplier</p>
+            <p className="text-slate-300 font-medium mb-1">Rate on foreign spend</p>
             <p>
-              On the foreign portion of a category, the eligible card earns
-              {' '}<span className="font-mono text-[11px] text-slate-300">max(category_mult, foreign_transactions_mult)</span>.
-              So a card with a "Foreign Transactions" multiplier (e.g. Atmos
-              Summit at 3x) earns its full bonus on foreign Groceries even if
-              its normal Groceries rate is lower.
+              On the foreign portion of a category, a card earns whichever
+              is higher: its normal rate for that category, or its dedicated
+              "Foreign Transactions" rate. So a card with a foreign-spend
+              bonus (e.g. Atmos Summit at 3x) earns that on foreign
+              groceries even if its domestic grocery rate is lower.
             </p>
           </div>
           <div>
-            <p className="text-slate-300 font-medium mb-1">Fallback</p>
+            <p className="text-slate-300 font-medium mb-1">If every card charges a foreign fee</p>
             <p>
-              If every card in the wallet charges a foreign transaction fee,
-              cards compete normally and the user incurs the ~3% fee on the
+              Cards compete normally and you pay the ~3% fee on the
               winning card's foreign spend.
             </p>
           </div>
