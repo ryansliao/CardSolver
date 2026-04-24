@@ -389,15 +389,43 @@ def _solve_segment_allocation_lp(
         if pinned_set is not None and k_idx not in pinned_set:
             bounds.append((0.0, 0.0))
         else:
-            # For rotating categories, limit allocation to frequency share.
-            # This ensures each card only captures its activation probability
-            # worth of spend, with the remainder going to other cards.
-            freq = rotating_freq.get((k_idx, cat_lower))
-            if freq is not None and freq < 1.0:
-                upper = d_c * freq
-            else:
-                upper = d_c
-            bounds.append((0.0, upper))
+            # Per-variable upper bound caps only the individual variable at
+            # d_c. The frequency share for rotating categories is applied as
+            # a combined (e + b) constraint below, so the LP can't double-dip
+            # by filling both the base and bonus variables up to freq × d_c
+            # separately.
+            bounds.append((0.0, d_c))
+
+    # Combined (e + b) upper bound per (card, rotating category): total spend
+    # allocated to this card on this category cannot exceed its frequency
+    # share of the segment's category dollars. Applied as an inequality on
+    # the sum of the base and bonus variables — NOT as per-variable upper
+    # bounds — so the LP can freely shift between e and b under the bonus
+    # cap but cannot exceed the frequency share in aggregate.
+    for (k_idx, cat_lower), freq in rotating_freq.items():
+        if freq >= 1.0:
+            continue
+        cat_idx = None
+        for idx, (cat, _d) in enumerate(cat_dollars):
+            if cat.strip().lower() == cat_lower:
+                cat_idx = idx
+                break
+        if cat_idx is None:
+            continue
+        _cat_name, d_c = cat_dollars[cat_idx]
+        row = [0.0] * n_vars
+        any_member = False
+        i_e = var_lookup.get(("e", k_idx, cat_idx))
+        if i_e is not None:
+            row[i_e] = 1.0
+            any_member = True
+        i_b = var_lookup.get(("b", k_idx, cat_idx))
+        if i_b is not None:
+            row[i_b] = 1.0
+            any_member = True
+        if any_member:
+            A_ub.append(row)
+            b_ub.append(d_c * freq)
 
     # Solve. Only scipy-missing (ImportError) should trigger the greedy
     # fallback silently — real solver errors indicate a bug in our LP setup
