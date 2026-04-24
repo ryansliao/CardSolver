@@ -235,7 +235,12 @@ class CardResult:
     # for per-card income display; wallet/currency totals use wallet years.
     card_active_years: float = 0.0
     total_points: float = 0.0
+    # Per-card per-active-year earn rate (for per-card display). Excludes SUBs.
     annual_point_earn: float = 0.0
+    # Window-basis earn rate (total_card_earn / wallet_window_years), excluding
+    # SUBs. Use this for wallet/currency-group aggregation so summing per-card
+    # values stays on the wallet window and doesn't inflate.
+    annual_point_earn_window: float = 0.0
     credit_valuation: float = 0.0
     annual_fee: float = 0.0
     first_year_fee: Optional[float] = None
@@ -291,7 +296,9 @@ class WalletResult:
     years_counted: int
     total_effective_annual_fee: float
     total_points_earned: float
-    total_annual_pts: float
+    # Wallet-level annual points income — total points earned across the wallet
+    # window divided by the window's years. Not a sum of per-card annual rates.
+    point_income: float
     # Sum of CardResult.sub_eaf_contribution across selected cards; frontend
     # adds this to total_effective_annual_fee when the wallet-level "Include
     # SUBs" toggle is off, so toggling is a display-only switch.
@@ -303,6 +310,14 @@ class WalletResult:
     # currency_name -> total points over the projection period (spend + SUB/bonuses, net of SUB opp cost).
     currency_pts: dict[str, float] = field(default_factory=dict)
     currency_pts_by_id: dict[int, float] = field(default_factory=dict)
+    # Wallet calc window in years (end - start, fractional).
+    wallet_window_years: float = 0.0
+    # Per-currency active window in years, keyed by effective currency id.
+    # Spans from the earliest open to the latest close (or window end) among
+    # selected cards earning the currency, clamped to the wallet window. Used
+    # by the frontend to annualize per-currency income over the currency's
+    # own window rather than the full wallet window.
+    currency_window_years: dict[int, float] = field(default_factory=dict)
     # Secondary currency totals (e.g. Bilt Cash earned across all cards)
     secondary_currency_pts: dict[str, float] = field(default_factory=dict)
     secondary_currency_pts_by_id: dict[int, float] = field(default_factory=dict)

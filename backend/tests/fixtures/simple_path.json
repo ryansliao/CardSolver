@@ -9,6 +9,7 @@
       "annual_bonus_percent": 0.0,
       "annual_fee": 95.0,
       "annual_point_earn": 8000.0,
+      "annual_point_earn_window": 8000.0,
       "avg_spend_multiplier": 1.5333,
       "card_active_years": 2.0,
       "card_effective_annual_fee": -672.5,
@@ -61,6 +62,7 @@
       "annual_bonus_percent": 0.0,
       "annual_fee": 325.0,
       "annual_point_earn": 44000.0,
+      "annual_point_earn_window": 44000.0,
       "avg_spend_multiplier": 2.1,
       "card_active_years": 2.0,
       "card_effective_annual_fee": -1146.5,
@@ -117,6 +119,7 @@
       "annual_bonus_percent": 0.0,
       "annual_fee": 0.0,
       "annual_point_earn": 30000.0,
+      "annual_point_earn_window": 30000.0,
       "avg_spend_multiplier": 2.0,
       "card_active_years": 2.0,
       "card_effective_annual_fee": -300.0,
@@ -165,13 +168,19 @@
     "2": 154000.0,
     "3": 60000.0
   },
+  "currency_window_years": {
+    "1": 2.0,
+    "2": 2.0,
+    "3": 2.0
+  },
+  "point_income": 52000.0,
   "secondary_currency_pts": {},
   "secondary_currency_pts_by_id": {},
-  "total_annual_pts": 52000.0,
   "total_cash_reward_dollars": 600.0,
   "total_effective_annual_fee": -2119.0,
   "total_points_earned": 234000.0,
   "total_reward_value_usd": 4658.0,
   "total_sub_eaf_contribution": 1137.0,
+  "wallet_window_years": 2.0,
   "years_counted": 2
 }

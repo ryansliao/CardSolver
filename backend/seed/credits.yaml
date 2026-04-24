@@ -295,6 +295,13 @@ credits:
     value: 120.0
   - card: Delta SkyMiles Reserve
     value: 240.0
+- credit_name: Rideshare Credit
+  currency: Cash
+  cards:
+  - card: Delta SkyMiles Platinum
+    value: 120.0
+  - card: Delta SkyMiles Reserve
+    value: 120.0
 - credit_name: Saks Fifth Avenue Credit
   currency: Cash
   cards:

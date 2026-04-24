@@ -310,7 +310,10 @@ export interface CardResult {
   card_effective_annual_fee: number
   card_active_years: number
   total_points: number
+  /** Per-active-year earn rate (for per-card display). */
   annual_point_earn: number
+  /** Window-basis earn rate (total_card_earn / wallet_window_years, no SUB). Use for wallet/currency-group aggregation so summing stays on the wallet window. */
+  annual_point_earn_window: number
   credit_valuation: number
   annual_fee: number
   first_year_fee: number | null
@@ -352,7 +355,8 @@ export interface WalletResult {
   years_counted: number
   total_effective_annual_fee: number
   total_points_earned: number
-  total_annual_pts: number
+  /** Total points earned across the wallet window ÷ window years (not a sum of per-card rates). */
+  point_income: number
   /** Sum of CardResult.sub_eaf_contribution across selected cards. */
   total_sub_eaf_contribution?: number
   total_cash_reward_dollars?: number
@@ -360,6 +364,13 @@ export interface WalletResult {
   currency_pts: Record<string, number>
   /** Same as currency_pts but keyed by currency id (stable vs renames). */
   currency_pts_by_id?: Record<string, number>
+  /** Wallet calc window in years (fractional). */
+  wallet_window_years?: number
+  /** Per-currency active window in years, keyed by effective currency id.
+   * Spans earliest card open → latest close among selected cards earning
+   * the currency, clamped to the wallet window. Use to annualize per-currency
+   * income over the currency's own window. */
+  currency_window_years?: Record<string, number>
   secondary_currency_pts: Record<string, number>
   secondary_currency_pts_by_id?: Record<string, number>
   card_results: CardResult[]

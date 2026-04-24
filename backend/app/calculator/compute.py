@@ -419,6 +419,25 @@ def compute_wallet(
                 )
             )
 
+    # Wallet-window years: basis for wallet-level annual metrics (EAF, point
+    # income, SUB contribution). Segmented path uses the actual date span;
+    # simple path falls back to the integer ``years`` parameter.
+    if use_segmentation and window_start is not None and window_end is not None:
+        wallet_window_years = (window_end - window_start).days / 365.25
+    else:
+        wallet_window_years = float(years)
+
+    # Accumulate wallet-window totals across selected cards so the wallet-level
+    # EAF, SUB contribution, and point income can be computed from a single
+    # window-wide figure (total / window_years). These are independent of the
+    # per-card display fields (which are active-year-basis) so that the
+    # wallet metrics stay on the wallet's own window.
+    wallet_net_dollars_total = 0.0
+    wallet_sub_dollars_total = 0.0
+    # Points-only: recurring earn (categories + annual/pct bonuses), excluding
+    # SUBs. Matches the pre-refactor definition of ``total_annual_pts``.
+    wallet_earn_pts_over_window_total = 0.0
+
     card_results: list[CardResult] = []
 
     for card in all_cards:
@@ -456,7 +475,7 @@ def compute_wallet(
         if use_segmentation:
             (
                 net_annual,
-                annual_point_earn,
+                annual_point_earn_window,
                 annual_point_earn_for_balance,
                 sub_contrib_per_wallet_year,
             ) = _segmented_card_net_per_year(
@@ -469,7 +488,7 @@ def compute_wallet(
             effective_annual_fee = round(-net_annual, 4)
             # Per-card EAF: re-annualize using the card's own active years.
             # net_annual = total_net / wallet_years, so total_net = net_annual * wallet_years.
-            total_years_window = (window_end - window_start).days / 365.25  # type: ignore[operator]
+            total_years_window = wallet_window_years
             card_net_annual = net_annual * total_years_window / card_active_years
             card_effective_annual_fee = round(-card_net_annual, 4)
             # sub_eaf_contribution: dollars the "Include SUBs" toggle would
@@ -480,13 +499,23 @@ def compute_wallet(
             card_sub_eaf_contribution = round(
                 sub_contrib_per_wallet_year * total_years_window / card_active_years, 4,
             )
-            # total_points: the displayed "annual point income" multiplied by
-            # the card's active years in the window, plus one-time SUB. This
-            # is what the user reads as "balance": a card earning X/year and
-            # active for Y years shows a balance of X*Y, so a card active
-            # less than a year shows a balance less than X. We use the
-            # balance-view earn here (default CPP allocation) so wallet CPP
-            # overrides don't skew the point totals.
+            # Wallet-level totals: accumulate window-basis totals so the
+            # wallet metrics stay on the wallet window regardless of how
+            # per-card display values are scaled.
+            wallet_net_dollars_total += net_annual * wallet_window_years
+            wallet_sub_dollars_total += sub_contrib_per_wallet_year * wallet_window_years
+            if eff_currency.reward_kind != "cash":
+                wallet_earn_pts_over_window_total += (
+                    annual_point_earn_window * wallet_window_years
+                )
+            # Displayed annual_point_earn is the card's per-active-year rate
+            # (earn averaged over its own open window). The returned value is
+            # window-basis (total_earn / wallet_years), so we rescale:
+            # total_earn = window_rate * wallet_years, active_rate = total_earn / active_years.
+            annual_point_earn = annual_point_earn_window * total_years_window / card_active_years
+            # total_points (currency balance) stays on the existing formula,
+            # which uses the window-basis balance rate — the "holistic" balance
+            # calc is unchanged by the display rebasis.
             sub_earnable_pts = card.sub_points if card.sub_earnable else 0
             total_points = annual_point_earn_for_balance * card_active_years + sub_earnable_pts
         else:
@@ -515,6 +544,15 @@ def compute_wallet(
                 card, selected_cards, spend, years, active_wallet_currency_ids,
                 precomputed_earn=annual_point_earn_for_balance,
             )
+            # Simple path has no active/window split; window rate == display rate.
+            annual_point_earn_window = annual_point_earn
+            # Wallet-level totals: accumulate window-basis totals so the
+            # wallet metrics stay on the wallet window regardless of how
+            # per-card display values are scaled.
+            wallet_net_dollars_total += net_annual * wallet_window_years
+            wallet_sub_dollars_total += sub_contrib_per_wallet_year * wallet_window_years
+            if card.currency.reward_kind != "cash":
+                wallet_earn_pts_over_window_total += annual_point_earn * wallet_window_years
         credit_val = calc_credit_valuation(card)
         sub_extra = calc_sub_extra_spend(card, spend, selected_cards, active_wallet_currency_ids)
         gross_opp, net_opp = calc_sub_opportunity_cost(
@@ -612,6 +650,7 @@ def compute_wallet(
                 card_active_years=round(card_active_years, 4),
                 total_points=round(total_points, 2),
                 annual_point_earn=round(annual_point_earn, 2),
+                annual_point_earn_window=round(annual_point_earn_window, 2),
                 credit_valuation=round(credit_val, 2),
                 annual_fee=card.annual_fee,
                 first_year_fee=card.first_year_fee,
@@ -645,16 +684,30 @@ def compute_wallet(
         )
 
     selected_results = [r for r in card_results if r.selected]
-    total_effective_annual_fee = round(
-        sum(r.effective_annual_fee for r in selected_results), 4
-    )
-    total_sub_eaf_contribution = round(
-        sum(r.sub_eaf_contribution for r in selected_results), 4
-    )
+    # Wallet-level EAF and SUB contribution: computed from the wallet's
+    # window-wide dollar totals divided by window years. Not a sum of per-card
+    # annual rates — a single wallet-window figure.
+    if wallet_window_years > 0:
+        total_effective_annual_fee = round(
+            -wallet_net_dollars_total / wallet_window_years, 4
+        )
+        total_sub_eaf_contribution = round(
+            wallet_sub_dollars_total / wallet_window_years, 4
+        )
+    else:
+        total_effective_annual_fee = 0.0
+        total_sub_eaf_contribution = 0.0
     points_only = [r for r in selected_results if r.effective_reward_kind != "cash"]
     cash_only = [r for r in selected_results if r.effective_reward_kind == "cash"]
     total_points_earned = round(sum(r.total_points for r in points_only), 2)
-    total_annual_pts = round(sum(r.annual_point_earn for r in points_only), 2)
+    # Point income: wallet's recurring annual point earn rate over the window.
+    # Excludes SUBs (which are one-time) and is computed from a wallet-window
+    # total independent of per-card display values — equivalent to the
+    # pre-refactor ``sum(r.annual_point_earn)`` when per-card rates were still
+    # on the window basis.
+    point_income = round(
+        wallet_earn_pts_over_window_total / wallet_window_years, 2
+    ) if wallet_window_years > 0 else 0.0
     total_cash_reward_dollars = round(
         sum(r.total_points * r.cents_per_point / 100.0 for r in cash_only), 4
     )
@@ -672,6 +725,38 @@ def compute_wallet(
         cid = r.effective_currency_id
         if cid:
             currency_pts_by_id[cid] = currency_pts_by_id.get(cid, 0.0) + r.total_points
+
+    # Per-currency active window: earliest card open → latest close (or window
+    # end) among selected cards earning each effective currency. Clamped to
+    # the wallet window. Lets the frontend annualize per-currency income over
+    # the currency's own window rather than the full wallet window (otherwise
+    # a late-starting currency looks understated).
+    currency_window_years: dict[int, float] = {}
+    if use_segmentation and window_start is not None and window_end is not None:
+        # Group selected cards by effective currency id, then build each
+        # currency's earliest-open / latest-close within [window_start, window_end).
+        per_currency_bounds: dict[int, tuple[date, date]] = {}
+        for card in selected_cards:
+            eff = _effective_currency(card, active_wallet_currency_ids)
+            cid = eff.id
+            start = max(card.wallet_added_date or window_start, window_start)
+            end = min(card.wallet_closed_date or window_end, window_end)
+            if end <= start:
+                continue
+            if cid in per_currency_bounds:
+                cur_s, cur_e = per_currency_bounds[cid]
+                per_currency_bounds[cid] = (min(cur_s, start), max(cur_e, end))
+            else:
+                per_currency_bounds[cid] = (start, end)
+        for cid, (s, e) in per_currency_bounds.items():
+            yrs = (e - s).days / 365.25
+            if yrs > 0:
+                currency_window_years[cid] = round(yrs, 4)
+    else:
+        # Simple path: treat each currency's window as the full projection years.
+        for r in selected_results:
+            if r.effective_currency_id:
+                currency_window_years[r.effective_currency_id] = float(years)
     currency_pts = {k: round(v, 2) for k, v in currency_pts.items()}
     currency_pts_by_id = {k: round(v, 2) for k, v in currency_pts_by_id.items()}
 
@@ -693,12 +778,14 @@ def compute_wallet(
         years_counted=years,
         total_effective_annual_fee=total_effective_annual_fee,
         total_points_earned=total_points_earned,
-        total_annual_pts=total_annual_pts,
+        point_income=point_income,
         total_sub_eaf_contribution=total_sub_eaf_contribution,
         total_cash_reward_dollars=total_cash_reward_dollars,
         total_reward_value_usd=total_reward_value_usd,
         currency_pts=currency_pts,
         currency_pts_by_id=currency_pts_by_id,
+        wallet_window_years=round(wallet_window_years, 4) if wallet_window_years > 0 else 0.0,
+        currency_window_years=currency_window_years,
         secondary_currency_pts=secondary_currency_pts,
         secondary_currency_pts_by_id=secondary_currency_pts_by_id,
         card_results=card_results,

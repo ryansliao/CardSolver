@@ -451,19 +451,24 @@ def _segmented_category_earn_breakdown(
     precomputed_seg_alloc: list[dict[int, dict[str, float]]] | None = None,
 ) -> list[tuple[str, float]]:
     """
-    Time-weighted per-category earn breakdown for the segmented calculation path.
-    Points are accumulated as (seg_fraction × per-category-pts) across all
-    segments where this card is active.
-
-    precomputed_seg_alloc: optional pre-solved per-segment allocations from the
-    LP optimizer. When provided, the breakdown reads from the cache to ensure it
-    matches what _segmented_card_net_per_year computed for the same segments.
+    Per-category earn breakdown for the segmented calculation path, annualized
+    over the card's own active window (added_date → closed_date or window_end).
+    This matches the card-level ``annual_point_earn`` display, which is the
+    per-active-year rate — so a card open for half the window still shows its
+    full per-year earn rate rather than a window-averaged rate.
     """
     total_days = (window_end - window_start).days
     if total_days <= 0:
         return calc_category_earn_breakdown(
             card, selected_cards, spend, _wallet_currency_ids(selected_cards)
         )
+
+    card_start_in_window = max(card.wallet_added_date or window_start, window_start)
+    card_end_in_window = min(card.wallet_closed_date or window_end, window_end)
+    active_days = max(0, (card_end_in_window - card_start_in_window).days)
+    # Floor to 1 month so near-zero active windows don't blow up the rate;
+    # matches the floor used in compute.py for card_active_years.
+    active_days_safe = max(active_days, 365.25 / 12)
 
     segments = _build_segments(window_start, window_end, selected_cards)
     cat_totals: dict[str, float] = {}
@@ -482,11 +487,11 @@ def _segmented_category_earn_breakdown(
                 card, spend, active, seg_currency_ids, sub_prio,
                 seg_days, seg_start, local_cap_state,
             )
-        # seg_cat_pts is segment-actual raw-currency points. Convert to the
-        # card's effective annual-rate share so the breakdown matches
-        # annual_point_earn (which is also time-weighted annual rate).
+        # Accumulate raw segment pts; we annualize by the card's active days
+        # (not the wallet window) so the breakdown represents the card's own
+        # per-year earn rate while it is open.
         for cat, pts in seg_cat_pts.items():
-            cat_totals[cat] = cat_totals.get(cat, 0) + pts * 365.25 / total_days
+            cat_totals[cat] = cat_totals.get(cat, 0) + pts * 365.25 / active_days_safe
 
     # Annual bonus is included at full value (same as calc_annual_point_earn_allocated).
     if card.annual_bonus > 0:

@@ -1012,6 +1012,10 @@ cards:
   sub_months: 6
   photo_slug: delta_skymiles_blue
   foreign_transaction_fee: true
+  multipliers:
+  - category: Airlines
+    multiplier: 5.0
+    is_portal: true
 - name: Delta SkyMiles Gold
   issuer: American Express
   currency: Delta SkyMiles
@@ -1026,7 +1030,7 @@ cards:
   photo_slug: delta_skymiles_gold
   multipliers:
   - category: Airlines
-    multiplier: 2.0
+    multiplier: 7.0
     is_portal: true
   - category: Dining
     multiplier: 2.0
@@ -1047,7 +1051,7 @@ cards:
   photo_slug: delta_skymiles_platinum
   multipliers:
   - category: Airlines
-    multiplier: 3.0
+    multiplier: 8.0
     is_portal: true
   - category: Dining
     multiplier: 2.0
@@ -1070,7 +1074,7 @@ cards:
   photo_slug: delta_skymiles_reserve
   multipliers:
   - category: Airlines
-    multiplier: 3.0
+    multiplier: 8.0
     is_portal: true
   - category: Hotels
     multiplier: 3.0

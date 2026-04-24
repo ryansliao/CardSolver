@@ -7,6 +7,12 @@ import type {
   WalletResult,
 } from '../../../../api/client'
 import { formatMoney, formatMoneyCompact, formatPoints, formatPointsExact, pointsUnitLabel, today } from '../../../../utils/format'
+import {
+  cardAnnualPointIncomeActive,
+  cardAnnualPointIncomeCurrencyWindow,
+  cardEafActive,
+  cardEafWindow,
+} from '../../../../utils/cardIncome'
 import { useCardLibrary } from '../../hooks/useCardLibrary'
 
 interface Props {
@@ -25,14 +31,6 @@ interface Props {
   onEditCard: (wc: WalletCard) => void
   onAddCard: () => void
   onEditCurrency: (currencyId: number) => void
-}
-
-/** EAF value to render for a card, applying the "Include SUBs" toggle as
- * a display-only adjustment on top of the backend's SUB-included value. */
-function displayedCardEaf(cr: CardResult | null | undefined, includeSubs: boolean): number | null {
-  if (!cr) return null
-  const base = cr.card_effective_annual_fee ?? 0
-  return includeSubs ? base : base + (cr.card_sub_eaf_contribution ?? 0)
 }
 
 const LEFT_GUTTER = 380 // px
@@ -66,24 +64,11 @@ function pctOf(range: Range, ms: number): number {
   return clamp01((ms - range.startMs) / range.spanMs) * 100
 }
 
-function annualIncomePoints(c: CardResult | null, includeSubs: boolean): number | null {
-  if (!c) return null
-  // `annual_point_earn` is already per-year on both the simple path and the
-  // segmented path (which time-weights across segments). It excludes SUB and
-  // first-year bonuses. When the wallet-level "Include SUBs" toggle is on,
-  // add the SUB dollar contribution back (converted to effective-currency
-  // points) so the income display reflects the toggle — no recalc needed.
-  if (!includeSubs) return c.annual_point_earn
-  const subDollars = c.sub_eaf_contribution ?? 0
-  if (!subDollars || !c.cents_per_point) return c.annual_point_earn
-  return c.annual_point_earn + (subDollars * 100) / c.cents_per_point
-}
-
 /** Format a card's annual income. Cash cards: "$X /Year". Points/miles
  * cards: "X Pts/Year" or "X Miles/Year" based on the effective currency
  * name (airline mileage programs get "Miles"). */
 function formatCardIncome(c: CardResult | null, includeSubs: boolean): string | null {
-  const pts = annualIncomePoints(c, includeSubs)
+  const pts = cardAnnualPointIncomeActive(c, includeSubs)
   if (pts == null || c == null) return null
   if (c.effective_reward_kind === 'cash') {
     const dollars = (pts * c.cents_per_point) / 100
@@ -96,11 +81,24 @@ function formatCardIncome(c: CardResult | null, includeSubs: boolean): string | 
 /** Annual dollar value of a group, regardless of reward kind. Sums only
  * cards that were included in the last calc (have a `cr`). Does NOT gate
  * by live `is_enabled` so group totals/ordering stay stable until the
- * user clicks Calculate again. */
-function groupAnnualDollars(group: GroupData, includeSubs: boolean): number {
+ * user clicks Calculate again. Uses the currency's own window (earliest
+ * card open → latest close among cards earning the currency) for
+ * annualization when available. */
+function groupAnnualDollars(
+  group: GroupData,
+  includeSubs: boolean,
+  walletWindowYears: number | undefined,
+  currencyWindowYears: number | undefined,
+): number {
   return group.cards.reduce((s, { cr }) => {
     if (!cr) return s
-    const pts = annualIncomePoints(cr, includeSubs) ?? 0
+    const pts =
+      cardAnnualPointIncomeCurrencyWindow(
+        cr,
+        includeSubs,
+        walletWindowYears,
+        currencyWindowYears,
+      ) ?? 0
     return s + (pts * cr.cents_per_point) / 100
   }, 0)
 }
@@ -118,32 +116,44 @@ function groupBalanceDollars(group: GroupData): number {
   return (group.totalBalance * cpp) / 100
 }
 
-/** Sum of per-card effective annual fee across all cards earning this
- * currency. Used as a tiebreaker when ordering zero-balance currencies. */
+/** Sum of per-card EAF across all cards earning this currency. Uses the
+ * window-basis flavor (not the active-year one) so the sum stays on the
+ * wallet window. Used as a tiebreaker when ordering zero-balance
+ * currencies, so it always honors the "include SUBs" toggle as a display
+ * switch — passing `true` mirrors the backend's SUB-inclusive value. */
 function groupCombinedEaf(group: GroupData): number {
-  return group.cards.reduce((s, { cr }) => {
-    if (!cr) return s
-    return s + (cr.card_effective_annual_fee ?? 0)
-  }, 0)
+  return group.cards.reduce(
+    (s, { cr }) => s + (cardEafWindow(cr ?? null, true) ?? 0),
+    0,
+  )
 }
 
 
-function formatGroupIncome(group: GroupData, includeSubs: boolean): string | null {
+function formatGroupIncome(
+  group: GroupData,
+  includeSubs: boolean,
+  walletWindowYears: number | undefined,
+  currencyWindowYears: number | undefined,
+): string | null {
   const { rewardKind, cards } = group
   if (!rewardKind) return null
   const included = cards.filter(({ cr }) => cr != null)
   if (included.length === 0) return null
+  const scaledPts = (c: CardResult | null | undefined): number =>
+    cardAnnualPointIncomeCurrencyWindow(
+      c ?? null,
+      includeSubs,
+      walletWindowYears,
+      currencyWindowYears,
+    ) ?? 0
   if (rewardKind === 'cash') {
     const dollars = included.reduce((s, { cr }) => {
-      const pts = annualIncomePoints(cr ?? null, includeSubs) ?? 0
+      const pts = scaledPts(cr)
       return s + (pts * (cr?.cents_per_point ?? 1)) / 100
     }, 0)
     return `${formatMoney(dollars)} /Year`
   }
-  const pts = included.reduce(
-    (s, { cr }) => s + (annualIncomePoints(cr ?? null, includeSubs) ?? 0),
-    0,
-  )
+  const pts = included.reduce((s, { cr }) => s + scaledPts(cr), 0)
   const rounded = Math.round(pts)
   return `${formatPoints(rounded)} /Year`
 }
@@ -226,6 +236,11 @@ export function WalletTimelineChart({
   }, [durationYears, durationMonths])
 
   const totalYears = Math.max(durationYears + durationMonths / 12, 1 / 12)
+
+  // Wallet window (fractional years) from the backend; falls back to the
+  // duration slider when not provided (e.g. pre-calc render).
+  const walletWindowYears = result?.wallet_window_years || totalYears
+  const currencyWindowYearsById = result?.currency_window_years ?? {}
 
   const cardResultById = useMemo(() => {
     const m = new Map<number, CardResult>()
@@ -397,12 +412,14 @@ export function WalletTimelineChart({
       }
       // Order groups by recurring income only (SUB-excluded) so the group
       // sequence stays stable when the user flips the "Include SUBs" toggle.
-      const da = groupAnnualDollars(a, false)
-      const db = groupAnnualDollars(b, false)
+      const cyA = a.currencyId ? currencyWindowYearsById[String(a.currencyId)] : undefined
+      const cyB = b.currencyId ? currencyWindowYearsById[String(b.currencyId)] : undefined
+      const da = groupAnnualDollars(a, false, walletWindowYears, cyA)
+      const db = groupAnnualDollars(b, false, walletWindowYears, cyB)
       if (da !== db) return db - da
       return a.name.localeCompare(b.name)
     })
-  }, [visibleCards, cardResultById, libraryById, totalYears])
+  }, [visibleCards, cardResultById, libraryById, totalYears, walletWindowYears, currencyWindowYearsById])
 
   // Earliest future date where the 5/24 count (personal, opened, enabled
   // wallet cards added in the trailing 730 days) transitions from ≥5 to <5
@@ -589,6 +606,10 @@ export function WalletTimelineChart({
                 isStale={isStale}
                 includeSubs={includeSubs}
                 rightColumnPx={rightColumnPx}
+                walletWindowYears={walletWindowYears}
+                currencyWindowYears={
+                  g.currencyId ? currencyWindowYearsById[String(g.currencyId)] : undefined
+                }
                 onToggleEnabled={onToggleEnabled}
                 onEditCard={onEditCard}
                 onEditCurrency={onEditCurrency}
@@ -650,6 +671,8 @@ interface GroupSectionProps {
   isStale: boolean
   includeSubs: boolean
   rightColumnPx: number
+  walletWindowYears: number
+  currencyWindowYears: number | undefined
   onToggleEnabled: (cardId: number, enabled: boolean) => void
   onEditCard: (wc: WalletCard) => void
   onEditCurrency: (currencyId: number) => void
@@ -663,12 +686,14 @@ function GroupSection({
   isStale,
   includeSubs,
   rightColumnPx,
+  walletWindowYears,
+  currencyWindowYears,
   onToggleEnabled,
   onEditCard,
   onEditCurrency,
 }: GroupSectionProps) {
   const balanceLabel = formatGroupBalance(group)
-  const incomeLabel = formatGroupIncome(group, includeSubs)
+  const incomeLabel = formatGroupIncome(group, includeSubs, walletWindowYears, currencyWindowYears)
 
   return (
     <>
@@ -815,7 +840,7 @@ function CardRow({
   // show an em-dash placeholder so the row clearly reads as "not
   // contributing right now" instead of implying $0 EAF / 0 pts.
   const incomeLabel = enabled ? formatCardIncome(cr, includeSubs) : '—'
-  const eafValue = enabled ? displayedCardEaf(cr, includeSubs) : null
+  const eafValue = enabled ? cardEafActive(cr, includeSubs) : null
   const eafLabelText = enabled
     ? eafValue != null
       ? `${formatMoney(eafValue)} EAF`

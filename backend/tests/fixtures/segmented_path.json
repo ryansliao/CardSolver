@@ -9,6 +9,7 @@
       "annual_bonus_percent": 0.0,
       "annual_fee": 95.0,
       "annual_point_earn": 10222.22,
+      "annual_point_earn_window": 10222.22,
       "avg_spend_multiplier": 1.5333,
       "card_active_years": 1.9959,
       "card_effective_annual_fee": -677.5134,
@@ -60,7 +61,8 @@
       "annual_bonus_first_year_only": false,
       "annual_bonus_percent": 0.0,
       "annual_fee": 325.0,
-      "annual_point_earn": 38567.9,
+      "annual_point_earn": 44000.0,
+      "annual_point_earn_window": 38567.9,
       "avg_spend_multiplier": 2.1,
       "card_active_years": 1.7495,
       "card_effective_annual_fee": -1145.2594,
@@ -70,11 +72,11 @@
       "category_earn": [
         [
           "Dining",
-          21037.04
+          24000.0
         ],
         [
           "Groceries",
-          17530.86
+          20000.0
         ]
       ],
       "category_multipliers": {
@@ -113,6 +115,7 @@
       "annual_bonus_percent": 0.0,
       "annual_fee": 0.0,
       "annual_point_earn": 31234.57,
+      "annual_point_earn_window": 31234.57,
       "avg_spend_multiplier": 2.0,
       "card_active_years": 1.9959,
       "card_effective_annual_fee": -312.3457,
@@ -165,13 +168,19 @@
     "2": 127474.03,
     "3": 62340.86
   },
+  "currency_window_years": {
+    "1": 1.9959,
+    "2": 1.7495,
+    "3": 1.9959
+  },
+  "point_income": 48790.12,
   "secondary_currency_pts": {},
   "secondary_currency_pts_by_id": {},
-  "total_annual_pts": 48790.12,
   "total_cash_reward_dollars": 623.4086,
   "total_effective_annual_fee": -1993.7284,
   "total_points_earned": 207876.49,
   "total_reward_value_usd": 4237.7114,
   "total_sub_eaf_contribution": 1052.1605,
+  "wallet_window_years": 1.9959,
   "years_counted": 2
 }

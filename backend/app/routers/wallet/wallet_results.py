@@ -157,7 +157,7 @@ async def wallet_results(
                 years_counted=yc,
                 total_effective_annual_fee=0,
                 total_points_earned=0,
-                total_annual_pts=0,
+                point_income=0,
                 total_cash_reward_dollars=0,
                 total_reward_value_usd=0,
             ),

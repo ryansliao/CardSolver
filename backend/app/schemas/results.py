@@ -22,6 +22,7 @@ class CardResultSchema(BaseModel):
     card_active_years: float = 0.0
     total_points: float = 0.0
     annual_point_earn: float = 0.0
+    annual_point_earn_window: float = 0.0
     credit_valuation: float = 0.0
     annual_fee: float = 0.0
     first_year_fee: Optional[float] = None
@@ -68,7 +69,7 @@ class WalletResultSchema(BaseModel):
     years_counted: int
     total_effective_annual_fee: float
     total_points_earned: float
-    total_annual_pts: float
+    point_income: float
     # Sum of CardResultSchema.sub_eaf_contribution across selected cards.
     total_sub_eaf_contribution: float = 0.0
     total_cash_reward_dollars: float = 0.0
@@ -76,6 +77,11 @@ class WalletResultSchema(BaseModel):
     # currency name -> total points over the projection window (spend + bonuses, by effective currency).
     currency_pts: dict[str, float] = {}
     currency_pts_by_id: dict[int, float] = {}
+    # Wallet calc window in years.
+    wallet_window_years: float = 0.0
+    # Per-currency active window in years (earliest open → latest close among
+    # selected cards earning the currency, clamped to the wallet window).
+    currency_window_years: dict[int, float] = {}
     # secondary currency totals (e.g. Bilt Cash)
     secondary_currency_pts: dict[str, float] = {}
     secondary_currency_pts_by_id: dict[int, float] = {}
