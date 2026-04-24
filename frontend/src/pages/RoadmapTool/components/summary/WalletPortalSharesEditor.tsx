@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import {
+  type WalletCard,
   type WalletPortalShare,
-  travelPortalApi,
   walletPortalShareApi,
-  walletsApi,
 } from '../../../../api/client'
 import { InfoIconButton, InfoQuoteBox } from '../../../../components/InfoPopover'
 import { useCardLibrary } from '../../hooks/useCardLibrary'
+import { useTravelPortals } from '../../../../hooks/useTravelPortals'
 import { queryKeys } from '../../../../lib/queryKeys'
 
 /**
@@ -28,10 +28,12 @@ import { queryKeys } from '../../../../lib/queryKeys'
  */
 export function WalletPortalSharesEditor({
   walletId,
+  walletCards,
   filterByCurrencyId,
   onChange,
 }: {
   walletId: number | null
+  walletCards: WalletCard[]
   filterByCurrencyId?: number
   /** Called after a successful slider commit so the parent can re-run the
    * wallet calculation (portal-share changes affect EAF). */
@@ -39,16 +41,7 @@ export function WalletPortalSharesEditor({
 }) {
   const queryClient = useQueryClient()
   const { data: cards } = useCardLibrary()
-  const { data: wallet } = useQuery({
-    queryKey: queryKeys.wallet(walletId ?? 0),
-    queryFn: () => walletsApi.get(walletId!),
-    enabled: walletId != null,
-  })
-  const { data: travelPortals = [] } = useQuery({
-    queryKey: queryKeys.travelPortals,
-    queryFn: () => travelPortalApi.list(),
-  })
-  const walletCards = useMemo(() => wallet?.wallet_cards ?? [], [wallet])
+  const { data: travelPortals = [] } = useTravelPortals()
 
   // Travel portals that have at least one in-wallet card that (a) belongs to
   // the portal, (b) carries at least one portal-flagged multiplier, and (c)

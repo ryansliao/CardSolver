@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { InfoIconButton, InfoQuoteBox } from '../../../../components/InfoPopover'
-import { walletCppApi } from '../../../../api/client'
+import { walletCppApi, type WalletCard } from '../../../../api/client'
 import { queryKeys } from '../../../../lib/queryKeys'
 import { WalletPortalSharesEditor } from './WalletPortalSharesEditor'
 
 interface Props {
   walletId: number
+  walletCards: WalletCard[]
   currencyId: number
   /** Pixel width of the left gutter column. The dropdown occupies a full
    * grid row (to keep `display: contents` card rows auto-placed correctly)
@@ -16,7 +17,7 @@ interface Props {
   onClose: () => void
 }
 
-export function CurrencySettingsDropdown({ walletId, currencyId, leftGutterPx, onClose }: Props) {
+export function CurrencySettingsDropdown({ walletId, walletCards, currencyId, leftGutterPx, onClose }: Props) {
   const queryClient = useQueryClient()
   const { data: currencies = [], isLoading } = useQuery({
     queryKey: queryKeys.walletCurrencies(walletId),
@@ -121,6 +122,7 @@ export function CurrencySettingsDropdown({ walletId, currencyId, leftGutterPx, o
 
           <WalletPortalSharesEditor
             walletId={walletId}
+            walletCards={walletCards}
             filterByCurrencyId={currencyId}
           />
         </div>

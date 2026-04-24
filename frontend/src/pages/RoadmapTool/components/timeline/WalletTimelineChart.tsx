@@ -609,6 +609,7 @@ export function WalletTimelineChart({
                 onToggleEnabled={onToggleEnabled}
                 onEditCard={onEditCard}
                 walletId={wallet.id}
+                walletCards={wallet.wallet_cards ?? []}
                 isExpanded={
                   g.currencyId != null && expandedCurrencyId === g.currencyId
                 }
@@ -674,6 +675,7 @@ interface GroupSectionProps {
   walletWindowYears: number
   currencyWindowYears: number | undefined
   walletId: number
+  walletCards: WalletCard[]
   isExpanded: boolean
   onToggleEnabled: (cardId: number, enabled: boolean) => void
   onEditCard: (wc: WalletCard) => void
@@ -691,6 +693,7 @@ function GroupSection({
   walletWindowYears,
   currencyWindowYears,
   walletId,
+  walletCards,
   isExpanded,
   onToggleEnabled,
   onEditCard,
@@ -773,6 +776,7 @@ function GroupSection({
       {isExpanded && group.currencyId != null && (
         <CurrencySettingsDropdown
           walletId={walletId}
+          walletCards={walletCards}
           currencyId={group.currencyId}
           leftGutterPx={LEFT_GUTTER}
           onClose={() => onToggleExpanded(group.currencyId!)}

@@ -31,6 +31,7 @@ import { SpendPanel } from './components/spend/SpendPanel'
 import { ApplicationRuleWarningModal } from './components/ApplicationRuleWarningModal'
 import { InfoIconButton } from '../../components/InfoPopover'
 import { useCreditLibrary } from '../../hooks/useCreditLibrary'
+import { useTravelPortals } from '../../hooks/useTravelPortals'
 import { queryKeys } from '../../lib/queryKeys'
 
 type MainView = 'timeline' | 'spend'
@@ -325,6 +326,9 @@ export default function RoadmapToolPage() {
   // Warm the global credit library cache so the credits picker inside
   // WalletCardModal renders instantly when a card is opened.
   useCreditLibrary()
+  // Same trick for travel portals so the per-currency portal-share meter
+  // renders instantly the first time the currency settings dropdown opens.
+  useTravelPortals()
 
   const addCardMutation = useMutation({
     mutationFn: ({ walletId, payload }: { walletId: number; payload: AddCardToWalletPayload }) =>
