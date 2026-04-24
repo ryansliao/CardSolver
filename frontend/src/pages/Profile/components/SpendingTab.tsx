@@ -8,8 +8,7 @@ import {
 } from '../../../api/client'
 import { useMyWallet } from '../hooks/useMyWallet'
 import { queryKeys } from '../../../lib/queryKeys'
-import { InfoIconButton, InfoPopover } from '../../../components/InfoPopover'
-import { ModalBackdrop } from '../../../components/ModalBackdrop'
+import { InfoIconButton, InfoQuoteBox } from '../../../components/InfoPopover'
 
 interface SpendingTabProps {
   walletId: number | null
@@ -21,8 +20,10 @@ export function SpendingTab({ walletId }: SpendingTabProps) {
   const [amountDraft, setAmountDraft] = useState('')
   // In-flight slider drag; null means "show committed value from wallet".
   const [draftForeignPct, setDraftForeignPct] = useState<number | null>(null)
-  const [showForeignInfo, setShowForeignInfo] = useState(false)
-  const [infoCategory, setInfoCategory] = useState<UserSpendCategory | null>(null)
+  const [foreignAnchor, setForeignAnchor] = useState<HTMLElement | null>(null)
+  const [infoCategory, setInfoCategory] = useState<
+    { cat: UserSpendCategory; anchor: HTMLElement } | null
+  >(null)
 
   const { data: spendItems = [], isLoading } = useQuery({
     queryKey: queryKeys.walletSpendItems(walletId),
@@ -98,7 +99,14 @@ export function SpendingTab({ walletId }: SpendingTabProps) {
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-slate-400 uppercase tracking-wider">Foreign Spend</span>
-              <InfoIconButton onClick={() => setShowForeignInfo(true)} label="How foreign spend affects calculation" />
+              <InfoIconButton
+                onClick={(e) => {
+                  const anchor = e.currentTarget
+                  setForeignAnchor((cur) => (cur ? null : anchor))
+                }}
+                label="How foreign spend affects calculation"
+                active={!!foreignAnchor}
+              />
             </div>
             <span className="text-xs font-medium text-slate-200 tabular-nums">
               {Math.round(foreignSpendPercent)}%
@@ -135,8 +143,12 @@ export function SpendingTab({ walletId }: SpendingTabProps) {
         </div>
       </div>
 
-      {showForeignInfo && (
-        <InfoPopover title="Foreign Spend" onClose={() => setShowForeignInfo(false)}>
+      {foreignAnchor && (
+        <InfoQuoteBox
+          anchorEl={foreignAnchor}
+          title="Foreign Spend"
+          onClose={() => setForeignAnchor(null)}
+        >
           <p>
             Percentage of your total spend that occurs as foreign transactions.
             Each spend category is split: the foreign portion is allocated
@@ -168,7 +180,7 @@ export function SpendingTab({ walletId }: SpendingTabProps) {
               winning card's foreign spend.
             </p>
           </div>
-        </InfoPopover>
+        </InfoQuoteBox>
       )}
 
       <div className="min-h-0 overflow-y-auto flex-1">
@@ -201,20 +213,32 @@ export function SpendingTab({ walletId }: SpendingTabProps) {
                       <td className="text-left px-3 py-2 text-slate-200">
                         <div className="flex items-center gap-1.5">
                           <span>{catName}</span>
-                          {item.user_spend_category && item.user_spend_category.mappings.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => setInfoCategory(item.user_spend_category)}
-                              className="shrink-0 p-0.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-700/50"
-                              title="View category details"
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <circle cx="12" cy="12" r="10" />
-                                <path d="M12 16v-4" />
-                                <path d="M12 8h.01" />
-                              </svg>
-                            </button>
-                          )}
+                          {item.user_spend_category && item.user_spend_category.mappings.length > 0 && (() => {
+                            const cat = item.user_spend_category
+                            const isOpen = infoCategory?.cat.id === cat.id
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  const anchor = e.currentTarget
+                                  setInfoCategory(isOpen ? null : { cat, anchor })
+                                }}
+                                aria-expanded={isOpen}
+                                className={`shrink-0 p-0.5 rounded transition-colors ${
+                                  isOpen
+                                    ? 'text-indigo-300 bg-indigo-500/10'
+                                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-700/50'
+                                }`}
+                                title="View category details"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <circle cx="12" cy="12" r="10" />
+                                  <path d="M12 16v-4" />
+                                  <path d="M12 8h.01" />
+                                </svg>
+                              </button>
+                            )
+                          })()}
                         </div>
                       </td>
                       <td className="text-center px-2 py-2 tabular-nums">
@@ -266,43 +290,28 @@ export function SpendingTab({ walletId }: SpendingTabProps) {
       </div>
 
       {infoCategory && (
-        <ModalBackdrop onClose={() => setInfoCategory(null)}>
-          <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-xl w-full max-w-md p-5">
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">{infoCategory.name}</h3>
-                {infoCategory.description && (
-                  <p className="text-sm text-slate-400 mt-1">{infoCategory.description}</p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setInfoCategory(null)}
-                className="shrink-0 p-1 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-            <div className="border-t border-slate-700 pt-4">
-              <h4 className="text-sm font-medium text-slate-300 mb-3">Includes spend on:</h4>
-              <ul className="space-y-2">
-                {infoCategory.mappings
-                  .sort((a, b) => b.default_weight - a.default_weight)
-                  .map((mapping) => (
-                    <li key={mapping.id} className="flex items-center justify-between text-sm">
-                      <span className="text-slate-200">{mapping.earn_category.category}</span>
-                      <span className="text-slate-500 tabular-nums">
-                        {Math.round(mapping.default_weight * 100)}%
-                      </span>
-                    </li>
-                  ))}
-              </ul>
-            </div>
+        <InfoQuoteBox
+          anchorEl={infoCategory.anchor}
+          title={infoCategory.cat.name}
+          onClose={() => setInfoCategory(null)}
+        >
+          {infoCategory.cat.description && <p>{infoCategory.cat.description}</p>}
+          <div>
+            <p className="text-slate-300 font-medium mb-1.5">Includes spend on:</p>
+            <ul className="space-y-1">
+              {infoCategory.cat.mappings
+                .sort((a, b) => b.default_weight - a.default_weight)
+                .map((mapping) => (
+                  <li key={mapping.id} className="flex items-center justify-between">
+                    <span className="text-slate-300">{mapping.earn_category.category}</span>
+                    <span className="text-slate-500 tabular-nums">
+                      {Math.round(mapping.default_weight * 100)}%
+                    </span>
+                  </li>
+                ))}
+            </ul>
           </div>
-        </ModalBackdrop>
+        </InfoQuoteBox>
       )}
     </div>
   )

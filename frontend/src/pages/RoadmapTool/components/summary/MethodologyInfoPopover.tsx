@@ -1,12 +1,13 @@
-import { InfoPopover } from '../../../../components/InfoPopover'
+import { InfoQuoteBox } from '../../../../components/InfoPopover'
 
 interface Props {
+  anchorEl: HTMLElement | null
   onClose: () => void
 }
 
-export function MethodologyInfoPopover({ onClose }: Props) {
+export function MethodologyInfoPopover({ anchorEl, onClose }: Props) {
   return (
-    <InfoPopover title="Calculation Methodology" onClose={onClose}>
+    <InfoQuoteBox anchorEl={anchorEl} title="Calculation Methodology" onClose={onClose}>
       <div>
         <p className="text-slate-300 font-medium mb-1">Category allocation</p>
         <p>
@@ -82,6 +83,6 @@ export function MethodologyInfoPopover({ onClose }: Props) {
           projection duration.
         </p>
       </div>
-    </InfoPopover>
+    </InfoQuoteBox>
   )
 }

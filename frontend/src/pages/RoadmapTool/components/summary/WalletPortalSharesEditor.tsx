@@ -6,7 +6,7 @@ import {
   walletPortalShareApi,
   walletsApi,
 } from '../../../../api/client'
-import { InfoIconButton, InfoPopover } from '../../../../components/InfoPopover'
+import { InfoIconButton, InfoQuoteBox } from '../../../../components/InfoPopover'
 import { useCardLibrary } from '../../hooks/useCardLibrary'
 import { queryKeys } from '../../../../lib/queryKeys'
 
@@ -102,7 +102,7 @@ export function WalletPortalSharesEditor({
 
   // Local edit buffer so the slider doesn't fire requests on every drag.
   const [pendingByPortal, setPendingByPortal] = useState<Record<number, number>>({})
-  const [showInfo, setShowInfo] = useState(false)
+  const [infoAnchor, setInfoAnchor] = useState<HTMLElement | null>(null)
 
   if (walletId == null || visiblePortals.length === 0) return null
 
@@ -121,9 +121,13 @@ export function WalletPortalSharesEditor({
                     Travel Portal Spend
                   </span>
                   <InfoIconButton
-                    onClick={() => setShowInfo(true)}
+                    onClick={(e) => {
+                      const anchor = e.currentTarget
+                      setInfoAnchor((cur) => (cur ? null : anchor))
+                    }}
                     label="About travel portal shares"
                     size={11}
+                    active={!!infoAnchor}
                   />
                 </div>
                 <span>
@@ -168,17 +172,18 @@ export function WalletPortalSharesEditor({
         })}
       </ul>
 
-      {showInfo && (
-        <InfoPopover
+      {infoAnchor && (
+        <InfoQuoteBox
+          anchorEl={infoAnchor}
           title="Travel Portal Spend"
-          onClose={() => setShowInfo(false)}
+          onClose={() => setInfoAnchor(null)}
         >
           <p>
             What fraction of your travel-coverable spend in this currency do
             you book through each travel portal? Cards earn elevated rates
             only on the portal portion.
           </p>
-        </InfoPopover>
+        </InfoQuoteBox>
       )}
     </div>
   )

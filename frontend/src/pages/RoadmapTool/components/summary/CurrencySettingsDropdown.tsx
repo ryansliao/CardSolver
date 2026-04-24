@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { InfoIconButton, InfoPopover } from '../../../../components/InfoPopover'
+import { InfoIconButton, InfoQuoteBox } from '../../../../components/InfoPopover'
 import { walletCppApi } from '../../../../api/client'
 import { queryKeys } from '../../../../lib/queryKeys'
 import { WalletPortalSharesEditor } from './WalletPortalSharesEditor'
@@ -31,7 +31,7 @@ export function CurrencySettingsDropdown({ walletId, currencyId, leftGutterPx, o
   const hasNoTransferInfo =
     currency != null && (currency.no_transfer_rate != null || currency.no_transfer_cpp != null)
 
-  const [showNoTransferInfo, setShowNoTransferInfo] = useState(false)
+  const [noTransferAnchor, setNoTransferAnchor] = useState<HTMLElement | null>(null)
   // Local drag buffer so the CPP slider updates the label continuously while
   // dragging, but only commits on release (mirrors the portal-share slider).
   const [pendingCpp, setPendingCpp] = useState<number | null>(null)
@@ -83,9 +83,13 @@ export function CurrencySettingsDropdown({ walletId, currencyId, leftGutterPx, o
                   </span>
                   {hasNoTransferInfo && (
                     <InfoIconButton
-                      onClick={() => setShowNoTransferInfo(true)}
+                      onClick={(e) => {
+                        const anchor = e.currentTarget
+                        setNoTransferAnchor((cur) => (cur ? null : anchor))
+                      }}
                       label="Without a transfer-enabling card"
                       size={11}
+                      active={!!noTransferAnchor}
                     />
                   )}
                 </div>
@@ -121,11 +125,11 @@ export function CurrencySettingsDropdown({ walletId, currencyId, leftGutterPx, o
           />
         </div>
       )}
-
-      {showNoTransferInfo && currency && (
-        <InfoPopover
+      {noTransferAnchor && currency && (
+        <InfoQuoteBox
+          anchorEl={noTransferAnchor}
           title="Without a Transfer Enabler"
-          onClose={() => setShowNoTransferInfo(false)}
+          onClose={() => setNoTransferAnchor(null)}
         >
           <p>
             {currency.no_transfer_rate != null ? (
@@ -153,7 +157,7 @@ export function CurrencySettingsDropdown({ walletId, currencyId, leftGutterPx, o
             )}
           </p>
           <p>Full CPP requires a transfer-enabling card in the wallet.</p>
-        </InfoPopover>
+        </InfoQuoteBox>
       )}
     </div>
   )

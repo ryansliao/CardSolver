@@ -175,7 +175,7 @@ export default function RoadmapToolPage() {
   const [walletCardModal, setWalletCardModal] = useState<WalletCardModalOpen | null>(null)
   const [durationYears, setDurationYears] = useState(2)
   const [durationMonths, setDurationMonths] = useState(0)
-  const [showMethodology, setShowMethodology] = useState(false)
+  const [methodologyAnchor, setMethodologyAnchor] = useState<HTMLElement | null>(null)
   const [result, setResult] = useState<WalletResultResponse | null>(null)
   // Signature of wallet + duration at the last successful calc.
   const [snapshotSignature, setSnapshotSignature] = useState<string | null>(null)
@@ -532,9 +532,13 @@ export default function RoadmapToolPage() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-white">Roadmap Tool</h1>
             <InfoIconButton
-              onClick={() => setShowMethodology(true)}
+              onClick={(e) => {
+                const anchor = e.currentTarget
+                setMethodologyAnchor((cur) => (cur ? null : anchor))
+              }}
               label="Calculation methodology"
               size={18}
+              active={!!methodologyAnchor}
             />
           </div>
         </div>
@@ -561,6 +565,13 @@ export default function RoadmapToolPage() {
           </button>
         )}
       </header>
+
+      {methodologyAnchor && (
+        <MethodologyInfoPopover
+          anchorEl={methodologyAnchor}
+          onClose={() => setMethodologyAnchor(null)}
+        />
+      )}
 
       <div className="min-w-0 flex-1 min-h-0 flex flex-col">
         {!wallet ? (
@@ -698,10 +709,6 @@ export default function RoadmapToolPage() {
             )
           }}
         />
-      )}
-
-      {showMethodology && (
-        <MethodologyInfoPopover onClose={() => setShowMethodology(false)} />
       )}
 
       {walletCardModal && wallet && (

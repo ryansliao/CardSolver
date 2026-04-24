@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 import type { RoadmapResponse, WalletResult } from '../../../../api/client'
 import { formatMoney, formatPointsExact } from '../../../../utils/format'
 import { cardAnnualPointIncomeWindow, cardEafWindow } from '../../../../utils/cardIncome'
-import { InfoIconButton, InfoPopover } from '../../../../components/InfoPopover'
+import { InfoIconButton, InfoQuoteBox } from '../../../../components/InfoPopover'
 
-type StatTopic = 'eaf' | 'income' | 'fees' | 'duration' | 'subs' | null
+type StatTopicName = 'eaf' | 'income' | 'fees' | 'duration' | 'subs'
+type StatTopic = { name: StatTopicName; anchor: HTMLElement } | null
 
 function formatDuration(years: number, months: number): string {
   const total = years * 12 + months
@@ -98,7 +99,16 @@ export function WalletSummaryStats({
             <div className="px-1 py-0.5 text-center min-w-0 flex flex-col justify-center gap-1">
               <div className="flex items-center justify-center gap-1 h-5">
                 <p className="text-[10px] text-indigo-300 uppercase tracking-wider whitespace-nowrap">Effective Annual Fee</p>
-                <InfoIconButton onClick={() => setStatTopic('eaf')} label="How Effective Annual Fee is calculated" />
+                <InfoIconButton
+                  onClick={(e) => {
+                    const anchor = e.currentTarget
+                    setStatTopic((t) =>
+                      t?.name === 'eaf' ? null : { name: 'eaf', anchor },
+                    )
+                  }}
+                  label="How Effective Annual Fee is calculated"
+                  active={statTopic?.name === 'eaf'}
+                />
               </div>
               {result ? (
                 <p className={`text-xl font-bold tabular-nums truncate ${totalEffectiveAF < 0 ? 'text-emerald-400' : 'text-indigo-100'}`}>{formatMoney(totalEffectiveAF)}</p>
@@ -112,7 +122,16 @@ export function WalletSummaryStats({
             <div className="px-1 py-0.5 text-center min-w-0 flex flex-col justify-center gap-1">
               <div className="flex items-center justify-center gap-1 h-5">
                 <p className="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap">Annual Fees</p>
-                <InfoIconButton onClick={() => setStatTopic('fees')} label="How Annual Fees is calculated" />
+                <InfoIconButton
+                  onClick={(e) => {
+                    const anchor = e.currentTarget
+                    setStatTopic((t) =>
+                      t?.name === 'fees' ? null : { name: 'fees', anchor },
+                    )
+                  }}
+                  label="How Annual Fees is calculated"
+                  active={statTopic?.name === 'fees'}
+                />
               </div>
               {result ? (
                 <p className="text-xl font-bold text-white tabular-nums truncate">{formatMoney(totalAnnualFees)}</p>
@@ -126,7 +145,16 @@ export function WalletSummaryStats({
             <div className="px-1 py-0.5 text-center min-w-0 flex flex-col justify-center gap-1">
               <div className="flex items-center justify-center gap-1 h-5">
                 <p className="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap">Point Income</p>
-                <InfoIconButton onClick={() => setStatTopic('income')} label="How Income is calculated" />
+                <InfoIconButton
+                  onClick={(e) => {
+                    const anchor = e.currentTarget
+                    setStatTopic((t) =>
+                      t?.name === 'income' ? null : { name: 'income', anchor },
+                    )
+                  }}
+                  label="How Income is calculated"
+                  active={statTopic?.name === 'income'}
+                />
               </div>
               {result ? (
                 <p className="text-xl font-bold text-white tabular-nums truncate">
@@ -150,7 +178,16 @@ export function WalletSummaryStats({
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1">
             <span className="text-[10px] text-slate-400 uppercase tracking-wider">Time Horizon</span>
-            <InfoIconButton onClick={() => setStatTopic('duration')} label="How time horizon affects calculation" />
+            <InfoIconButton
+              onClick={(e) => {
+                const anchor = e.currentTarget
+                setStatTopic((t) =>
+                  t?.name === 'duration' ? null : { name: 'duration', anchor },
+                )
+              }}
+              label="How time horizon affects calculation"
+              active={statTopic?.name === 'duration'}
+            />
           </div>
           <span className="text-xs font-medium text-slate-200 tabular-nums">
             {formatDuration(durationYears, durationMonths)}
@@ -190,7 +227,16 @@ export function WalletSummaryStats({
       >
         <div className="flex items-center gap-1 mb-2.5">
           <span className="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap">Sign Up Bonuses</span>
-          <InfoIconButton onClick={() => setStatTopic('subs')} label="How the Sign Up Bonus toggle affects calculation" />
+          <InfoIconButton
+            onClick={(e) => {
+              const anchor = e.currentTarget
+              setStatTopic((t) =>
+                t?.name === 'subs' ? null : { name: 'subs', anchor },
+              )
+            }}
+            label="How the Sign Up Bonus toggle affects calculation"
+            active={statTopic?.name === 'subs'}
+          />
         </div>
         <div
           role="radiogroup"
@@ -275,158 +321,157 @@ export function WalletSummaryStats({
         </div>
       )}
 
-        {statTopic === 'eaf' && (
-          <InfoPopover title="Effective Annual Fee" onClose={() => setStatTopic(null)}>
-            <p>
-              The wallet's net annual cost (or value) after credits, sign-up
-              bonuses, and category earn are subtracted from annual fees.
-              A negative value means the wallet returns more than it costs.
+      {statTopic?.name === 'eaf' && (
+        <InfoQuoteBox anchorEl={statTopic.anchor} title="Effective Annual Fee" onClose={() => setStatTopic(null)}>
+          <p>
+            The wallet's net annual cost (or value) after credits, sign-up
+            bonuses, and category earn are subtracted from annual fees.
+            A negative value means the wallet returns more than it costs.
+          </p>
+          <div>
+            <p className="text-slate-300 font-medium mb-1">Per-card formula</p>
+            <p className="px-2 py-1 bg-slate-800 rounded font-mono text-[11px] text-slate-300 leading-snug">
+              −(category_earn × cpp + sub/years + credits − fees) / years
             </p>
-            <div>
-              <p className="text-slate-300 font-medium mb-1">Per-card formula</p>
-              <p className="px-2 py-1 bg-slate-800 rounded font-mono text-[11px] text-slate-300 leading-snug">
-                −(category_earn × cpp + sub/years + credits − fees) / years
-              </p>
-              <p className="mt-1">
-                One-time benefits (SUB, first-year bonus, one-time credits)
-                are amortised over the projection duration. Recurring credits
-                and category earn count fully each year.
-              </p>
-            </div>
-            <div>
-              <p className="text-slate-300 font-medium mb-1">Wallet total</p>
-              <p>
-                Sum of every selected card's individual EAF. Each category's
-                spend is allocated to the card with the best
-                {' '}<span className="font-mono text-[11px] text-slate-300">multiplier × CPP</span>,
-                so the same dollar isn't double-counted across cards.
-              </p>
-            </div>
-          </InfoPopover>
-        )}
-
-        {statTopic === 'income' && (
-          <InfoPopover title="Income" onClose={() => setStatTopic(null)}>
-            <p>
-              Points and miles earned per year from category spend across all
-              selected cards. When the Sign Up Bonus toggle is on, one-time
-              sign-up bonuses and first-year matches are amortised over the
-              projection window and included here; when off, only recurring
-              category earn is shown.
+            <p className="mt-1">
+              One-time benefits (SUB, first-year bonus, one-time credits)
+              are amortised over the projection duration. Recurring credits
+              and category earn count fully each year.
             </p>
-            <div>
-              <p className="text-slate-300 font-medium mb-1">How it's allocated</p>
-              <p>
-                Each spend category goes to the card(s) with the highest
-                {' '}<span className="font-mono text-[11px] text-slate-300">multiplier × CPP</span>{' '}
-                score. Tied cards split the category dollars evenly. Annual
-                bonuses (fixed and percentage-based) are added on top.
-              </p>
-            </div>
-            <div>
-              <p className="text-slate-300 font-medium mb-1">Currency upgrades</p>
-              <p>
-                When a card's currency converts to another currency in the
-                wallet (e.g. Chase Freedom UR Cash → Chase UR with a Sapphire),
-                earn is converted at the upgrade rate and valued at the
-                target's CPP.
-              </p>
-            </div>
-          </InfoPopover>
-        )}
-
-        {statTopic === 'fees' && (
-          <InfoPopover title="Annual Fees" onClose={() => setStatTopic(null)}>
+          </div>
+          <div>
+            <p className="text-slate-300 font-medium mb-1">Wallet total</p>
             <p>
-              Sum of the listed annual fee for every active card in the wallet,
-              before any credits, sign-up bonuses, or category earn are netted
-              out. This is what you'd pay your issuers each year.
+              Sum of every selected card's individual EAF. Each category's
+              spend is allocated to the card with the best
+              {' '}<span className="font-mono text-[11px] text-slate-300">multiplier × CPP</span>,
+              so the same dollar isn't double-counted across cards.
             </p>
-            <div>
-              <p className="text-slate-300 font-medium mb-1">First-year fee</p>
-              <p>
-                Cards with a first-year fee waiver still appear at their full
-                annual fee here. The waiver is reflected in the EAF
-                calculation, where year-1 uses the waived fee and subsequent
-                years use the recurring fee.
-              </p>
-            </div>
-            <div>
-              <p className="text-slate-300 font-medium mb-1">Disabled cards</p>
-              <p>
-                Cards toggled off in the timeline are excluded from all wallet
-                totals. Re-enable them to include their fees and earn in the
-                summary.
-              </p>
-            </div>
-          </InfoPopover>
-        )}
+          </div>
+        </InfoQuoteBox>
+      )}
 
-        {statTopic === 'subs' && (
-          <InfoPopover title="Sign Up Bonuses" onClose={() => setStatTopic(null)}>
+      {statTopic?.name === 'income' && (
+        <InfoQuoteBox anchorEl={statTopic.anchor} title="Income" onClose={() => setStatTopic(null)}>
+          <p>
+            Points and miles earned per year from category spend across all
+            selected cards. When the Sign Up Bonus toggle is on, one-time
+            sign-up bonuses and first-year matches are amortised over the
+            projection window and included here; when off, only recurring
+            category earn is shown.
+          </p>
+          <div>
+            <p className="text-slate-300 font-medium mb-1">How it's allocated</p>
             <p>
-              Controls whether Sign Up Bonuses count toward the wallet's
-              effective annual fee and recurring income across the roadmap.
-              Toggle off to see the wallet's steady-state value — how it earns
-              once all SUBs have been claimed and the welcome period is over.
+              Each spend category goes to the card(s) with the highest
+              {' '}<span className="font-mono text-[11px] text-slate-300">multiplier × CPP</span>{' '}
+              score. Tied cards split the category dollars evenly. Annual
+              bonuses (fixed and percentage-based) are added on top.
             </p>
-            <div>
-              <p className="text-slate-300 font-medium mb-1">When included</p>
-              <p>
-                SUB bonuses (points and cash) are amortised into EAF, the SUB
-                spend requirement pulls allocation priority during its window
-                (inflating recurring income for the card with an active SUB),
-                and SUB opportunity cost is deducted from the best alternative
-                card.
-              </p>
-            </div>
-            <div>
-              <p className="text-slate-300 font-medium mb-1">When excluded</p>
-              <p>
-                Every card is evaluated as if it had no welcome offer: no SUB
-                amortisation in EAF, no SUB-window allocation boost, and no
-                opportunity cost. Useful for comparing cards on their long-term
-                merits.
-              </p>
-            </div>
-            <div>
-              <p className="text-slate-300 font-medium mb-1">What stays the same</p>
-              <p>
-                Currency balances you track manually are unaffected. The
-                roadmap's SUB earned-date markers and 5/24 status also ignore
-                this toggle.
-              </p>
-            </div>
-          </InfoPopover>
-        )}
-
-        {statTopic === 'duration' && (
-          <InfoPopover title="Time Horizon" onClose={() => setStatTopic(null)}>
+          </div>
+          <div>
+            <p className="text-slate-300 font-medium mb-1">Currency upgrades</p>
             <p>
-              How long to project the wallet's value. The calculator amortizes
-              one-time benefits (sign-up bonuses, first-year bonuses, first-year
-              fee waivers, one-time credits) across this period to produce an
-              average annual EAF.
+              When a card's currency converts to another currency in the
+              wallet (e.g. Chase Freedom UR Cash → Chase UR with a Sapphire),
+              earn is converted at the upgrade rate and valued at the
+              target's CPP.
             </p>
-            <div>
-              <p className="text-slate-300 font-medium mb-1">Effect on EAF</p>
-              <p>
-                Longer horizons spread one-time benefits thinner, so cards with
-                big SUBs look less valuable per year. Recurring benefits (annual
-                fees, statement credits, category earn) are unaffected.
-              </p>
-            </div>
-            <div>
-              <p className="text-slate-300 font-medium mb-1">Effect on roadmap</p>
-              <p>
-                Cards with future <span className="text-slate-300">added_date</span> only count from when they
-                become active, so a longer window lets future cards contribute
-                proportionally more to the wallet total.
-              </p>
-            </div>
-          </InfoPopover>
-        )}
+          </div>
+        </InfoQuoteBox>
+      )}
 
+      {statTopic?.name === 'fees' && (
+        <InfoQuoteBox anchorEl={statTopic.anchor} title="Annual Fees" onClose={() => setStatTopic(null)}>
+          <p>
+            Sum of the listed annual fee for every active card in the wallet,
+            before any credits, sign-up bonuses, or category earn are netted
+            out. This is what you'd pay your issuers each year.
+          </p>
+          <div>
+            <p className="text-slate-300 font-medium mb-1">First-year fee</p>
+            <p>
+              Cards with a first-year fee waiver still appear at their full
+              annual fee here. The waiver is reflected in the EAF
+              calculation, where year-1 uses the waived fee and subsequent
+              years use the recurring fee.
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-300 font-medium mb-1">Disabled cards</p>
+            <p>
+              Cards toggled off in the timeline are excluded from all wallet
+              totals. Re-enable them to include their fees and earn in the
+              summary.
+            </p>
+          </div>
+        </InfoQuoteBox>
+      )}
+
+      {statTopic?.name === 'subs' && (
+        <InfoQuoteBox anchorEl={statTopic.anchor} title="Sign Up Bonuses" onClose={() => setStatTopic(null)}>
+          <p>
+            Controls whether Sign Up Bonuses count toward the wallet's
+            effective annual fee and recurring income across the roadmap.
+            Toggle off to see the wallet's steady-state value — how it earns
+            once all SUBs have been claimed and the welcome period is over.
+          </p>
+          <div>
+            <p className="text-slate-300 font-medium mb-1">When included</p>
+            <p>
+              SUB bonuses (points and cash) are amortised into EAF, the SUB
+              spend requirement pulls allocation priority during its window
+              (inflating recurring income for the card with an active SUB),
+              and SUB opportunity cost is deducted from the best alternative
+              card.
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-300 font-medium mb-1">When excluded</p>
+            <p>
+              Every card is evaluated as if it had no welcome offer: no SUB
+              amortisation in EAF, no SUB-window allocation boost, and no
+              opportunity cost. Useful for comparing cards on their long-term
+              merits.
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-300 font-medium mb-1">What stays the same</p>
+            <p>
+              Currency balances you track manually are unaffected. The
+              roadmap's SUB earned-date markers and 5/24 status also ignore
+              this toggle.
+            </p>
+          </div>
+        </InfoQuoteBox>
+      )}
+
+      {statTopic?.name === 'duration' && (
+        <InfoQuoteBox anchorEl={statTopic.anchor} title="Time Horizon" onClose={() => setStatTopic(null)}>
+          <p>
+            How long to project the wallet's value. The calculator amortizes
+            one-time benefits (sign-up bonuses, first-year bonuses, first-year
+            fee waivers, one-time credits) across this period to produce an
+            average annual EAF.
+          </p>
+          <div>
+            <p className="text-slate-300 font-medium mb-1">Effect on EAF</p>
+            <p>
+              Longer horizons spread one-time benefits thinner, so cards with
+              big SUBs look less valuable per year. Recurring benefits (annual
+              fees, statement credits, category earn) are unaffected.
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-300 font-medium mb-1">Effect on roadmap</p>
+            <p>
+              Cards with future <span className="text-slate-300">added_date</span> only count from when they
+              become active, so a longer window lets future cards contribute
+              proportionally more to the wallet total.
+            </p>
+          </div>
+        </InfoQuoteBox>
+      )}
     </div>
   )
 }

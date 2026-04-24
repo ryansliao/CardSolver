@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { Card, CardResult, UserSpendCategory, WalletCard } from '../../../../api/client'
 import { walletSpendItemsApi } from '../../../../api/client'
-import { ModalBackdrop } from '../../../../components/ModalBackdrop'
+import { InfoQuoteBox } from '../../../../components/InfoPopover'
 import { formatMoneyExact, formatPointsExact } from '../../../../utils/format'
 import { queryKeys } from '../../../../lib/queryKeys'
 import { useCardLibrary } from '../../hooks/useCardLibrary'
@@ -55,7 +55,9 @@ export function SpendTabContent({
 
   const { data: cardLibrary = [] } = useCardLibrary()
 
-  const [infoCategory, setInfoCategory] = useState<UserSpendCategory | null>(null)
+  const [infoCategory, setInfoCategory] = useState<
+    { cat: UserSpendCategory; anchor: HTMLElement } | null
+  >(null)
 
   const cardLibById = useMemo(() => {
     const m = new Map<number, Card>()
@@ -452,20 +454,32 @@ export function SpendTabContent({
                         <span className="truncate" title={catName}>
                           {catName}
                         </span>
-                        {item.user_spend_category && item.user_spend_category.mappings.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setInfoCategory(item.user_spend_category)}
-                            className="shrink-0 p-0.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-700/50"
-                            title="View category details"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="12" cy="12" r="10" />
-                              <path d="M12 16v-4" />
-                              <path d="M12 8h.01" />
-                            </svg>
-                          </button>
-                        )}
+                        {item.user_spend_category && item.user_spend_category.mappings.length > 0 && (() => {
+                          const cat = item.user_spend_category
+                          const isOpen = infoCategory?.cat.id === cat.id
+                          return (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                const anchor = e.currentTarget
+                                setInfoCategory(isOpen ? null : { cat, anchor })
+                              }}
+                              aria-expanded={isOpen}
+                              className={`shrink-0 p-0.5 rounded transition-colors ${
+                                isOpen
+                                  ? 'text-indigo-300 bg-indigo-500/10'
+                                  : 'text-slate-500 hover:text-slate-300 hover:bg-slate-700/50'
+                              }`}
+                              title="View category details"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M12 16v-4" />
+                                <path d="M12 8h.01" />
+                              </svg>
+                            </button>
+                          )
+                        })()}
                       </div>
                     </td>
                     <td className="text-center px-2 py-2 tabular-nums border-r border-slate-800/60">
@@ -545,46 +559,29 @@ export function SpendTabContent({
         </div>
       )}
 
-      {/* Category Info Modal */}
       {infoCategory && (
-        <ModalBackdrop onClose={() => setInfoCategory(null)}>
-          <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-xl w-full max-w-md p-5">
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">{infoCategory.name}</h3>
-                {infoCategory.description && (
-                  <p className="text-sm text-slate-400 mt-1">{infoCategory.description}</p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setInfoCategory(null)}
-                className="shrink-0 p-1 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="border-t border-slate-700 pt-4">
-              <h4 className="text-sm font-medium text-slate-300 mb-3">Includes spend on:</h4>
-              <ul className="space-y-2">
-                {infoCategory.mappings
-                  .sort((a, b) => b.default_weight - a.default_weight)
-                  .map((mapping) => (
-                    <li key={mapping.id} className="flex items-center justify-between text-sm">
-                      <span className="text-slate-200">{mapping.earn_category.category}</span>
-                      <span className="text-slate-500 tabular-nums">
-                        {Math.round(mapping.default_weight * 100)}%
-                      </span>
-                    </li>
-                  ))}
-              </ul>
-            </div>
+        <InfoQuoteBox
+          anchorEl={infoCategory.anchor}
+          title={infoCategory.cat.name}
+          onClose={() => setInfoCategory(null)}
+        >
+          {infoCategory.cat.description && <p>{infoCategory.cat.description}</p>}
+          <div>
+            <p className="text-slate-300 font-medium mb-1.5">Includes spend on:</p>
+            <ul className="space-y-1">
+              {infoCategory.cat.mappings
+                .sort((a, b) => b.default_weight - a.default_weight)
+                .map((mapping) => (
+                  <li key={mapping.id} className="flex items-center justify-between">
+                    <span className="text-slate-300">{mapping.earn_category.category}</span>
+                    <span className="text-slate-500 tabular-nums">
+                      {Math.round(mapping.default_weight * 100)}%
+                    </span>
+                  </li>
+                ))}
+            </ul>
           </div>
-        </ModalBackdrop>
+        </InfoQuoteBox>
       )}
     </div>
   )
