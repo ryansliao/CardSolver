@@ -97,6 +97,7 @@ GO
 ------------------------------------------------------------------------------
 DECLARE @drop_default_sql NVARCHAR(MAX);
 DECLARE @col_name sysname;
+DECLARE @df_name sysname;
 DECLARE col_cur CURSOR LOCAL FAST_FORWARD FOR
     SELECT c.name
     FROM sys.columns c
@@ -112,7 +113,10 @@ OPEN col_cur;
 FETCH NEXT FROM col_cur INTO @col_name;
 WHILE @@FETCH_STATUS = 0
 BEGIN
-    DECLARE @df_name sysname;
+    -- Reset @df_name each iteration; otherwise the SELECT below leaves
+    -- the previous iteration's value when the current column has no
+    -- default, and we'd try to drop a constraint that's already gone.
+    SET @df_name = NULL;
     SELECT @df_name = dc.name
     FROM sys.default_constraints dc
     INNER JOIN sys.columns c
