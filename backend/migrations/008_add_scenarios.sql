@@ -353,7 +353,7 @@ GO
 --     of the same library card can coexist in a wallet (multi-application
 --     cards, post-migration product-change chains).
 ------------------------------------------------------------------------------
-DECLARE @uq_name sysname;
+DECLARE @uq_name sysname, @uq_sql NVARCHAR(MAX);
 SELECT @uq_name = kc.name
 FROM sys.key_constraints kc
 INNER JOIN sys.indexes i
@@ -372,7 +372,10 @@ GROUP BY kc.name
 HAVING COUNT(DISTINCT c.name) = 2;
 
 IF @uq_name IS NOT NULL
-    EXEC('ALTER TABLE wallet_cards DROP CONSTRAINT ' + QUOTENAME(@uq_name));
+BEGIN
+    SET @uq_sql = N'ALTER TABLE wallet_cards DROP CONSTRAINT [' + @uq_name + N']';
+    EXEC sp_executesql @uq_sql;
+END
 GO
 
 ------------------------------------------------------------------------------
