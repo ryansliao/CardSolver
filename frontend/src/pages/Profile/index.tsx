@@ -55,8 +55,7 @@ export default function Profile() {
       <div className="flex-1 min-w-0 min-h-0 bg-slate-900 border border-slate-700 rounded-xl p-6 overflow-auto">
         {activeTab === 'wallet' && (
           <WalletTab
-            walletId={wallet?.id ?? null}
-            walletCards={wallet?.wallet_cards ?? []}
+            cardInstances={wallet?.card_instances ?? []}
             isLoading={walletLoading}
           />
         )}
