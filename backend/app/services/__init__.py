@@ -32,6 +32,41 @@ from .calculator_data_service import (
     get_calculator_data_service,
 )
 
+# New (scenario / card-instance) services
+from .scenario_service import ScenarioService, get_scenario_service
+from .card_instance_service import (
+    CardInstanceService,
+    get_card_instance_service,
+)
+from .scenario_overlay_service import (
+    ScenarioCardOverlayService,
+    get_scenario_card_overlay_service,
+)
+from .scenario_card_override_service import (
+    ScenarioCardCreditService,
+    ScenarioCardGroupSelectionService,
+    ScenarioCardMultiplierService,
+    ScenarioCategoryPriorityService,
+    get_scenario_card_credit_service,
+    get_scenario_card_group_selection_service,
+    get_scenario_card_multiplier_service,
+    get_scenario_category_priority_service,
+)
+from .scenario_currency_service import (
+    ScenarioCurrencyService,
+    get_scenario_currency_service,
+)
+from .scenario_portal_service import (
+    ScenarioPortalService,
+    get_scenario_portal_service,
+)
+from .scenario_resolver import (
+    ComputeInputs,
+    ResolvedInstance,
+    ScenarioResolver,
+    get_scenario_resolver,
+)
+
 __all__ = [
     "BaseService",
     "WalletService",
@@ -62,4 +97,27 @@ __all__ = [
     "get_wallet_category_priority_service",
     "CalculatorDataService",
     "get_calculator_data_service",
+    # Scenario services
+    "ScenarioService",
+    "get_scenario_service",
+    "CardInstanceService",
+    "get_card_instance_service",
+    "ScenarioCardOverlayService",
+    "get_scenario_card_overlay_service",
+    "ScenarioCardCreditService",
+    "get_scenario_card_credit_service",
+    "ScenarioCardGroupSelectionService",
+    "get_scenario_card_group_selection_service",
+    "ScenarioCardMultiplierService",
+    "get_scenario_card_multiplier_service",
+    "ScenarioCategoryPriorityService",
+    "get_scenario_category_priority_service",
+    "ScenarioCurrencyService",
+    "get_scenario_currency_service",
+    "ScenarioPortalService",
+    "get_scenario_portal_service",
+    "ComputeInputs",
+    "ResolvedInstance",
+    "ScenarioResolver",
+    "get_scenario_resolver",
 ]
