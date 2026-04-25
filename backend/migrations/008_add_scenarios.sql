@@ -515,10 +515,11 @@ BEGIN
 
         UNION ALL
 
-        -- Walk back through pc chain: find any wallet_card in the same wallet
-        -- whose card_id matches the current row's pc_from_card_id, with the
-        -- latest added_date that is still <= the current row's added_date.
-        -- Recursive CTE returns one parent per child, so the chain is a path.
+        -- Walk back through the PC chain. Pre-migration the legacy unique
+        -- constraint UQ(wallet_id, card_id) guarantees at most one wallet_card
+        -- per (wallet_id, library card_id), so a plain INNER JOIN suffices —
+        -- no TOP/ORDER BY needed (recursive CTEs forbid those in the recursive
+        -- part). Each child links to a single parent through pc_from_card_id.
         SELECT
             c.wc_id,
             c.wallet_id,
@@ -530,14 +531,9 @@ BEGIN
             parent.acquisition_type        AS root_acq_type,
             c.depth + 1                    AS depth
         FROM chain c
-        CROSS APPLY (
-            SELECT TOP 1 p.added_date, p.acquisition_type, p.pc_from_card_id
-            FROM wallet_cards p
-            WHERE p.wallet_id = c.wallet_id
-              AND p.card_id   = c.pc_from_card_id
-              AND p.added_date <= c.added_date
-            ORDER BY p.added_date DESC, p.id DESC
-        ) parent
+        INNER JOIN wallet_cards parent
+            ON parent.wallet_id = c.wallet_id
+           AND parent.card_id   = c.pc_from_card_id
         WHERE c.acquisition_type = 'product_change'
           AND c.pc_from_card_id IS NOT NULL
           AND c.depth < 10  -- safety against cycles
