@@ -36,11 +36,24 @@ class CardInstanceService(BaseService[CardInstance]):
 
     @staticmethod
     def instance_load_opts():
+        """Eager-load the relationships ``card_instance_read`` reads.
+
+        ``card.issuer`` and ``card.network_tier`` are required by the read
+        builder; without them the access fires a sync lazy-load that fails
+        with ``MissingGreenlet`` once the request handler returns. The
+        builder also walks ``credit_overrides_rows.library_credit`` and
+        from there to ``library_credit.credit_currency``.
+        """
+        card_chain = selectinload(CardInstance.card)
+        credit_chain = selectinload(
+            CardInstance.credit_overrides_rows
+        ).selectinload(ScenarioCardCredit.library_credit)
         return [
-            selectinload(CardInstance.card),
-            selectinload(CardInstance.credit_overrides_rows).selectinload(
-                ScenarioCardCredit.library_credit
-            ),
+            card_chain,
+            card_chain.selectinload(Card.issuer),
+            card_chain.selectinload(Card.network_tier),
+            credit_chain,
+            credit_chain.selectinload(Credit.credit_currency),
         ]
 
     async def list_owned(self, wallet_id: int) -> list[CardInstance]:
