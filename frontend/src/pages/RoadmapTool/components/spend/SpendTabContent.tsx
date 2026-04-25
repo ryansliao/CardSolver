@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { Card, CardResult, UserSpendCategory, WalletCard } from '../../../../api/client'
-import { walletSpendItemsApi } from '../../../../api/client'
+import type { Card, CardResult, UserSpendCategory } from '../../../../api/client'
+import { walletSpendApi } from '../../../../api/client'
+import type { ResolvedCard } from '../../lib/resolveScenarioCards'
 import { InfoQuoteBox } from '../../../../components/InfoPopover'
 import { formatMoneyExact, formatPointsExact } from '../../../../utils/format'
 import { queryKeys } from '../../../../lib/queryKeys'
 import { useCardLibrary } from '../../hooks/useCardLibrary'
 
 interface Props {
-  walletId: number | null
   selectedCards: CardResult[]
-  walletCards: WalletCard[]
+  walletCards: ResolvedCard[]
   isTotal: boolean
   totalYears: number
   isStale: boolean
@@ -40,7 +40,6 @@ function CardPhoto({ slug, name }: { slug: string | null; name: string }) {
 }
 
 export function SpendTabContent({
-  walletId,
   selectedCards,
   walletCards,
   isTotal,
@@ -48,9 +47,8 @@ export function SpendTabContent({
   isStale,
 }: Props) {
   const { data: spendItems = [], isLoading } = useQuery({
-    queryKey: queryKeys.walletSpendItems(walletId),
-    queryFn: () => walletSpendItemsApi.list(walletId!),
-    enabled: walletId != null,
+    queryKey: queryKeys.walletSpendItemsSingular(),
+    queryFn: () => walletSpendApi.list(),
   })
 
   const { data: cardLibrary = [] } = useCardLibrary()
@@ -112,22 +110,23 @@ export function SpendTabContent({
   }
 
   // Closed / product-changed-away-from cards are excluded from earn allocation.
+  // The new model encodes PC as a future CardInstance with `pc_from_instance_id`
+  // pointing to the parent instance — translate to library card_ids via the
+  // resolved card list.
   const excludedCardIds = useMemo(() => {
     const ids = new Set<number>()
     for (const wc of walletCards) {
       if (wc.panel !== 'in_wallet' && wc.panel !== 'future_cards') continue
       if (wc.closed_date) ids.add(wc.card_id)
     }
+    const cardIdByInstanceId = new Map<number, number>()
+    for (const wc of walletCards) cardIdByInstanceId.set(wc.instance_id, wc.card_id)
     for (const pcCard of walletCards) {
-      if (pcCard.acquisition_type !== 'product_change' || pcCard.panel !== 'future_cards') continue
-      if (pcCard.pc_from_card_id != null) {
-        ids.add(pcCard.pc_from_card_id)
-      } else {
-        for (const c of walletCards) {
-          if (c.product_changed_date && c.product_changed_date === pcCard.added_date) {
-            ids.add(c.card_id)
-          }
-        }
+      if (!pcCard.is_future) continue
+      if (pcCard.acquisition_type !== 'product_change') continue
+      if (pcCard.pc_from_instance_id != null) {
+        const fromCardId = cardIdByInstanceId.get(pcCard.pc_from_instance_id)
+        if (fromCardId != null) ids.add(fromCardId)
       }
     }
     return ids

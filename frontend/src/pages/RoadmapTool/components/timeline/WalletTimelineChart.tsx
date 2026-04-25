@@ -2,10 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   CardResult,
   RoadmapResponse,
-  Wallet,
-  WalletCard,
   WalletResult,
 } from '../../../../api/client'
+import type { ResolvedCard } from '../../lib/resolveScenarioCards'
 import { formatMoney, formatMoneyCompact, formatPoints, formatPointsExact, pointsUnitLabel, today } from '../../../../utils/format'
 import {
   cardAnnualPointIncomeActive,
@@ -18,19 +17,22 @@ import { CurrencySettingsDropdown } from '../summary/CurrencySettingsDropdown'
 import { InfoQuoteBox } from '../../../../components/InfoPopover'
 
 interface Props {
-  wallet: Wallet
+  /** Active scenario id — drives the per-currency CPP / portal-share editors. */
+  scenarioId: number
+  /** Resolved cards (owned + scenario-future, with overlays layered in). */
+  walletCards: ResolvedCard[]
   result: WalletResult | null
   roadmap: RoadmapResponse | undefined
   durationYears: number
   durationMonths: number
   isUpdating: boolean
   isStale: boolean
-  /** Wallet-level "Include SUBs" toggle. Applied as a pure display switch
+  /** Scenario-level "Include SUBs" toggle. Applied as a pure display switch
    * on top of already-computed results via sub_eaf_contribution on each
    * CardResult — no recalculation required. */
   includeSubs: boolean
   onToggleEnabled: (cardId: number, enabled: boolean) => void
-  onEditCard: (wc: WalletCard) => void
+  onEditCard: (wc: ResolvedCard) => void
   onAddCard: () => void
 }
 
@@ -212,7 +214,8 @@ function measureEafLabelPx(text: string): number {
 }
 
 export function WalletTimelineChart({
-  wallet,
+  scenarioId,
+  walletCards,
   result,
   roadmap,
   durationYears,
@@ -349,12 +352,12 @@ export function WalletTimelineChart({
   }, [roadmap])
 
   const visibleCards = useMemo(() => {
-    return (wallet.wallet_cards ?? []).filter((wc) => {
+    return (walletCards ?? []).filter((wc) => {
       const addedMs = parseDate(wc.added_date).getTime()
       if (addedMs >= range.endMs) return false
       return true
     })
-  }, [wallet.wallet_cards, range])
+  }, [walletCards, range])
 
   const groups = useMemo<GroupData[]>(() => {
     const byCurrency = new Map<string, GroupData>()
@@ -708,8 +711,8 @@ export function WalletTimelineChart({
                 }
                 onToggleEnabled={onToggleEnabled}
                 onEditCard={onEditCard}
-                walletId={wallet.id}
-                walletCards={wallet.wallet_cards ?? []}
+                scenarioId={scenarioId}
+                walletCards={walletCards ?? []}
                 isExpanded={
                   g.currencyId != null && expandedCurrencyId === g.currencyId
                 }
@@ -798,7 +801,7 @@ interface SecondaryAnnual {
 }
 
 interface GroupCardEntry {
-  wc: WalletCard
+  wc: ResolvedCard
   cr: CardResult | null
   /** Annualized secondary-currency earn for this card (e.g. Bilt Cash on a
    * Bilt Rewards card). Null when the card has no secondary earn. */
@@ -835,11 +838,11 @@ interface GroupSectionProps {
   rightColumnPx: number
   walletWindowYears: number
   currencyWindowYears: number | undefined
-  walletId: number
-  walletCards: WalletCard[]
+  scenarioId: number
+  walletCards: ResolvedCard[]
   isExpanded: boolean
   onToggleEnabled: (cardId: number, enabled: boolean) => void
-  onEditCard: (wc: WalletCard) => void
+  onEditCard: (wc: ResolvedCard) => void
   onToggleExpanded: (currencyId: number) => void
 }
 
@@ -853,7 +856,7 @@ function GroupSection({
   rightColumnPx,
   walletWindowYears,
   currencyWindowYears,
-  walletId,
+  scenarioId,
   walletCards,
   isExpanded,
   onToggleEnabled,
@@ -941,7 +944,7 @@ function GroupSection({
       </div>
       {isExpanded && group.currencyId != null && (
         <CurrencySettingsDropdown
-          walletId={walletId}
+          scenarioId={scenarioId}
           walletCards={walletCards}
           currencyId={group.currencyId}
           leftGutterPx={LEFT_GUTTER}
@@ -970,7 +973,7 @@ function GroupSection({
 }
 
 interface CardRowProps {
-  wc: WalletCard
+  wc: ResolvedCard
   cr: CardResult | null
   secondary: SecondaryAnnual | null
   color: string
@@ -981,7 +984,7 @@ interface CardRowProps {
   includeSubs: boolean
   rightColumnPx: number
   onToggleEnabled: (cardId: number, enabled: boolean) => void
-  onEditCard: (wc: WalletCard) => void
+  onEditCard: (wc: ResolvedCard) => void
 }
 
 function CardRow({
@@ -1085,8 +1088,24 @@ function CardRow({
         >
           <CardThumb slug={wc.photo_slug} name={wc.card_name ?? ''} />
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-slate-200 truncate">
-              {wc.card_name ?? `Card #${wc.card_id}`}
+            <div className="text-sm font-medium text-slate-200 truncate flex items-center gap-1.5">
+              <span className="truncate">{wc.card_name ?? `Card #${wc.card_id}`}</span>
+              {wc.is_future && (
+                <span
+                  className="text-[9px] uppercase tracking-wider font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded px-1 py-[1px] shrink-0"
+                  title="Future card scoped to this scenario"
+                >
+                  Future
+                </span>
+              )}
+              {wc.is_overlay_modified && (
+                <span
+                  className="text-[9px] uppercase tracking-wider font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-1 py-[1px] shrink-0"
+                  title="Overlay applied — values modified for this scenario only"
+                >
+                  Overlay
+                </span>
+              )}
             </div>
             {incomeLabel && (
               <div
@@ -1133,6 +1152,9 @@ function CardRow({
           const roundLeft = addedMs > range.startMs
           const roundRight = closedMs < range.endMs
           const roundedClass = `${roundLeft ? 'rounded-l-full' : ''} ${roundRight ? 'rounded-r-full' : ''}`.trim()
+          // Overlay-modified owned cards get a dashed border so they read as
+          // "scenario hypothesis layered over your real card".
+          const borderStyle = wc.is_overlay_modified ? 'dashed' : 'solid'
           return (
             <div
               className={`absolute ${roundedClass}`}
@@ -1142,7 +1164,7 @@ function CardRow({
                 top: (CARD_ROW_HEIGHT - barHeight) / 2,
                 height: barHeight,
                 backgroundColor: enabled ? `${color}33` : '#33415533',
-                border: `1px solid ${enabled ? color : '#475569'}`,
+                border: `1px ${borderStyle} ${enabled ? color : '#475569'}`,
                 opacity: enabled ? 1 : 0.55,
                 zIndex: 30,
               }}

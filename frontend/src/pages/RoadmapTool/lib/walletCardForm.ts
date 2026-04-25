@@ -1,4 +1,9 @@
-import type { Card, UpdateWalletCardPayload, WalletCardAcquisitionType } from '../../../api/client'
+import type {
+  Card,
+  FutureCardUpdatePayload,
+  OwnedCardUpdatePayload,
+  UpsertOverlayPayload,
+} from '../../../api/client'
 
 export function parseOptionalInt(s: string): number | null {
   const t = s.trim()
@@ -76,7 +81,8 @@ export function buildWalletCardFields(
   }
 }
 
-/** When a parsed value matches the library default, store null on the wallet row (inherit). */
+/** When a parsed value matches the library default, store null on the row
+ * (inherit). Used so unmodified inputs become null on the wire. */
 function intOverride(parsed: number | null, lib: number | null | undefined): number | null {
   if (parsed === null) return null
   if (lib != null && parsed === lib) return null
@@ -94,19 +100,21 @@ export type BuiltWalletFields = Extract<
   { ok: true }
 >
 
-/** Map form state + library card to a PATCH payload (null = inherit library where applicable). */
-export function walletFormToUpdatePayload(
+/** Build a payload for updating an OWNED CardInstance (Profile/WalletTab).
+ * Uses absolute opening_date/closed_date and lets the user-set fields fall
+ * to null when they match the library default. */
+export function walletFormToOwnedUpdatePayload(
   built: BuiltWalletFields,
   lib: Card,
-  addedDate: string,
-  acquisitionType: WalletCardAcquisitionType,
+  openingDate: string,
+  closedDate: string | null,
+  productChangeDate: string | null,
   secondaryCurrencyRate?: number | null,
-  closedDate?: string | null,
-): UpdateWalletCardPayload {
+): OwnedCardUpdatePayload {
   return {
-    added_date: addedDate,
-    acquisition_type: acquisitionType,
-    closed_date: closedDate ?? null,
+    opening_date: openingDate,
+    closed_date: closedDate,
+    product_change_date: productChangeDate,
     sub_points: intOverride(built.sub_points, lib.sub_points ?? undefined),
     sub_min_spend: intOverride(built.sub_min_spend, lib.sub_min_spend ?? undefined),
     sub_months: intOverride(built.sub_months, lib.sub_months ?? undefined),
@@ -116,5 +124,75 @@ export function walletFormToUpdatePayload(
     secondary_currency_rate: secondaryCurrencyRate !== undefined
       ? floatOverride(secondaryCurrencyRate, lib.secondary_currency_rate ?? undefined)
       : undefined,
+  }
+}
+
+/** Build a payload for updating a SCENARIO FUTURE card. Same as owned but
+ * may also include `pc_from_instance_id`, `is_enabled`, etc. */
+export function walletFormToFutureUpdatePayload(
+  built: BuiltWalletFields,
+  lib: Card,
+  openingDate: string,
+  closedDate: string | null,
+  productChangeDate: string | null,
+  pcFromInstanceId: number | null,
+  secondaryCurrencyRate?: number | null,
+): FutureCardUpdatePayload {
+  return {
+    ...walletFormToOwnedUpdatePayload(
+      built,
+      lib,
+      openingDate,
+      closedDate,
+      productChangeDate,
+      secondaryCurrencyRate,
+    ),
+    pc_from_instance_id: pcFromInstanceId,
+  }
+}
+
+/** Build an OVERLAY upsert payload. Overlays are sparse: only fields the
+ * user explicitly modified relative to the underlying card_instance should
+ * be sent. To keep the form simple, we currently send the user's typed
+ * values where they differ from the resolved baseline (caller passes the
+ * baseline). */
+export function walletFormToOverlayUpsertPayload(
+  built: BuiltWalletFields,
+  baseline: {
+    sub_points: number | null
+    sub_min_spend: number | null
+    sub_months: number | null
+    annual_bonus: number | null
+    annual_fee: number | null
+    first_year_fee: number | null
+    secondary_currency_rate: number | null
+    closed_date: string | null
+  },
+  closedDate: string | null,
+  secondaryCurrencyRate: number | null,
+  isEnabled: boolean | null,
+): UpsertOverlayPayload {
+  function sameInt(a: number | null, b: number | null): boolean {
+    if (a == null && b == null) return true
+    if (a == null || b == null) return false
+    return a === b
+  }
+  function sameFloat(a: number | null, b: number | null): boolean {
+    if (a == null && b == null) return true
+    if (a == null || b == null) return false
+    return Math.abs(a - b) < 1e-9
+  }
+  return {
+    sub_points: sameInt(built.sub_points, baseline.sub_points) ? null : built.sub_points,
+    sub_min_spend: sameInt(built.sub_min_spend, baseline.sub_min_spend) ? null : built.sub_min_spend,
+    sub_months: sameInt(built.sub_months, baseline.sub_months) ? null : built.sub_months,
+    annual_bonus: sameInt(built.annual_bonus, baseline.annual_bonus) ? null : built.annual_bonus,
+    annual_fee: sameFloat(built.annual_fee, baseline.annual_fee) ? null : built.annual_fee,
+    first_year_fee: sameFloat(built.first_year_fee, baseline.first_year_fee) ? null : built.first_year_fee,
+    secondary_currency_rate: sameFloat(secondaryCurrencyRate, baseline.secondary_currency_rate)
+      ? null
+      : secondaryCurrencyRate,
+    closed_date: closedDate === baseline.closed_date ? null : closedDate,
+    is_enabled: isEnabled,
   }
 }

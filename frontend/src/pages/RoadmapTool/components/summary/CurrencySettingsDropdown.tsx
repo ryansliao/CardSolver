@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { InfoIconButton, InfoQuoteBox } from '../../../../components/InfoPopover'
-import { walletCppApi, type WalletCard } from '../../../../api/client'
+import { scenarioCppApi, type WalletCard } from '../../../../api/client'
 import { queryKeys } from '../../../../lib/queryKeys'
 import { WalletPortalSharesEditor } from './WalletPortalSharesEditor'
 
 interface Props {
-  walletId: number
+  scenarioId: number
   walletCards: WalletCard[]
   currencyId: number
   /** Pixel width of the left gutter column. The dropdown occupies a full
@@ -17,11 +17,11 @@ interface Props {
   onClose: () => void
 }
 
-export function CurrencySettingsDropdown({ walletId, walletCards, currencyId, leftGutterPx, onClose }: Props) {
+export function CurrencySettingsDropdown({ scenarioId, walletCards, currencyId, leftGutterPx, onClose }: Props) {
   const queryClient = useQueryClient()
   const { data: currencies = [], isLoading } = useQuery({
-    queryKey: queryKeys.walletCurrencies(walletId),
-    queryFn: () => walletCppApi.listCurrencies(walletId),
+    queryKey: queryKeys.scenarioCurrencies(scenarioId),
+    queryFn: () => scenarioCppApi.listCurrencies(scenarioId),
   })
 
   const currency = currencies.find((c) => c.id === currencyId) ?? null
@@ -39,11 +39,11 @@ export function CurrencySettingsDropdown({ walletId, walletCards, currencyId, le
   const displayCpp = pendingCpp ?? myCpp
   const clampedCpp = Math.min(3, Math.max(0.5, displayCpp))
 
-  const setWalletCpp = useMutation({
+  const setScenarioCpp = useMutation({
     mutationFn: ({ centsPerPoint }: { centsPerPoint: number }) =>
-      walletCppApi.set(walletId, currencyId, centsPerPoint),
+      scenarioCppApi.set(scenarioId, currencyId, centsPerPoint),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.walletCurrencies(walletId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.scenarioCurrencies(scenarioId) })
       setPendingCpp(null)
     },
   })
@@ -55,7 +55,7 @@ export function CurrencySettingsDropdown({ walletId, walletCards, currencyId, le
       setPendingCpp(null)
       return
     }
-    setWalletCpp.mutate({ centsPerPoint: next })
+    setScenarioCpp.mutate({ centsPerPoint: next })
   }
 
   useEffect(() => {
@@ -104,7 +104,7 @@ export function CurrencySettingsDropdown({ walletId, walletCards, currencyId, le
                 max={3}
                 step={0.05}
                 value={clampedCpp}
-                disabled={setWalletCpp.isPending}
+                disabled={setScenarioCpp.isPending}
                 onChange={(e) => setPendingCpp(Number(e.target.value))}
                 onMouseUp={(e) =>
                   commitCpp(Number((e.target as HTMLInputElement).value))
@@ -121,7 +121,7 @@ export function CurrencySettingsDropdown({ walletId, walletCards, currencyId, le
           )}
 
           <WalletPortalSharesEditor
-            walletId={walletId}
+            scenarioId={scenarioId}
             walletCards={walletCards}
             filterByCurrencyId={currencyId}
           />

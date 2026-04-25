@@ -441,6 +441,9 @@ export interface Wallet {
 export interface WalletResultResponse {
   wallet_id: number
   wallet_name: string
+  /** Set when this response came from a scenario endpoint. */
+  scenario_id?: number | null
+  scenario_name?: string | null
   start_date: string
   end_date: string | null
   duration_years: number
@@ -897,6 +900,8 @@ export interface FutureCardCreatePayload extends OwnedCardCreatePayload {
   pc_from_instance_id?: number | null
   panel?: CardInstancePanel
   is_enabled?: boolean
+  /** Optional priority category pins to set immediately after create. */
+  priority_category_ids?: number[]
 }
 
 export interface FutureCardUpdatePayload extends OwnedCardUpdatePayload {
