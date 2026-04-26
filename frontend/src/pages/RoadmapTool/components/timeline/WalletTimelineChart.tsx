@@ -1203,12 +1203,18 @@ function CardRow({
           </div>
           <EditAffordance />
         </button>
-        <ToggleSwitch
-          enabled={enabled}
-          disabled={isUpdating}
-          onChange={(next) => onToggleEnabled(wc.instance_id, next)}
-          label={enabled ? 'Disable card' : 'Enable card'}
-        />
+        {/* Owned cards are always part of the wallet — can't be toggled off
+            from the timeline. To remove an owned card from a scenario use
+            the close-date or product-change overlay in the modal. Future
+            cards keep the toggle since they're hypothetical. */}
+        {wc.is_future && (
+          <ToggleSwitch
+            enabled={enabled}
+            disabled={isUpdating}
+            onChange={(next) => onToggleEnabled(wc.instance_id, next)}
+            label={enabled ? 'Disable card' : 'Enable card'}
+          />
+        )}
       </div>
 
       {/* Right column: timeline bar */}
