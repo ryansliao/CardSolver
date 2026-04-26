@@ -261,14 +261,6 @@ export function WalletCardModal(props: WalletCardModalProps) {
     }).length
   }, [walletSpendItems, priorityCategoryIds])
 
-  // Cards already in the wallet — shown in the "changing from" picker (future PC)
-  const walletCards = useMemo(() => {
-    if (!cards) return []
-    return [...cards]
-      .filter((c) => existingCardIds.includes(c.id))
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
-  }, [cards, existingCardIds])
-
   // "Changing to" candidates: same issuer as the selected from-card, not already in wallet.
   // Only relevant when adding a future card with PC acquisition.
   const issuerFilteredCards = useMemo(() => {
@@ -1140,28 +1132,6 @@ export function WalletCardModal(props: WalletCardModalProps) {
                   </div>
                 </div>
 
-                {lib && lib.secondary_currency_id != null && (
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">
-                      {lib.secondary_currency_obj?.name ?? 'Secondary Currency'} Rate (%)
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step="0.01"
-                      disabled={formDisabled}
-                      className="w-full bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2 rounded-lg outline-none focus:border-indigo-500 disabled:opacity-50"
-                      placeholder="e.g. 4 for 4%"
-                      value={secondaryCurrencyRate ? String(Number(secondaryCurrencyRate) * 100) : ''}
-                      onChange={(e) => {
-                        const v = e.target.value.trim()
-                        if (v === '') setSecondaryCurrencyRate('')
-                        else setSecondaryCurrencyRate(String(Number(v) / 100))
-                      }}
-                    />
-                  </div>
-                )}
               </div>
             )}
 

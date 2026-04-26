@@ -41,6 +41,7 @@ import { ScenarioPicker } from './components/ScenarioPicker'
 import { InfoIconButton } from '../../components/InfoPopover'
 import { useCardLibrary } from './hooks/useCardLibrary'
 import { useCreditLibrary } from '../../hooks/useCreditLibrary'
+import { useToday } from '../../hooks/useToday'
 import { useTravelPortals } from '../../hooks/useTravelPortals'
 import { queryKeys } from '../../lib/queryKeys'
 import { resolveScenarioCards, type ResolvedCard } from './lib/resolveScenarioCards'
@@ -74,8 +75,15 @@ function writeStoredSnapshotSig(scenarioId: number, sig: string) {
 /** Serialize the scenario + projection inputs that drive the calculation.
  * Two calls return the same string iff no calc-relevant input changed, so
  * comparing against the snapshot from the last successful calc lets us
- * distinguish "truly out of date" from "edited and then reverted". */
+ * distinguish "truly out of date" from "edited and then reverted".
+ *
+ * Includes ``today`` because owned-card SUB earnability is derived from
+ * ``opening_date + spend_rate`` against the current date — when the calendar
+ * day rolls over, results computed on the prior day are stale. ``useToday``
+ * re-renders the consumer just past midnight, which flips the signature
+ * here and trips the "out of date" indicator. */
 function scenarioCalcSignature(
+  today: string,
   resolvedCards: ResolvedCard[],
   foreignSpendPercent: number,
   durationYears: number,
@@ -161,6 +169,7 @@ function scenarioCalcSignature(
   }
   credits.sort((a, b) => a.instance_id - b.instance_id)
   return JSON.stringify({
+    today,
     durationYears,
     durationMonths,
     foreign_spend_percent: foreignSpendPercent,
@@ -333,10 +342,12 @@ export default function RoadmapToolPage() {
   }, [creditQueries, enabledInstanceIds])
 
   const foreignSpendPercent = wallet?.foreign_spend_percent ?? 0
+  const todayStr = useToday()
 
   const currentSignature = useMemo(
     () =>
       scenarioCalcSignature(
+        todayStr,
         resolvedCards,
         foreignSpendPercent,
         durationYears,
@@ -348,6 +359,7 @@ export default function RoadmapToolPage() {
         creditOverridesByInstanceId,
       ),
     [
+      todayStr,
       resolvedCards,
       foreignSpendPercent,
       durationYears,
@@ -651,6 +663,7 @@ export default function RoadmapToolPage() {
       setSnapshotSignature(
         stored ??
           scenarioCalcSignature(
+            todayStr,
             resolvedCards,
             foreignSpendPercent,
             latestResult.duration_years,

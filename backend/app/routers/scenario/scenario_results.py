@@ -183,16 +183,61 @@ async def scenario_results(
     selected_card_data = [c for c in modified_cards if c.id in selected_ids]
     wcids = {c.currency.id for c in selected_card_data}
 
-    # Instances that exist as of ref_date (added on or before ref_date) —
-    # their SUB windows are history.
-    in_wallet_now_instance_ids = {
+    # Owned cards (opening <= ref_date): the calculator auto-decides whether
+    # the SUB is still forward-relevant from opening_date + the wallet's
+    # current daily spend rate. A card whose SUB window has closed, OR
+    # whose projection lands on/before ref_date (already earned in the
+    # past), drops out of forward-looking SUB planning and EAF — so the
+    # SUB isn't double-counted for old cards.
+    total_daily_spend_pre = sum(spend.values()) / 365.0
+
+    def _owned_sub_forward_earnable(inst, eff_min, eff_months) -> bool:
+        if not eff_min or not eff_months:
+            return False
+        window_end_dt = add_months(inst.opening_date, eff_months)
+        if ref_date >= window_end_dt:
+            return False  # window closed
+        proj = projected_sub_earn_date(
+            inst.opening_date, eff_min, eff_months, total_daily_spend_pre
+        )
+        if proj is None:
+            return False  # rate too low to earn within window
+        if proj <= ref_date:
+            return False  # already earned in the past — exclude from forward EAF
+        return True
+
+    owned_sub_active_ids: set[int] = set()
+    for r in inputs.resolved_instances:
+        inst = r.instance
+        if inst.scenario_id is not None:
+            continue
+        opening = r.effective.get("opening_date") or inst.opening_date
+        if opening > ref_date:
+            continue  # future card, handled by future-card path
+        lib_cd = inputs.library_cards_by_id.get(r.library_card_id)
+        eff_min = r.effective.get("sub_min_spend") or (
+            lib_cd.sub_min_spend if lib_cd is not None else None
+        )
+        eff_months = r.effective.get("sub_months") or (
+            lib_cd.sub_months if lib_cd is not None else None
+        )
+        eff_pts = r.effective.get("sub_points") or (
+            lib_cd.sub_points if lib_cd is not None else None
+        )
+        if not eff_pts:
+            continue
+        if _owned_sub_forward_earnable(inst, eff_min, eff_months):
+            owned_sub_active_ids.add(r.instance_id)
+
+    in_wallet_now_no_sub_ids = {
         r.instance_id
         for r in inputs.resolved_instances
         if (r.effective.get("opening_date") or r.instance.opening_date) <= ref_date
+        and r.instance_id not in owned_sub_active_ids
     }
 
     def _has_sub_window(cd) -> bool:
-        if cd.id in in_wallet_now_instance_ids:
+        if cd.id in in_wallet_now_no_sub_ids:
             return False
         if not cd.sub_points or not cd.sub_min_spend or not cd.wallet_added_date:
             return False
@@ -243,7 +288,8 @@ async def scenario_results(
     projected_dates: dict[int, Optional[date]] = {}
     for r in inputs.resolved_instances:
         opening = r.effective.get("opening_date") or r.instance.opening_date
-        if opening <= ref_date:
+        is_owned_active_sub = r.instance_id in owned_sub_active_ids
+        if opening <= ref_date and not is_owned_active_sub:
             proj: Optional[date] = None
         else:
             lib_cd = inputs.library_cards_by_id.get(r.library_card_id)
@@ -276,7 +322,7 @@ async def scenario_results(
             c,
             sub_earnable=(
                 False
-                if c.id in in_wallet_now_instance_ids
+                if c.id in in_wallet_now_no_sub_ids
                 else is_sub_earnable(
                     c.sub_min_spend, c.sub_months, total_daily_spend
                 )
@@ -433,38 +479,35 @@ async def scenario_roadmap(
             inst.sub_min_spend if inst.sub_min_spend is not None else card.sub_min_spend
         )
 
+        # Project the SUB earn date from opening_date + the wallet's daily
+        # spend rate. Works uniformly for owned and future cards: anchor at
+        # opening_date, project forward using the rate, and let callers
+        # classify "earned" via projected <= today.
         sub_projected = inst.sub_projected_earn_date
-        if (
-            sub_projected is None
-            and eff_sub
-            and eff_sub_min
-            and inst.opening_date > today
-        ):
+        if sub_projected is None and eff_sub and eff_sub_min:
             sub_projected = projected_sub_earn_date(
                 inst.opening_date, eff_sub_min, eff_sub_months, daily_rate
             )
 
+        sub_window_end: Optional[date] = None
+        sub_days_remaining: Optional[int] = None
+
         if not eff_sub:
             sub_status = "no_sub"
-            sub_window_end = None
-            sub_days_remaining = None
-        elif sub_projected is not None and sub_projected <= today:
-            sub_status = "earned"
-            sub_window_end = None
-            sub_days_remaining = None
-        elif eff_sub_months:
-            sub_window_end = add_months(inst.opening_date, eff_sub_months)
-            remaining = (sub_window_end - today).days
-            if remaining < 0:
-                sub_status = "expired"
-                sub_days_remaining = None
+        else:
+            if eff_sub_months:
+                sub_window_end = add_months(inst.opening_date, eff_sub_months)
+            if sub_projected is not None and sub_projected <= today:
+                sub_status = "earned"
+            elif sub_window_end is not None:
+                remaining_days = (sub_window_end - today).days
+                if remaining_days < 0:
+                    sub_status = "expired"
+                else:
+                    sub_status = "pending"
+                    sub_days_remaining = remaining_days
             else:
                 sub_status = "pending"
-                sub_days_remaining = remaining
-        else:
-            sub_status = "pending"
-            sub_window_end = None
-            sub_days_remaining = None
 
         recurrence = card.sub_recurrence_months
         next_eligible: Optional[date] = None

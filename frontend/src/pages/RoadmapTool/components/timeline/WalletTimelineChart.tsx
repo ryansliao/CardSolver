@@ -1075,19 +1075,22 @@ function CardRow({
 
   // sub_earned_date is deprecated and ignored — the projected earn date
   // (auto-computed by the backend from spend rate) is the single source of
-  // truth for the SUB tick marker.
+  // truth for the SUB earn marker.
   const subProjectedDate =
     wc.sub_projected_earn_date ?? roadmapStatus?.sub_projected_earn_date ?? null
-  const subMs = subProjectedDate ? parseDate(subProjectedDate).getTime() : null
-  // Disabled cards don't participate in calculations, so their SUB projection
-  // is meaningless — suppress the marker entirely.
-  const showSubMarker =
-    enabled &&
-    subMs != null &&
-    subMs >= range.startMs &&
-    subMs <= range.endMs &&
-    barWidthPct > 0
-  const subPct = showSubMarker ? pctOf(range, subMs!) : null
+  const subProjectedMs = subProjectedDate ? parseDate(subProjectedDate).getTime() : null
+
+  // SUB earning segment: anchored at opening_date and ending at the
+  // projected SUB-earn date. The segment is suppressed when the card
+  // cannot earn its SUB (backend returns a null projected earn date for
+  // expired or non-SUB cases).
+  const subSegment = (() => {
+    if (!enabled || !subProjectedMs) return null
+    const startMs = parseDate(wc.added_date).getTime()
+    if (subProjectedMs <= startMs) return null
+    if (subProjectedMs <= range.startMs || startMs >= range.endMs) return null
+    return { startMs, endMs: subProjectedMs }
+  })()
   // Per-card income and EAF are driven by the last calc's `cr`, not the live
   // toggle, so the numbers (and layout) stay stable when the user flips
   // `is_enabled` — only a recalc refreshes what's shown.
@@ -1133,6 +1136,9 @@ function CardRow({
     .join('\n')
 
   const barHeight = 24
+  // Cards earning a secondary currency render an extra text line in the
+  // gutter; bump the row height so all three lines fit comfortably.
+  const rowHeight = secondary ? CARD_ROW_HEIGHT + 14 : CARD_ROW_HEIGHT
 
   // display: contents on the wrapper lets the two children act as direct grid
   // cells while sharing a hover state so the entire row highlights together.
@@ -1143,7 +1149,7 @@ function CardRow({
         className={`flex items-center gap-2 px-3 ${DIVIDER_CLASS} transition-colors group-hover:bg-slate-800/60 ${
           enabled ? '' : 'opacity-50'
         }`}
-        style={{ height: CARD_ROW_HEIGHT }}
+        style={{ height: rowHeight }}
       >
         <button
           type="button"
@@ -1162,12 +1168,6 @@ function CardRow({
                 title={isStale ? 'Out of date' : undefined}
               >
                 {incomeLabel}
-                {secondary && (
-                  <>
-                    <span className="mx-1 text-slate-700">·</span>
-                    {formatSecondaryAnnual(secondary)}
-                  </>
-                )}
                 {wc.credit_totals
                   .filter((t) => t.value > 0)
                   .map((t) => (
@@ -1178,6 +1178,14 @@ function CardRow({
                         : `${formatPoints(t.value)} ${pointsUnitLabel(t.currency_name)} Credits`}
                     </span>
                   ))}
+              </div>
+            )}
+            {secondary && (
+              <div
+                className={`text-xs text-slate-500 truncate transition-opacity ${isStale ? 'opacity-50' : ''}`}
+                title={isStale ? 'Out of date' : undefined}
+              >
+                {formatSecondaryAnnual(secondary)}
               </div>
             )}
           </div>
@@ -1219,7 +1227,7 @@ function CardRow({
       {/* Right column: timeline bar */}
       <div
         className={`relative ${DIVIDER_CLASS}`}
-        style={{ height: CARD_ROW_HEIGHT }}
+        style={{ height: rowHeight }}
         title={tooltip}
       >
         {barWidthPct > 0 && (() => {
@@ -1232,7 +1240,7 @@ function CardRow({
               style={{
                 left: `${barStartPct}%`,
                 width: `${barWidthPct}%`,
-                top: (CARD_ROW_HEIGHT - barHeight) / 2,
+                top: (rowHeight - barHeight) / 2,
                 height: barHeight,
                 backgroundColor: enabled ? `${color}33` : '#33415533',
                 border: `1px solid ${enabled ? color : '#475569'}`,
@@ -1264,7 +1272,7 @@ function CardRow({
                 style={{
                   left: `${barStartPct}%`,
                   width: `${barWidthPct}%`,
-                  top: (CARD_ROW_HEIGHT - barHeight) / 2,
+                  top: (rowHeight - barHeight) / 2,
                   height: barHeight,
                   zIndex: 30,
                 }}
@@ -1284,7 +1292,7 @@ function CardRow({
             else if (leftRoomPx >= labelPx + GAP) placement = 'left'
             else placement = 'inside'
           }
-          const top = (CARD_ROW_HEIGHT - barHeight) / 2
+          const top = (rowHeight - barHeight) / 2
           if (placement === 'inside') {
             return (
               <div
@@ -1333,8 +1341,16 @@ function CardRow({
             </div>
           )
         })()}
-        {showSubMarker && subPct != null && (
-          <SubTick pct={subPct} rowHeight={CARD_ROW_HEIGHT} barHeight={barHeight} />
+        {subSegment && (
+          <SubEarningSegment
+            range={range}
+            segmentStartMs={subSegment.startMs}
+            segmentEndMs={subSegment.endMs}
+            lifetimeStartMs={addedMs}
+            lifetimeEndMs={closedMs}
+            rowHeight={rowHeight}
+            barHeight={barHeight}
+          />
         )}
       </div>
     </div>
@@ -1438,33 +1454,69 @@ function ToggleSwitch({
   )
 }
 
-function SubTick({
-  pct,
+function SubEarningSegment({
+  range,
+  segmentStartMs,
+  segmentEndMs,
+  lifetimeStartMs,
+  lifetimeEndMs,
   rowHeight,
   barHeight,
 }: {
-  pct: number
+  range: Range
+  /** When the SUB starts being earned (sub_start_date or opening_date). */
+  segmentStartMs: number
+  /** When the SUB is projected to be earned. */
+  segmentEndMs: number
+  /** Lifetime bar bounds — used to round corners only when the segment
+   * touches a rounded edge of the lifetime bar. */
+  lifetimeStartMs: number
+  lifetimeEndMs: number
   rowHeight: number
   barHeight: number
 }) {
-  // A thin amber vertical tick marking the projected SUB earn date,
-  // extending a few px past the bar top and bottom to stay visible
-  // regardless of bar fill color.
-  const extend = 6
-  const top = (rowHeight - barHeight) / 2 - extend
-  const height = barHeight + extend * 2
+  // Yellow segment of the lifetime bar covering [sub_start_date or opening,
+  // sub_projected_earn_date]. Same y-position and height as the lifetime
+  // bar, opaque fill so the segment reads as part of the bar — not a
+  // separate overlay. Caller suppresses the segment when the SUB cannot be
+  // earned (no projected_earn_date).
+  const visStart = Math.max(segmentStartMs, range.startMs)
+  const visEnd = Math.min(segmentEndMs, range.endMs)
+  if (visEnd <= visStart) return null
+
+  const startPct = pctOf(range, visStart)
+  const widthPct = pctOf(range, visEnd) - startPct
+  if (widthPct <= 0) return null
+
+  const top = (rowHeight - barHeight) / 2
+
+  // Match the lifetime bar's rounded corners only when the SUB segment
+  // actually touches a rounded edge of the lifetime bar (which is itself
+  // only rounded when it sits inside the visible range).
+  const lifetimeRoundsLeft = lifetimeStartMs > range.startMs
+  const lifetimeRoundsRight = lifetimeEndMs < range.endMs
+  const segmentTouchesLifetimeLeft = segmentStartMs <= lifetimeStartMs
+  const segmentTouchesLifetimeRight = segmentEndMs >= lifetimeEndMs
+  const roundLeft = lifetimeRoundsLeft && segmentTouchesLifetimeLeft
+  const roundRight = lifetimeRoundsRight && segmentTouchesLifetimeRight
+  const roundedClass = `${roundLeft ? 'rounded-l-full' : ''} ${roundRight ? 'rounded-r-full' : ''}`.trim()
+
+  // Match the lifetime bar's visual style: semi-transparent fill + 1px
+  // colored border. Uses the same `${color}33` alpha pattern the rest of
+  // the bar uses (33/255 ≈ 20% alpha).
+  const yellow = '#fbbf24'
   return (
     <div
-      className="absolute pointer-events-none"
+      className={`absolute pointer-events-none ${roundedClass}`}
       style={{
-        left: `${pct}%`,
+        left: `${startPct}%`,
+        width: `${widthPct}%`,
         top,
-        height,
-        width: 0,
-        transform: 'translateX(-1px)',
-        borderLeft: '2px dashed #f59e0b',
+        height: barHeight,
+        backgroundColor: `${yellow}33`,
+        border: `1px solid ${yellow}`,
+        zIndex: 31,
       }}
-      title="SUB projected"
     />
   )
 }

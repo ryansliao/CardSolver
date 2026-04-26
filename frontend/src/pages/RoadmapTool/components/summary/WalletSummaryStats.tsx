@@ -291,23 +291,16 @@ export function WalletSummaryStats({
           <div className="grid grid-cols-[20px_1fr] gap-x-2 gap-y-1 items-center text-[10px] text-slate-500">
             <span
               aria-hidden
-              className="justify-self-center inline-block"
-              style={{ width: 2, height: 11, backgroundColor: '#64748b' }}
-              title="Solid slate lines mark Today and the end of the projection window"
-            />
-            <span className="whitespace-nowrap">Time Horizon Bounds</span>
-
-            <span
-              aria-hidden
-              className="justify-self-center inline-block"
+              className="justify-self-center inline-block rounded-full"
               style={{
-                width: 0,
-                height: 11,
-                borderLeft: '2px dashed #f59e0b',
+                width: 18,
+                height: 7,
+                backgroundColor: '#fbbf2433',
+                border: '1px solid #fbbf24',
               }}
-              title="Dashed amber line marks the projected SUB earn date"
+              title="Yellow segment of the bar covers the SUB earning period (anchor → projected earn date)"
             />
-            <span className="whitespace-nowrap">SUB Earn Date</span>
+            <span className="whitespace-nowrap">SUB Earning Period</span>
 
             <span
               aria-hidden
