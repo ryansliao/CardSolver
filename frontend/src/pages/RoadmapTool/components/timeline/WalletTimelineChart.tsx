@@ -1092,12 +1092,45 @@ function CardRow({
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-slate-200 truncate flex items-center gap-1.5">
               <span className="truncate">{wc.card_name ?? `Card #${wc.card_id}`}</span>
-              {wc.is_future && (
+              {wc.is_future ? (
                 <span
-                  className="text-[9px] uppercase tracking-wider font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded px-1 py-[1px] shrink-0"
+                  className="shrink-0 text-sky-300"
                   title="Future card scoped to this scenario"
+                  aria-label="Future card"
                 >
-                  Future
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="9" />
+                    <polyline points="12 7 12 12 15 14" />
+                  </svg>
+                </span>
+              ) : (
+                <span
+                  className="shrink-0 text-emerald-300"
+                  title="Owned card in your wallet"
+                  aria-label="Owned card"
+                >
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-1" />
+                    <path d="M16 12h6v4h-6a2 2 0 0 1 0-4z" />
+                  </svg>
                 </span>
               )}
               {wc.is_overlay_modified && (
