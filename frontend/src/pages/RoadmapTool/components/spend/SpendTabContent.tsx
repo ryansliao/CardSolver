@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { Card, CardResult, UserSpendCategory, WalletCard } from '../../../../api/client'
-import { walletSpendItemsApi } from '../../../../api/client'
+import type { Card, CardResult, UserSpendCategory } from '../../../../api/client'
+import { walletSpendApi } from '../../../../api/client'
+import type { ResolvedCard } from '../../lib/resolveScenarioCards'
 import { InfoQuoteBox } from '../../../../components/InfoPopover'
 import { formatMoneyExact, formatPointsExact } from '../../../../utils/format'
 import { queryKeys } from '../../../../lib/queryKeys'
 import { useCardLibrary } from '../../hooks/useCardLibrary'
 
 interface Props {
-  walletId: number | null
   selectedCards: CardResult[]
-  walletCards: WalletCard[]
+  walletCards: ResolvedCard[]
   isTotal: boolean
   totalYears: number
   isStale: boolean
@@ -40,7 +40,6 @@ function CardPhoto({ slug, name }: { slug: string | null; name: string }) {
 }
 
 export function SpendTabContent({
-  walletId,
   selectedCards,
   walletCards,
   isTotal,
@@ -48,9 +47,8 @@ export function SpendTabContent({
   isStale,
 }: Props) {
   const { data: spendItems = [], isLoading } = useQuery({
-    queryKey: queryKeys.walletSpendItems(walletId),
-    queryFn: () => walletSpendItemsApi.list(walletId!),
-    enabled: walletId != null,
+    queryKey: queryKeys.walletSpendItemsSingular(),
+    queryFn: () => walletSpendApi.list(),
   })
 
   const { data: cardLibrary = [] } = useCardLibrary()
@@ -65,12 +63,29 @@ export function SpendTabContent({
     return m
   }, [cardLibrary])
 
+  // CardResult.card_id is the synthetic CardInstance.id under the new
+  // model, not the library card_id. Translate via walletCards so library
+  // lookups (rotating groups, portal premiums, standalone multipliers)
+  // resolve correctly. Without this every per-card library lookup
+  // returned undefined → no rotating badge, no portal multiplier
+  // adjustment, baseline ROS gets inflated for portal cards.
+  const libraryCardIdByInstanceId = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const wc of walletCards) m.set(wc.instance_id, wc.card_id)
+    return m
+  }, [walletCards])
+
+  function libCardForInstanceId(instanceId: number): Card | undefined {
+    const libId = libraryCardIdByInstanceId.get(instanceId)
+    return libId != null ? cardLibById.get(libId) : undefined
+  }
+
   // Set of earn-category names (lowercase) covered by any rotating group
   // on the card's library definition. Categories in this set must not be
   // credited with their rotating rate in the baseline ROS calculation —
   // fall back to the card's non-rotating rate (standalone or All Other).
-  function getRotatingCategoriesForCardId(cardId: number): Set<string> {
-    const lib = cardLibById.get(cardId)
+  function getRotatingCategoriesForInstanceId(instanceId: number): Set<string> {
+    const lib = libCardForInstanceId(instanceId)
     const out = new Set<string>()
     if (!lib) return out
     for (const g of lib.multiplier_groups ?? []) {
@@ -83,8 +98,8 @@ export function SpendTabContent({
   // Standalone non-portal, non-group multipliers keyed by lowercase category
   // name. Used as the fallback rate for categories that only earn a bonus
   // via a rotating group.
-  function getStandaloneMultsForCardId(cardId: number): Map<string, number> {
-    const lib = cardLibById.get(cardId)
+  function getStandaloneMultsForInstanceId(instanceId: number): Map<string, number> {
+    const lib = libCardForInstanceId(instanceId)
     const out = new Map<string, number>()
     if (!lib) return out
     for (const m of lib.multipliers ?? []) {
@@ -98,9 +113,9 @@ export function SpendTabContent({
   // rows through the spend-category hierarchy (a portal row on "Travel"
   // produces entries for Hotels, Airlines, Flights, …), so this is just a
   // direct keying of `card.portal_premiums` by lowercase category name.
-  function getPortalMultsForCardId(cardId: number): Map<string, { mult: number; isAdditive: boolean }> {
+  function getPortalMultsForInstanceId(instanceId: number): Map<string, { mult: number; isAdditive: boolean }> {
     const out = new Map<string, { mult: number; isAdditive: boolean }>()
-    const lib = cardLibById.get(cardId)
+    const lib = libCardForInstanceId(instanceId)
     if (!lib) return out
     for (const p of lib.portal_premiums ?? []) {
       out.set(p.category.trim().toLowerCase(), {
@@ -112,30 +127,28 @@ export function SpendTabContent({
   }
 
   // Closed / product-changed-away-from cards are excluded from earn allocation.
-  const excludedCardIds = useMemo(() => {
+  // CardResult.card_id under the new model is the synthetic instance.id (=
+  // ResolvedCard.id), so we exclude by instance id throughout. PC source
+  // instances are excluded when a future card carries pc_from_instance_id.
+  const excludedInstanceIds = useMemo(() => {
     const ids = new Set<number>()
     for (const wc of walletCards) {
       if (wc.panel !== 'in_wallet' && wc.panel !== 'future_cards') continue
-      if (wc.closed_date) ids.add(wc.card_id)
+      if (wc.closed_date) ids.add(wc.instance_id)
     }
     for (const pcCard of walletCards) {
-      if (pcCard.acquisition_type !== 'product_change' || pcCard.panel !== 'future_cards') continue
-      if (pcCard.pc_from_card_id != null) {
-        ids.add(pcCard.pc_from_card_id)
-      } else {
-        for (const c of walletCards) {
-          if (c.product_changed_date && c.product_changed_date === pcCard.added_date) {
-            ids.add(c.card_id)
-          }
-        }
+      if (!pcCard.is_future) continue
+      if (pcCard.acquisition_type !== 'product_change') continue
+      if (pcCard.pc_from_instance_id != null) {
+        ids.add(pcCard.pc_from_instance_id)
       }
     }
     return ids
   }, [walletCards])
 
   const topRosCards = useMemo(
-    () => selectedCards.filter((c) => !excludedCardIds.has(c.card_id)),
-    [selectedCards, excludedCardIds]
+    () => selectedCards.filter((c) => !excludedInstanceIds.has(c.card_id)),
+    [selectedCards, excludedInstanceIds]
   )
 
   // Cycling through cards in the third column. Index is clamped to the
@@ -163,9 +176,9 @@ export function SpendTabContent({
       if (kl === lower) directMatch = v
       if (kl === 'all other') allOther = v
     }
-    const rotating = getRotatingCategoriesForCardId(card.card_id)
+    const rotating = getRotatingCategoriesForInstanceId(card.card_id)
     if (rotating.has(lower)) {
-      const standalone = getStandaloneMultsForCardId(card.card_id).get(lower)
+      const standalone = getStandaloneMultsForInstanceId(card.card_id).get(lower)
       if (standalone !== undefined) return standalone
       return allOther
     }
@@ -177,14 +190,14 @@ export function SpendTabContent({
   // flows through its travel portal. Returns null when the card has no
   // portal premium covering this earn category.
   function getPortalMultForEarnCategory(card: CardResult, earnCatName: string): number | null {
-    const portal = getPortalMultsForCardId(card.card_id).get(earnCatName.trim().toLowerCase())
+    const portal = getPortalMultsForInstanceId(card.card_id).get(earnCatName.trim().toLowerCase())
     if (!portal) return null
     const base = getBaselineMultForEarnCategory(card, earnCatName)
     return portal.isAdditive ? base + portal.mult : portal.mult
   }
 
   function userCategoryHasPortalCoverage(card: CardResult, userCategory: UserSpendCategory): boolean {
-    const portals = getPortalMultsForCardId(card.card_id)
+    const portals = getPortalMultsForInstanceId(card.card_id)
     if (portals.size === 0) return false
     for (const m of userCategory.mappings) {
       if (portals.has(m.earn_category.category.trim().toLowerCase())) return true
@@ -199,7 +212,7 @@ export function SpendTabContent({
   // the caller falls back to baseline.
   function getRotatingMultForEarnCategory(card: CardResult, earnCatName: string): number | null {
     const lower = earnCatName.trim().toLowerCase()
-    if (!getRotatingCategoriesForCardId(card.card_id).has(lower)) return null
+    if (!getRotatingCategoriesForInstanceId(card.card_id).has(lower)) return null
     const mults = card.category_multipliers ?? {}
     for (const [k, v] of Object.entries(mults)) {
       if (k.trim().toLowerCase() === lower) return v
@@ -208,7 +221,7 @@ export function SpendTabContent({
   }
 
   function userCategoryHasRotatingCoverage(card: CardResult, userCategory: UserSpendCategory): boolean {
-    const rotating = getRotatingCategoriesForCardId(card.card_id)
+    const rotating = getRotatingCategoriesForInstanceId(card.card_id)
     if (rotating.size === 0) return false
     for (const m of userCategory.mappings) {
       if (rotating.has(m.earn_category.category.trim().toLowerCase())) return true

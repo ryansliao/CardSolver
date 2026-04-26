@@ -1,11 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
-  walletsApi,
-  walletCardCategoryPriorityApi,
-  type AddCardToWalletPayload,
-  type UpdateWalletCardPayload,
-  type WalletCard,
+  ownedCardInstancesApi,
+  type CardInstance,
+  type OwnedCardCreatePayload,
+  type OwnedCardUpdatePayload,
 } from '../../../api/client'
 import { WalletCardModal } from '../../../components/cards/WalletCardModal'
 import { DeleteCardWarningModal } from '../../../components/cards/DeleteCardWarningModal'
@@ -14,56 +13,59 @@ import { queryKeys } from '../../../lib/queryKeys'
 import { formatMoney, formatPoints, pointsUnitLabel } from '../../../utils/format'
 import { CardPhoto } from './CardPhoto'
 
-type WalletCardModalOpen = { mode: 'add' } | { mode: 'edit'; walletCard: WalletCard }
+type WalletCardModalOpen =
+  | { mode: 'add' }
+  | { mode: 'edit'; instance: CardInstance }
 
 interface WalletTabProps {
-  walletId: number | null
-  walletCards: WalletCard[]
+  cardInstances: CardInstance[]
   isLoading: boolean
 }
 
-export function WalletTab({ walletId, walletCards, isLoading }: WalletTabProps) {
+export function WalletTab({ cardInstances, isLoading }: WalletTabProps) {
   const queryClient = useQueryClient()
   const [walletCardModal, setWalletCardModal] = useState<WalletCardModalOpen | null>(null)
-  const [pendingRemoval, setPendingRemoval] = useState<{ cardId: number; cardName: string } | null>(null)
+  const [pendingRemoval, setPendingRemoval] = useState<{
+    instanceId: number
+    cardName: string
+  } | null>(null)
 
   useCreditLibrary()
 
+  const invalidateWallet = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.myWalletWithScenarios() })
+    queryClient.invalidateQueries({ queryKey: queryKeys.ownedCardInstances() })
+  }
+
   const addCardMutation = useMutation({
-    mutationFn: ({ walletId, payload }: { walletId: number; payload: AddCardToWalletPayload }) =>
-      walletsApi.addCard(walletId, payload),
-    onSuccess: async (_data, { walletId, payload }) => {
-      if (payload.priority_category_ids && payload.priority_category_ids.length > 0) {
-        await walletCardCategoryPriorityApi.set(walletId, payload.card_id, payload.priority_category_ids)
-        queryClient.invalidateQueries({ queryKey: queryKeys.walletCategoryPriorities(walletId) })
-      }
-      queryClient.invalidateQueries({ queryKey: queryKeys.myWallet() })
+    mutationFn: (payload: OwnedCardCreatePayload) => ownedCardInstancesApi.create(payload),
+    onSuccess: () => {
+      invalidateWallet()
       setWalletCardModal(null)
     },
   })
 
   const removeCardMutation = useMutation({
-    mutationFn: ({ walletId, cardId }: { walletId: number; cardId: number }) =>
-      walletsApi.removeCard(walletId, cardId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.myWallet() })
-    },
+    mutationFn: (instanceId: number) => ownedCardInstancesApi.delete(instanceId),
+    onSuccess: () => invalidateWallet(),
   })
 
-  const updateWalletCardMutation = useMutation({
-    mutationFn: ({ walletId, cardId, payload }: { walletId: number; cardId: number; payload: UpdateWalletCardPayload }) =>
-      walletsApi.updateCard(walletId, cardId, payload),
-    onSuccess: (_data, { walletId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.myWallet() })
-      queryClient.invalidateQueries({ queryKey: queryKeys.walletCardCredits(walletId, null) })
-    },
+  const updateCardMutation = useMutation({
+    mutationFn: ({
+      instanceId,
+      payload,
+    }: {
+      instanceId: number
+      payload: OwnedCardUpdatePayload
+    }) => ownedCardInstancesApi.update(instanceId, payload),
+    onSuccess: () => invalidateWallet(),
   })
 
-  const inWalletCards = walletCards
-    .filter((wc) => wc.panel === 'in_wallet')
+  const inWalletCards = cardInstances
+    .filter((inst) => inst.scenario_id === null && inst.panel === 'in_wallet')
     .sort((a, b) => {
-      const da = a.added_date?.trim() ?? ''
-      const db = b.added_date?.trim() ?? ''
+      const da = a.opening_date?.trim() ?? ''
+      const db = b.opening_date?.trim() ?? ''
       if (!da && !db) return 0
       if (!da) return 1
       if (!db) return -1
@@ -94,7 +96,6 @@ export function WalletTab({ walletId, walletCards, isLoading }: WalletTabProps) 
         </button>
       </div>
 
-
       <div className="min-h-0 overflow-y-auto flex-1">
         {inWalletCards.length === 0 ? (
           <div className="border-2 border-dashed border-slate-700/60 rounded-xl py-12 px-6 text-center">
@@ -107,103 +108,131 @@ export function WalletTab({ walletId, walletCards, isLoading }: WalletTabProps) 
           </div>
         ) : (
           <ul className="space-y-1.5">
-            {inWalletCards.map((wc) => (
-              <li
-                key={wc.id}
-                className="group bg-slate-800/60 hover:bg-slate-800 border border-slate-700/40 hover:border-slate-600 rounded-xl transition-colors cursor-pointer overflow-hidden"
-                onClick={() => setWalletCardModal({ mode: 'edit', walletCard: wc })}
-              >
-                <div className="flex items-center gap-3 px-3 py-2">
-                  <div className="w-[72px] h-11 shrink-0 rounded overflow-hidden bg-slate-700/50">
-                    <CardPhoto slug={wc.photo_slug} name={wc.card_name ?? `Card #${wc.card_id}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium text-white truncate">{wc.card_name ?? `Card #${wc.card_id}`}</p>
-                      {wc.acquisition_type === 'product_change' && (
-                        <span className="text-[10px] font-medium bg-violet-900/60 text-violet-300 border border-violet-700/50 rounded px-1.5 py-0.5 shrink-0">PC</span>
-                      )}
+            {inWalletCards.map((inst) => {
+              const cardName = inst.card_name ?? `Card #${inst.card_id}`
+              const isPc = inst.product_change_date != null
+              return (
+                <li
+                  key={inst.id}
+                  className="group bg-slate-800/60 hover:bg-slate-800 border border-slate-700/40 hover:border-slate-600 rounded-xl transition-colors cursor-pointer overflow-hidden"
+                  onClick={() => setWalletCardModal({ mode: 'edit', instance: inst })}
+                >
+                  <div className="flex items-center gap-3 px-3 py-2">
+                    <div className="w-[72px] h-11 shrink-0 rounded overflow-hidden bg-slate-700/50">
+                      <CardPhoto slug={inst.photo_slug} name={cardName} />
                     </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {wc.issuer_name && <span className="text-xs text-slate-400">{wc.issuer_name}</span>}
-                      {wc.issuer_name && wc.added_date && <span className="text-slate-600 text-xs">·</span>}
-                      {wc.added_date && (
-                        <span className="text-xs text-slate-500">
-                          {wc.acquisition_type === 'product_change' ? 'PC' : 'Opened'} {wc.added_date}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0 mr-1">
-                    <p className="text-xs tabular-nums text-white">
-                      {wc.credit_totals
-                        .filter((t) => t.value > 0)
-                        .map((t) => (
-                          <span key={`${t.kind}-${t.currency_id ?? 'cash'}`}>
-                            Credits:{' '}
-                            <span className="text-emerald-400">
-                              {t.kind === 'cash'
-                                ? formatMoney(t.value)
-                                : `${formatPoints(t.value)} ${pointsUnitLabel(t.currency_name)}`}
-                            </span>
-                            <span className="text-slate-600 mx-1.5">·</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium text-white truncate">{cardName}</p>
+                        {isPc && (
+                          <span
+                            className="text-[10px] font-medium bg-violet-900/60 text-violet-300 border border-violet-700/50 rounded px-1.5 py-0.5 shrink-0"
+                            title={`Product change · ${inst.product_change_date}`}
+                          >
+                            PC
                           </span>
-                        ))}
-                      Annual Fee: {(wc.annual_fee ?? 0) > 0 ? <span className="text-red-400">{formatMoney(wc.annual_fee ?? 0)}</span> : <span className="text-emerald-400">$0</span>}
-                    </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {inst.issuer_name && (
+                          <span className="text-xs text-slate-400">{inst.issuer_name}</span>
+                        )}
+                        {inst.issuer_name && inst.opening_date && (
+                          <span className="text-slate-600 text-xs">·</span>
+                        )}
+                        {inst.opening_date && (
+                          <span className="text-xs text-slate-500">
+                            Opened {inst.opening_date}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 mr-1">
+                      <p className="text-xs tabular-nums text-white">
+                        {inst.credit_totals
+                          .filter((t) => t.value > 0)
+                          .map((t) => (
+                            <span key={`${t.kind}-${t.currency_id ?? 'cash'}`}>
+                              Credits:{' '}
+                              <span className="text-emerald-400">
+                                {t.kind === 'cash'
+                                  ? formatMoney(t.value)
+                                  : `${formatPoints(t.value)} ${pointsUnitLabel(t.currency_name)}`}
+                              </span>
+                              <span className="text-slate-600 mx-1.5">·</span>
+                            </span>
+                          ))}
+                        Annual Fee:{' '}
+                        {(inst.annual_fee ?? 0) > 0 ? (
+                          <span className="text-red-400">{formatMoney(inst.annual_fee ?? 0)}</span>
+                        ) : (
+                          <span className="text-emerald-400">$0</span>
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="p-1.5 rounded-lg text-slate-700 hover:text-red-400 hover:bg-red-950/40 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 shrink-0"
+                      aria-label="Remove card"
+                      title="Remove"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setPendingRemoval({ instanceId: inst.id, cardName })
+                      }}
+                      disabled={removeCardMutation.isPending}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className="p-1.5 rounded-lg text-slate-700 hover:text-red-400 hover:bg-red-950/40 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 shrink-0"
-                    aria-label="Remove card"
-                    title="Remove"
-                    onClick={(e) => { e.stopPropagation(); setPendingRemoval({ cardId: wc.card_id, cardName: wc.card_name ?? `Card #${wc.card_id}` }) }}
-                    disabled={removeCardMutation.isPending}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    </svg>
-                  </button>
-                </div>
-              </li>
-            ))}
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>
 
-      {pendingRemoval && walletId && (
+      {pendingRemoval && (
         <DeleteCardWarningModal
           cardName={pendingRemoval.cardName}
           isLoading={removeCardMutation.isPending}
           onClose={() => setPendingRemoval(null)}
           onConfirm={() => {
-            removeCardMutation.mutate(
-              { walletId, cardId: pendingRemoval.cardId },
-              { onSuccess: () => setPendingRemoval(null) }
-            )
+            removeCardMutation.mutate(pendingRemoval.instanceId, {
+              onSuccess: () => setPendingRemoval(null),
+            })
           }}
         />
       )}
 
-      {walletCardModal && walletId && (
+      {walletCardModal && (
         <WalletCardModal
-          key={walletCardModal.mode === 'add' ? 'add' : walletCardModal.walletCard.id}
-          mode={walletCardModal.mode}
-          walletId={walletId}
-          walletCard={walletCardModal.mode === 'edit' ? walletCardModal.walletCard : undefined}
-          existingCardIds={walletCards.map((wc) => wc.card_id)}
-          walletCardIds={walletCards.map((wc) => wc.card_id)}
+          key={walletCardModal.mode === 'add' ? 'add' : walletCardModal.instance.id}
+          mode="owned-base"
+          isAddFlow={walletCardModal.mode === 'add'}
+          ownedInstance={
+            walletCardModal.mode === 'edit' ? walletCardModal.instance : undefined
+          }
+          existingCardIds={cardInstances.map((c) => c.card_id)}
+          walletCardIds={cardInstances.map((c) => c.card_id)}
           onClose={() => setWalletCardModal(null)}
-          onAdd={(payload) => addCardMutation.mutate({ walletId, payload: { ...payload, panel: 'in_wallet' } })}
-          onSaveEdit={(payload) => {
+          onAddOwned={(payload) => addCardMutation.mutate(payload)}
+          onSaveOwned={(payload) => {
             if (walletCardModal.mode !== 'edit') return
-            updateWalletCardMutation.mutate(
-              { walletId, cardId: walletCardModal.walletCard.card_id, payload },
-              { onSuccess: () => setWalletCardModal(null) }
+            updateCardMutation.mutate(
+              { instanceId: walletCardModal.instance.id, payload },
+              { onSuccess: () => setWalletCardModal(null) },
             )
           }}
-          isLoading={addCardMutation.isPending || updateWalletCardMutation.isPending}
+          onDeleteOwned={(instance) =>
+            setPendingRemoval({
+              instanceId: instance.id,
+              cardName: instance.card_name ?? `Card #${instance.card_id}`,
+            })
+          }
+          isLoading={addCardMutation.isPending || updateCardMutation.isPending}
           showCategoryPriorityTab={false}
         />
       )}

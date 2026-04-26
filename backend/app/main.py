@@ -29,13 +29,19 @@ from .routers.reference import (
     travel_portals,
 )
 from .routers.wallet import (
-    wallet_category_priorities,
-    wallet_credits,
-    wallet_currencies,
-    wallet_portals,
-    wallet_results,
+    wallet_card_instances,
     wallet_spend,
     wallets,
+)
+from .routers.scenario import (
+    scenario_card_instances,
+    scenario_category_priorities,
+    scenario_credits,
+    scenario_currencies,
+    scenario_overlays,
+    scenario_portals,
+    scenario_results,
+    scenarios,
 )
 logger = logging.getLogger(__name__)
 
@@ -95,12 +101,17 @@ app.include_router(credits.router, prefix="/api")
 app.include_router(spend.router, prefix="/api")
 app.include_router(travel_portals.router, prefix="/api")
 app.include_router(wallets.router, prefix="/api")
+app.include_router(wallet_card_instances.router, prefix="/api")
 app.include_router(wallet_spend.router, prefix="/api")
-app.include_router(wallet_currencies.router, prefix="/api")
-app.include_router(wallet_credits.router, prefix="/api")
-app.include_router(wallet_category_priorities.router, prefix="/api")
-app.include_router(wallet_portals.router, prefix="/api")
-app.include_router(wallet_results.router, prefix="/api")
+# Scenario routers
+app.include_router(scenarios.router, prefix="/api")
+app.include_router(scenario_card_instances.router, prefix="/api")
+app.include_router(scenario_overlays.router, prefix="/api")
+app.include_router(scenario_results.router, prefix="/api")
+app.include_router(scenario_currencies.router, prefix="/api")
+app.include_router(scenario_portals.router, prefix="/api")
+app.include_router(scenario_category_priorities.router, prefix="/api")
+app.include_router(scenario_credits.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 
 

@@ -20,11 +20,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..database import Base
 
 if TYPE_CHECKING:
+    from .card_instance import CardInstance
     from .credit import CardCredit
     from .currency import Currency
     from .reference import CoBrand, Issuer, NetworkTier, SpendCategory
     from .travel_portal import TravelPortal
-    from .wallet import WalletCard, WalletCardMultiplier
 
 
 # Many-to-many: a TravelPortal contains the set of cards whose portal-only
@@ -176,13 +176,10 @@ class Card(Base):
     rotating_categories: Mapped[list["RotatingCategory"]] = relationship(
         back_populates="card", cascade="all, delete-orphan"
     )
-    wallet_cards: Mapped[list["WalletCard"]] = relationship(
+    card_instances: Mapped[list["CardInstance"]] = relationship(
         back_populates="card",
         cascade="all, delete-orphan",
-        foreign_keys="WalletCard.card_id",
-    )
-    wallet_multipliers: Mapped[list["WalletCardMultiplier"]] = relationship(
-        back_populates="card", cascade="all, delete-orphan"
+        foreign_keys="CardInstance.card_id",
     )
     card_credit_links: Mapped[list["CardCredit"]] = relationship(
         back_populates="card", cascade="all, delete-orphan"

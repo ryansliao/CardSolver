@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type {
   CardResult,
   RoadmapResponse,
-  Wallet,
-  WalletCard,
   WalletResult,
 } from '../../../../api/client'
+import type { ResolvedCard } from '../../lib/resolveScenarioCards'
 import { formatMoney, formatMoneyCompact, formatPoints, formatPointsExact, pointsUnitLabel, today } from '../../../../utils/format'
 import {
   cardAnnualPointIncomeActive,
@@ -18,27 +18,85 @@ import { CurrencySettingsDropdown } from '../summary/CurrencySettingsDropdown'
 import { InfoQuoteBox } from '../../../../components/InfoPopover'
 
 interface Props {
-  wallet: Wallet
+  /** Active scenario id — drives the per-currency CPP / portal-share editors. */
+  scenarioId: number
+  /** Resolved cards (owned + scenario-future, with overlays layered in). */
+  walletCards: ResolvedCard[]
   result: WalletResult | null
   roadmap: RoadmapResponse | undefined
   durationYears: number
   durationMonths: number
   isUpdating: boolean
   isStale: boolean
-  /** Wallet-level "Include SUBs" toggle. Applied as a pure display switch
+  /** Scenario-level "Include SUBs" toggle. Applied as a pure display switch
    * on top of already-computed results via sub_eaf_contribution on each
    * CardResult — no recalculation required. */
   includeSubs: boolean
   onToggleEnabled: (cardId: number, enabled: boolean) => void
-  onEditCard: (wc: WalletCard) => void
+  onEditCard: (wc: ResolvedCard) => void
   onAddCard: () => void
 }
 
-const LEFT_GUTTER = 380 // px
+const LEFT_GUTTER = 420 // px
 const CURRENCY_ROW_HEIGHT = 45
 const CARD_ROW_HEIGHT = 50
 const AXIS_HEIGHT = 50
 const DIVIDER_CLASS = 'border-b border-slate-800'
+
+/**
+ * Small hover tooltip for icon badges. Renders a portal-mounted label
+ * positioned above the wrapped element on hover/focus. Uses a portal
+ * because the chart container has overflow:hidden, which clips any
+ * in-flow tooltip.
+ */
+function IconHoverLabel({
+  label,
+  className,
+  children,
+}: {
+  label: string
+  className?: string
+  children: React.ReactNode
+}) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+
+  const show = () => {
+    const el = ref.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setPos({ top: r.top - 4, left: r.left + r.width / 2 })
+  }
+  const hide = () => setPos(null)
+
+  return (
+    <>
+      <span
+        ref={ref}
+        className={className}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        aria-label={label}
+        tabIndex={0}
+      >
+        {children}
+      </span>
+      {pos &&
+        createPortal(
+          <div
+            role="tooltip"
+            className="pointer-events-none fixed z-[60] -translate-x-1/2 -translate-y-full whitespace-nowrap text-[10px] font-normal normal-case tracking-normal bg-slate-950 text-slate-100 border border-slate-700 rounded px-1.5 py-0.5 shadow-lg"
+            style={{ top: pos.top, left: pos.left }}
+          >
+            {label}
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}
 
 interface Range {
   startMs: number
@@ -212,7 +270,8 @@ function measureEafLabelPx(text: string): number {
 }
 
 export function WalletTimelineChart({
-  wallet,
+  scenarioId,
+  walletCards,
   result,
   roadmap,
   durationYears,
@@ -349,12 +408,12 @@ export function WalletTimelineChart({
   }, [roadmap])
 
   const visibleCards = useMemo(() => {
-    return (wallet.wallet_cards ?? []).filter((wc) => {
+    return (walletCards ?? []).filter((wc) => {
       const addedMs = parseDate(wc.added_date).getTime()
       if (addedMs >= range.endMs) return false
       return true
     })
-  }, [wallet.wallet_cards, range])
+  }, [walletCards, range])
 
   const groups = useMemo<GroupData[]>(() => {
     const byCurrency = new Map<string, GroupData>()
@@ -364,7 +423,9 @@ export function WalletTimelineChart({
       // that were enabled *at calc time*, so toggling now must not make cr
       // flip in/out of existence (that would reorder currency groups and
       // change their totals between calcs).
-      const cr = cardResultById.get(wc.card_id) ?? null
+      // CardResult.card_id is the synthetic instance id (= ResolvedCard.id),
+      // not the library card_id — see ScenarioResolver.build_compute_inputs.
+      const cr = cardResultById.get(wc.id) ?? null
       let name: string
       let currencyId: number | null
       let photoSlug: string | null
@@ -708,8 +769,8 @@ export function WalletTimelineChart({
                 }
                 onToggleEnabled={onToggleEnabled}
                 onEditCard={onEditCard}
-                walletId={wallet.id}
-                walletCards={wallet.wallet_cards ?? []}
+                scenarioId={scenarioId}
+                walletCards={walletCards ?? []}
                 isExpanded={
                   g.currencyId != null && expandedCurrencyId === g.currencyId
                 }
@@ -727,7 +788,7 @@ export function WalletTimelineChart({
           onClose={() => setRulesAnchor(null)}
         >
           <p>
-            Issuer velocity rules tracked across the cards in this wallet.
+            Issuer velocity rules tracked across your cards.
           </p>
           <ul className="space-y-2">
             {applicableRules.map((r) => {
@@ -798,7 +859,7 @@ interface SecondaryAnnual {
 }
 
 interface GroupCardEntry {
-  wc: WalletCard
+  wc: ResolvedCard
   cr: CardResult | null
   /** Annualized secondary-currency earn for this card (e.g. Bilt Cash on a
    * Bilt Rewards card). Null when the card has no secondary earn. */
@@ -835,11 +896,11 @@ interface GroupSectionProps {
   rightColumnPx: number
   walletWindowYears: number
   currencyWindowYears: number | undefined
-  walletId: number
-  walletCards: WalletCard[]
+  scenarioId: number
+  walletCards: ResolvedCard[]
   isExpanded: boolean
   onToggleEnabled: (cardId: number, enabled: boolean) => void
-  onEditCard: (wc: WalletCard) => void
+  onEditCard: (wc: ResolvedCard) => void
   onToggleExpanded: (currencyId: number) => void
 }
 
@@ -853,7 +914,7 @@ function GroupSection({
   rightColumnPx,
   walletWindowYears,
   currencyWindowYears,
-  walletId,
+  scenarioId,
   walletCards,
   isExpanded,
   onToggleEnabled,
@@ -941,7 +1002,7 @@ function GroupSection({
       </div>
       {isExpanded && group.currencyId != null && (
         <CurrencySettingsDropdown
-          walletId={walletId}
+          scenarioId={scenarioId}
           walletCards={walletCards}
           currencyId={group.currencyId}
           leftGutterPx={LEFT_GUTTER}
@@ -970,7 +1031,7 @@ function GroupSection({
 }
 
 interface CardRowProps {
-  wc: WalletCard
+  wc: ResolvedCard
   cr: CardResult | null
   secondary: SecondaryAnnual | null
   color: string
@@ -981,7 +1042,7 @@ interface CardRowProps {
   includeSubs: boolean
   rightColumnPx: number
   onToggleEnabled: (cardId: number, enabled: boolean) => void
-  onEditCard: (wc: WalletCard) => void
+  onEditCard: (wc: ResolvedCard) => void
 }
 
 function CardRow({
@@ -998,7 +1059,12 @@ function CardRow({
   onToggleEnabled,
   onEditCard,
 }: CardRowProps) {
-  const addedMs = parseDate(wc.added_date).getTime()
+  // For PC cards, the bar shows when THIS PRODUCT was active — starting at
+  // product_changed_date, not at the original account opening_date (which
+  // is preserved through the PC for 5/24 purposes but isn't when this card
+  // existed). Fresh opens fall through to added_date (= opening_date).
+  const productStartStr = wc.product_changed_date ?? wc.added_date
+  const addedMs = parseDate(productStartStr).getTime()
   const closedMs = wc.closed_date ? parseDate(wc.closed_date).getTime() : range.endMs
 
   const barStartPct = pctOf(range, Math.max(addedMs, range.startMs))
@@ -1044,7 +1110,9 @@ function CardRow({
       : null
 
   const tooltip = [
-    `Added: ${formatDate(wc.added_date)}`,
+    wc.product_changed_date
+      ? `Product change: ${formatDate(wc.product_changed_date)} (account opened ${formatDate(wc.added_date)})`
+      : `Added: ${formatDate(wc.added_date)}`,
     wc.closed_date ? `Closed: ${formatDate(wc.closed_date)}` : null,
     enabled
       ? subProjectedDate
@@ -1115,12 +1183,37 @@ function CardRow({
           </div>
           <EditAffordance />
         </button>
-        <ToggleSwitch
-          enabled={enabled}
-          disabled={isUpdating}
-          onChange={(next) => onToggleEnabled(wc.card_id, next)}
-          label={enabled ? 'Disable card' : 'Enable card'}
-        />
+        {/* Owned cards are always part of the wallet — they get a padlock
+            badge in place of the toggle. To remove an owned card from a
+            scenario use the close-date or product-change overlay in the
+            modal. Future cards keep the toggle since they're hypothetical. */}
+        {wc.is_future ? (
+          <ToggleSwitch
+            enabled={enabled}
+            disabled={isUpdating}
+            onChange={(next) => onToggleEnabled(wc.instance_id, next)}
+            label={enabled ? 'Disable card' : 'Enable card'}
+          />
+        ) : (
+          <IconHoverLabel
+            label="Owned card — locked from this view"
+            className="shrink-0 text-yellow-300 inline-flex items-center justify-center w-9 h-5"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          </IconHoverLabel>
+        )}
       </div>
 
       {/* Right column: timeline bar */}

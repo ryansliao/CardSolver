@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import {
   type WalletCard,
-  type WalletPortalShare,
-  walletPortalShareApi,
+  type ScenarioPortalShareRead,
+  scenarioPortalShareApi,
 } from '../../../../api/client'
 import { InfoIconButton, InfoQuoteBox } from '../../../../components/InfoPopover'
 import { useCardLibrary } from '../../hooks/useCardLibrary'
@@ -11,7 +11,7 @@ import { useTravelPortals } from '../../../../hooks/useTravelPortals'
 import { queryKeys } from '../../../../lib/queryKeys'
 
 /**
- * Per-wallet, per-travel-portal share editor.
+ * Per-scenario, per-travel-portal share editor.
  *
  * Shows a row for every TravelPortal that has at least one in-wallet card
  * with a portal-only multiplier (e.g., Chase Freedom Flex's 5x on Chase
@@ -27,16 +27,16 @@ import { queryKeys } from '../../../../lib/queryKeys'
  * Hidden entirely when no eligible in-wallet card exposes a portal multiplier.
  */
 export function WalletPortalSharesEditor({
-  walletId,
+  scenarioId,
   walletCards,
   filterByCurrencyId,
   onChange,
 }: {
-  walletId: number | null
+  scenarioId: number | null
   walletCards: WalletCard[]
   filterByCurrencyId?: number
   /** Called after a successful slider commit so the parent can re-run the
-   * wallet calculation (portal-share changes affect EAF). */
+   * scenario calculation (portal-share changes affect EAF). */
   onChange?: () => void
 }) {
   const queryClient = useQueryClient()
@@ -73,22 +73,22 @@ export function WalletPortalSharesEditor({
   }, [cards, walletCards, travelPortals, filterByCurrencyId])
 
   const { data: shares = [] } = useQuery({
-    queryKey: queryKeys.walletPortalShares(walletId),
-    queryFn: () => walletPortalShareApi.list(walletId!),
-    enabled: walletId != null,
+    queryKey: queryKeys.scenarioPortalShares(scenarioId),
+    queryFn: () => scenarioPortalShareApi.list(scenarioId!),
+    enabled: scenarioId != null,
   })
 
   const sharesByPortal = useMemo(() => {
-    const out = new Map<number, WalletPortalShare>()
+    const out = new Map<number, ScenarioPortalShareRead>()
     for (const s of shares) out.set(s.travel_portal_id, s)
     return out
   }, [shares])
 
   const upsertMutation = useMutation({
     mutationFn: (payload: { travel_portal_id: number; share: number }) =>
-      walletPortalShareApi.upsert(walletId!, payload),
+      scenarioPortalShareApi.upsert(scenarioId!, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.walletPortalShares(walletId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.scenarioPortalShares(scenarioId) })
       onChange?.()
     },
   })
@@ -97,7 +97,7 @@ export function WalletPortalSharesEditor({
   const [pendingByPortal, setPendingByPortal] = useState<Record<number, number>>({})
   const [infoAnchor, setInfoAnchor] = useState<HTMLElement | null>(null)
 
-  if (walletId == null || visiblePortals.length === 0) return null
+  if (scenarioId == null || visiblePortals.length === 0) return null
 
   return (
     <div>

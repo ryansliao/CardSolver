@@ -1,6 +1,7 @@
-"""Wallet spend item endpoints."""
+"""Wallet spend item endpoints. Spend lives on the wallet (one set per
+user, no scenario variation)."""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...auth import get_current_user
@@ -21,39 +22,47 @@ from ...services import (
 router = APIRouter(tags=["wallet-spend"])
 
 
-@router.get(
-    "/wallets/{wallet_id}/spend-items",
-    response_model=list[WalletSpendItemRead],
-)
-async def list_wallet_spend_items(
-    wallet_id: int,
+async def _resolve_wallet_id(
+    user: User,
+    wallet_service: WalletService,
+    spend_service: WalletSpendService,
+    db: AsyncSession,
+) -> int:
+    wallet = await wallet_service.get_for_user(user.id)
+    if wallet is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No wallet exists yet — fetch /wallet first to auto-create",
+        )
+    await spend_service.ensure_all_user_categories(wallet.id)
+    await db.commit()
+    return wallet.id
+
+
+@router.get("/wallet/spend-items", response_model=list[WalletSpendItemRead])
+async def list_my_spend_items(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     wallet_service: WalletService = Depends(get_wallet_service),
     spend_service: WalletSpendService = Depends(get_wallet_spend_service),
 ):
-    """List wallet spend items. Auto-creates items for all user categories if missing."""
-    await wallet_service.get_user_wallet(wallet_id, user)
-    await spend_service.ensure_all_user_categories(wallet_id)
-    await db.commit()
+    wallet_id = await _resolve_wallet_id(user, wallet_service, spend_service, db)
     return await spend_service.list_for_wallet(wallet_id)
 
 
 @router.post(
-    "/wallets/{wallet_id}/spend-items",
+    "/wallet/spend-items",
     response_model=WalletSpendItemRead,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_wallet_spend_item(
-    wallet_id: int,
+async def create_my_spend_item(
     payload: WalletSpendItemCreate,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     wallet_service: WalletService = Depends(get_wallet_service),
     spend_service: WalletSpendService = Depends(get_wallet_spend_service),
 ):
-    """Add a spend item to a wallet for a given user spend category."""
-    await wallet_service.get_user_wallet(wallet_id, user)
+    wallet_id = await _resolve_wallet_id(user, wallet_service, spend_service, db)
     item = await spend_service.create(
         wallet_id=wallet_id,
         user_spend_category_id=payload.user_spend_category_id,
@@ -64,11 +73,10 @@ async def create_wallet_spend_item(
 
 
 @router.put(
-    "/wallets/{wallet_id}/spend-items/{item_id}",
+    "/wallet/spend-items/{item_id}",
     response_model=WalletSpendItemRead,
 )
-async def update_wallet_spend_item(
-    wallet_id: int,
+async def update_my_spend_item(
     item_id: int,
     payload: WalletSpendItemUpdate,
     user: User = Depends(get_current_user),
@@ -76,8 +84,7 @@ async def update_wallet_spend_item(
     wallet_service: WalletService = Depends(get_wallet_service),
     spend_service: WalletSpendService = Depends(get_wallet_spend_service),
 ):
-    """Update the annual spend amount for a wallet spend item."""
-    await wallet_service.get_user_wallet(wallet_id, user)
+    wallet_id = await _resolve_wallet_id(user, wallet_service, spend_service, db)
     item = await spend_service.get_for_wallet_or_404(wallet_id, item_id)
     await spend_service.update_amount(item, payload.amount)
     await db.commit()
@@ -85,19 +92,17 @@ async def update_wallet_spend_item(
 
 
 @router.delete(
-    "/wallets/{wallet_id}/spend-items/{item_id}",
+    "/wallet/spend-items/{item_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def delete_wallet_spend_item(
-    wallet_id: int,
+async def delete_my_spend_item(
     item_id: int,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     wallet_service: WalletService = Depends(get_wallet_service),
     spend_service: WalletSpendService = Depends(get_wallet_spend_service),
 ):
-    """Remove a spend item from a wallet. The 'All Other' item cannot be deleted."""
-    await wallet_service.get_user_wallet(wallet_id, user)
+    wallet_id = await _resolve_wallet_id(user, wallet_service, spend_service, db)
     item = await spend_service.get_for_wallet_or_404(wallet_id, item_id)
     await spend_service.delete(item)
     await db.commit()
