@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type {
   CardResult,
   RoadmapResponse,
@@ -41,6 +42,61 @@ const CURRENCY_ROW_HEIGHT = 45
 const CARD_ROW_HEIGHT = 50
 const AXIS_HEIGHT = 50
 const DIVIDER_CLASS = 'border-b border-slate-800'
+
+/**
+ * Small hover tooltip for icon badges. Renders a portal-mounted label
+ * positioned above the wrapped element on hover/focus. Uses a portal
+ * because the chart container has overflow:hidden, which clips any
+ * in-flow tooltip.
+ */
+function IconHoverLabel({
+  label,
+  className,
+  children,
+}: {
+  label: string
+  className?: string
+  children: React.ReactNode
+}) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+
+  const show = () => {
+    const el = ref.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setPos({ top: r.top - 4, left: r.left + r.width / 2 })
+  }
+  const hide = () => setPos(null)
+
+  return (
+    <>
+      <span
+        ref={ref}
+        className={className}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        aria-label={label}
+        tabIndex={0}
+      >
+        {children}
+      </span>
+      {pos &&
+        createPortal(
+          <div
+            role="tooltip"
+            className="pointer-events-none fixed z-[60] -translate-x-1/2 -translate-y-full whitespace-nowrap text-[10px] font-normal normal-case tracking-normal bg-slate-950 text-slate-100 border border-slate-700 rounded px-1.5 py-0.5 shadow-lg"
+            style={{ top: pos.top, left: pos.left }}
+          >
+            {label}
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}
 
 interface Range {
   startMs: number
@@ -732,7 +788,7 @@ export function WalletTimelineChart({
           onClose={() => setRulesAnchor(null)}
         >
           <p>
-            Issuer velocity rules tracked across the cards in this wallet.
+            Issuer velocity rules tracked across your cards.
           </p>
           <ul className="space-y-2">
             {applicableRules.map((r) => {
@@ -1093,9 +1149,9 @@ function CardRow({
             <div className="text-sm font-medium text-slate-200 truncate flex items-center gap-1.5">
               <span className="truncate">{wc.card_name ?? `Card #${wc.card_id}`}</span>
               {wc.is_future ? (
-                <span
-                  className="relative group/icon shrink-0 text-sky-300"
-                  aria-label="Future card"
+                <IconHoverLabel
+                  label="Future card"
+                  className="shrink-0 text-sky-300 inline-flex"
                 >
                   <svg
                     width="13"
@@ -1113,17 +1169,11 @@ function CardRow({
                     <line x1="16" y1="3" x2="16" y2="7" />
                     <circle cx="16" cy="16" r="2.5" />
                   </svg>
-                  <span
-                    role="tooltip"
-                    className="pointer-events-none opacity-0 group-hover/icon:opacity-100 transition-opacity absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap text-[10px] font-normal normal-case tracking-normal bg-slate-950 text-slate-100 border border-slate-700 rounded px-1.5 py-0.5 shadow-lg z-20"
-                  >
-                    Future card
-                  </span>
-                </span>
+                </IconHoverLabel>
               ) : (
-                <span
-                  className="relative group/icon shrink-0 text-emerald-300"
-                  aria-label="Owned card"
+                <IconHoverLabel
+                  label="Owned card"
+                  className="shrink-0 text-emerald-300 inline-flex"
                 >
                   <svg
                     width="13"
@@ -1138,13 +1188,7 @@ function CardRow({
                     <path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-1" />
                     <path d="M16 12h6v4h-6a2 2 0 0 1 0-4z" />
                   </svg>
-                  <span
-                    role="tooltip"
-                    className="pointer-events-none opacity-0 group-hover/icon:opacity-100 transition-opacity absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap text-[10px] font-normal normal-case tracking-normal bg-slate-950 text-slate-100 border border-slate-700 rounded px-1.5 py-0.5 shadow-lg z-20"
-                  >
-                    Owned card
-                  </span>
-                </span>
+                </IconHoverLabel>
               )}
               {wc.is_overlay_modified && (
                 <span
