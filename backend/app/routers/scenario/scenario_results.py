@@ -480,11 +480,12 @@ async def scenario_roadmap(
         )
 
         # Project the SUB earn date from opening_date + the wallet's daily
-        # spend rate. Works uniformly for owned and future cards: anchor at
-        # opening_date, project forward using the rate, and let callers
-        # classify "earned" via projected <= today.
-        sub_projected = inst.sub_projected_earn_date
-        if sub_projected is None and eff_sub and eff_sub_min:
+        # spend rate. Always live-computed (with the sub_months window cap
+        # applied) — never read from inst.sub_projected_earn_date, which is
+        # a vestigial column with no current writer and may hold stale data
+        # from a removed pre-refactor writeback path.
+        sub_projected: Optional[date] = None
+        if eff_sub and eff_sub_min:
             sub_projected = projected_sub_earn_date(
                 inst.opening_date, eff_sub_min, eff_sub_months, daily_rate
             )

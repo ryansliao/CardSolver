@@ -394,7 +394,6 @@ export interface WalletCard {
   first_year_fee: number | null
   secondary_currency_rate: number | null
   sub_earned_date: string | null
-  sub_projected_earn_date: string | null
   closed_date: string | null
   product_changed_date: string | null
   transfer_enabler: boolean
@@ -607,7 +606,6 @@ export interface CardInstance {
   first_year_fee: number | null
   secondary_currency_rate: number | null
   sub_earned_date: string | null
-  sub_projected_earn_date: string | null
   pc_from_instance_id: number | null
   panel: CardInstancePanel
   is_enabled: boolean
@@ -635,7 +633,6 @@ export interface OwnedCardUpdatePayload {
   first_year_fee?: number | null
   secondary_currency_rate?: number | null
   sub_earned_date?: string | null
-  sub_projected_earn_date?: string | null
 }
 
 export interface FutureCardCreatePayload extends OwnedCardCreatePayload {
@@ -653,7 +650,6 @@ export interface FutureCardCreatePayload extends OwnedCardCreatePayload {
   first_year_fee?: number | null
   secondary_currency_rate?: number | null
   sub_earned_date?: string | null
-  sub_projected_earn_date?: string | null
   pc_from_instance_id?: number | null
   panel?: CardInstancePanel
   is_enabled?: boolean
@@ -717,7 +713,6 @@ export interface ScenarioCardOverlay {
   closed_date: string | null
   product_change_date: string | null
   sub_earned_date: string | null
-  sub_projected_earn_date: string | null
   sub_points: number | null
   sub_min_spend: number | null
   sub_months: number | null

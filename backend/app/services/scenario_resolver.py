@@ -69,7 +69,6 @@ _RESOLVABLE_FIELDS: tuple[str, ...] = (
     "first_year_fee",
     "secondary_currency_rate",
     "sub_earned_date",
-    "sub_projected_earn_date",
     "closed_date",
     "product_change_date",
     "is_enabled",
@@ -470,7 +469,10 @@ class ScenarioResolver:
             ),
             wallet_added_date=eff.get("opening_date"),
             wallet_closed_date=eff.get("closed_date"),
-            sub_projected_earn_date=eff.get("sub_projected_earn_date"),
+            # sub_projected_earn_date is a calculator-only field populated
+            # downstream by scenario_results from the live SUB projection
+            # (with the window cap applied). Initialise to None here.
+            sub_projected_earn_date=None,
         )
 
     # ------------------------------------------------------------------

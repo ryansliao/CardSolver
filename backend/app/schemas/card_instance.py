@@ -39,7 +39,6 @@ class CardInstanceBase(BaseModel):
     secondary_currency_rate: Optional[float] = Field(default=None, ge=0, le=1)
 
     sub_earned_date: Optional[date] = None
-    sub_projected_earn_date: Optional[date] = None
 
     pc_from_instance_id: Optional[int] = None
 
@@ -76,7 +75,6 @@ class OwnedCardUpdate(BaseModel):
     secondary_currency_rate: Optional[float] = Field(default=None, ge=0, le=1)
 
     sub_earned_date: Optional[date] = None
-    sub_projected_earn_date: Optional[date] = None
 
 
 class FutureCardCreate(CardInstanceBase):
@@ -103,7 +101,6 @@ class FutureCardUpdate(BaseModel):
     secondary_currency_rate: Optional[float] = Field(default=None, ge=0, le=1)
 
     sub_earned_date: Optional[date] = None
-    sub_projected_earn_date: Optional[date] = None
 
     pc_from_instance_id: Optional[int] = None
     panel: Optional[Literal["in_wallet", "future_cards", "considering"]] = None

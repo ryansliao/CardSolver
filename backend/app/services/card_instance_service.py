@@ -200,7 +200,6 @@ class CardInstanceService(BaseService[CardInstance]):
             first_year_fee=payload.first_year_fee,
             secondary_currency_rate=payload.secondary_currency_rate,
             sub_earned_date=payload.sub_earned_date,
-            sub_projected_earn_date=payload.sub_projected_earn_date,
             pc_from_instance_id=payload.pc_from_instance_id,
             panel=payload.panel,
             is_enabled=payload.is_enabled,

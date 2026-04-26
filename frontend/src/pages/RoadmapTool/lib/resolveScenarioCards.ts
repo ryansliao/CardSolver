@@ -84,10 +84,6 @@ export function resolveCardInstance(
     _libValue(lib, 'secondary_currency_rate'),
   )
   const sub_earned_date = _coalesce(ov?.sub_earned_date, instance.sub_earned_date)
-  const sub_projected_earn_date = _coalesce(
-    ov?.sub_projected_earn_date,
-    instance.sub_projected_earn_date,
-  )
   const closed_date = _coalesce(ov?.closed_date, instance.closed_date)
   const product_change_date = _coalesce(ov?.product_change_date, instance.product_change_date)
   // is_enabled is a boolean — cascade-coalesce against null sentinel only.
@@ -129,7 +125,6 @@ export function resolveCardInstance(
     first_year_fee,
     secondary_currency_rate,
     sub_earned_date,
-    sub_projected_earn_date,
     closed_date,
     product_changed_date: product_change_date,
     transfer_enabler: instance.transfer_enabler,

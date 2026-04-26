@@ -19,7 +19,6 @@ class ScenarioCardOverlayUpsert(BaseModel):
     closed_date: Optional[date] = None
     product_change_date: Optional[date] = None
     sub_earned_date: Optional[date] = None
-    sub_projected_earn_date: Optional[date] = None
 
     sub_points: Optional[int] = None
     sub_min_spend: Optional[int] = None

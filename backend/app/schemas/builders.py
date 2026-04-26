@@ -94,7 +94,6 @@ def card_instance_read(inst: CardInstance) -> CardInstanceRead:
         first_year_fee=inst.first_year_fee,
         secondary_currency_rate=inst.secondary_currency_rate,
         sub_earned_date=inst.sub_earned_date,
-        sub_projected_earn_date=inst.sub_projected_earn_date,
         pc_from_instance_id=inst.pc_from_instance_id,
         panel=cast(
             Literal["in_wallet", "future_cards", "considering"],

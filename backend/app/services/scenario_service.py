@@ -167,7 +167,6 @@ class ScenarioService(BaseService[Scenario]):
                 product_change_date=src.product_change_date,
                 closed_date=src.closed_date,
                 sub_earned_date=src.sub_earned_date,
-                sub_projected_earn_date=src.sub_projected_earn_date,
                 # pc_from_instance_id intentionally not copied — would
                 # require a second pass and is rarely meaningful across a
                 # scenario clone. Future cards in the new scenario start
@@ -207,7 +206,6 @@ class ScenarioService(BaseService[Scenario]):
                     closed_date=o.closed_date,
                     product_change_date=o.product_change_date,
                     sub_earned_date=o.sub_earned_date,
-                    sub_projected_earn_date=o.sub_projected_earn_date,
                     sub_points=o.sub_points,
                     sub_min_spend=o.sub_min_spend,
                     sub_months=o.sub_months,
