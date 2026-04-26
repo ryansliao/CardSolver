@@ -110,31 +110,28 @@ export function SpendTabContent({
   }
 
   // Closed / product-changed-away-from cards are excluded from earn allocation.
-  // The new model encodes PC as a future CardInstance with `pc_from_instance_id`
-  // pointing to the parent instance — translate to library card_ids via the
-  // resolved card list.
-  const excludedCardIds = useMemo(() => {
+  // CardResult.card_id under the new model is the synthetic instance.id (=
+  // ResolvedCard.id), so we exclude by instance id throughout. PC source
+  // instances are excluded when a future card carries pc_from_instance_id.
+  const excludedInstanceIds = useMemo(() => {
     const ids = new Set<number>()
     for (const wc of walletCards) {
       if (wc.panel !== 'in_wallet' && wc.panel !== 'future_cards') continue
-      if (wc.closed_date) ids.add(wc.card_id)
+      if (wc.closed_date) ids.add(wc.instance_id)
     }
-    const cardIdByInstanceId = new Map<number, number>()
-    for (const wc of walletCards) cardIdByInstanceId.set(wc.instance_id, wc.card_id)
     for (const pcCard of walletCards) {
       if (!pcCard.is_future) continue
       if (pcCard.acquisition_type !== 'product_change') continue
       if (pcCard.pc_from_instance_id != null) {
-        const fromCardId = cardIdByInstanceId.get(pcCard.pc_from_instance_id)
-        if (fromCardId != null) ids.add(fromCardId)
+        ids.add(pcCard.pc_from_instance_id)
       }
     }
     return ids
   }, [walletCards])
 
   const topRosCards = useMemo(
-    () => selectedCards.filter((c) => !excludedCardIds.has(c.card_id)),
-    [selectedCards, excludedCardIds]
+    () => selectedCards.filter((c) => !excludedInstanceIds.has(c.card_id)),
+    [selectedCards, excludedInstanceIds]
   )
 
   // Cycling through cards in the third column. Index is clamped to the

@@ -367,7 +367,9 @@ export function WalletTimelineChart({
       // that were enabled *at calc time*, so toggling now must not make cr
       // flip in/out of existence (that would reorder currency groups and
       // change their totals between calcs).
-      const cr = cardResultById.get(wc.card_id) ?? null
+      // CardResult.card_id is the synthetic instance id (= ResolvedCard.id),
+      // not the library card_id — see ScenarioResolver.build_compute_inputs.
+      const cr = cardResultById.get(wc.id) ?? null
       let name: string
       let currencyId: number | null
       let photoSlug: string | null
@@ -1137,7 +1139,7 @@ function CardRow({
         <ToggleSwitch
           enabled={enabled}
           disabled={isUpdating}
-          onChange={(next) => onToggleEnabled(wc.card_id, next)}
+          onChange={(next) => onToggleEnabled(wc.instance_id, next)}
           label={enabled ? 'Disable card' : 'Enable card'}
         />
       </div>

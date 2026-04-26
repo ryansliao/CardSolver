@@ -362,8 +362,10 @@ export default function RoadmapToolPage() {
   const signatureMatchesSnapshot =
     snapshotSignature !== null && currentSignature === snapshotSignature
 
-  // Whether a given card is calc-relevant: either it was calculated in the
-  // last result, or it would be calculated by the next calc (is_enabled).
+  // Whether a given card instance is calc-relevant: either it was
+  // calculated in the last result, or it would be calculated by the next
+  // calc (is_enabled). Both sides key on instance.id (= ResolvedCard.id =
+  // CardResult.card_id under the new model).
   const isCardRelevant = useMemo(() => {
     const lastCalcIds = new Set<number>(
       (result?.wallet.card_results ?? [])
@@ -371,9 +373,10 @@ export default function RoadmapToolPage() {
         .map((cr) => cr.card_id),
     )
     const activeIds = new Set<number>(
-      resolvedCards.filter((wc) => wc.is_enabled).map((wc) => wc.card_id),
+      resolvedCards.filter((wc) => wc.is_enabled).map((wc) => wc.id),
     )
-    return (cardId: number) => lastCalcIds.has(cardId) || activeIds.has(cardId)
+    return (instanceId: number) =>
+      lastCalcIds.has(instanceId) || activeIds.has(instanceId)
   }, [result, resolvedCards])
 
   useEffect(() => {
@@ -498,7 +501,7 @@ export default function RoadmapToolPage() {
       payload: FutureCardUpdatePayload
     }) => scenarioFutureCardsApi.update(scenarioId, instanceId, payload),
     onSuccess: (data, { scenarioId, instanceId }) => {
-      const wasRelevant = isCardRelevant(data.card_id)
+      const wasRelevant = isCardRelevant(data.id)
       const isNowActive = data.is_enabled
       queryClient.invalidateQueries({
         queryKey: queryKeys.scenarioFutureCards(scenarioId),
@@ -521,7 +524,7 @@ export default function RoadmapToolPage() {
     }) => scenarioFutureCardsApi.delete(scenarioId, instanceId),
     onSuccess: (_data, { scenarioId, instanceId }) => {
       const wc = resolvedCards.find((c) => c.instance_id === instanceId)
-      const wasRelevant = wc ? isCardRelevant(wc.card_id) : false
+      const wasRelevant = wc ? isCardRelevant(wc.instance_id) : false
       queryClient.invalidateQueries({
         queryKey: queryKeys.scenarioFutureCards(scenarioId),
       })
@@ -541,7 +544,7 @@ export default function RoadmapToolPage() {
     }) => scenarioOverlaysApi.upsert(scenarioId, instanceId, payload),
     onSuccess: (_data, { scenarioId, instanceId }) => {
       const wc = resolvedCards.find((c) => c.instance_id === instanceId)
-      const wasRelevant = wc ? isCardRelevant(wc.card_id) : false
+      const wasRelevant = wc ? isCardRelevant(wc.instance_id) : false
       queryClient.invalidateQueries({
         queryKey: queryKeys.scenarioOverlays(scenarioId),
       })
@@ -562,7 +565,7 @@ export default function RoadmapToolPage() {
     }) => scenarioOverlaysApi.clear(scenarioId, instanceId),
     onSuccess: (_data, { scenarioId, instanceId }) => {
       const wc = resolvedCards.find((c) => c.instance_id === instanceId)
-      const wasRelevant = wc ? isCardRelevant(wc.card_id) : false
+      const wasRelevant = wc ? isCardRelevant(wc.instance_id) : false
       queryClient.invalidateQueries({
         queryKey: queryKeys.scenarioOverlays(scenarioId),
       })
@@ -913,16 +916,8 @@ export default function RoadmapToolPage() {
                     }
                     isStale={isStale}
                     includeSubs={includeSubs}
-                    onToggleEnabled={(_cardId, enabled) => {
-                      // The timeline passes (cardId, enabled) but we need the
-                      // instance id. Resolve from resolvedCards. Multiple
-                      // instances can share a card_id (duplicates allowed) so
-                      // pick the first matching enabled-or-disabled instance.
-                      // Better: pass instance_id through; but to minimize
-                      // breakage, look it up by card_id here.
-                      const wc = resolvedCards.find((c) => c.card_id === _cardId)
-                      if (!wc) return
-                      toggleCardEnabled(wc.instance_id, enabled)
+                    onToggleEnabled={(instanceId, enabled) => {
+                      toggleCardEnabled(instanceId, enabled)
                     }}
                     onEditCard={(wc) => {
                       if (wc.is_future) {
