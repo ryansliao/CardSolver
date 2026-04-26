@@ -1151,7 +1151,7 @@ function CardRow({
               {!wc.is_future && (
                 <IconHoverLabel
                   label="Owned card — locked from this view"
-                  className="shrink-0 text-emerald-300 inline-flex"
+                  className="shrink-0 text-yellow-300 inline-flex"
                 >
                   <svg
                     width="13"
