@@ -1094,8 +1094,7 @@ function CardRow({
               <span className="truncate">{wc.card_name ?? `Card #${wc.card_id}`}</span>
               {wc.is_future ? (
                 <span
-                  className="shrink-0 text-sky-300"
-                  title="Future card scoped to this scenario"
+                  className="relative group/icon shrink-0 text-sky-300"
                   aria-label="Future card"
                 >
                   <svg
@@ -1108,14 +1107,22 @@ function CardRow({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   >
-                    <circle cx="12" cy="12" r="9" />
-                    <polyline points="12 7 12 12 15 14" />
+                    <rect x="3" y="5" width="18" height="16" rx="2" />
+                    <line x1="3" y1="10" x2="21" y2="10" />
+                    <line x1="8" y1="3" x2="8" y2="7" />
+                    <line x1="16" y1="3" x2="16" y2="7" />
+                    <circle cx="16" cy="16" r="2.5" />
                   </svg>
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none opacity-0 group-hover/icon:opacity-100 transition-opacity absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap text-[10px] font-normal normal-case tracking-normal bg-slate-950 text-slate-100 border border-slate-700 rounded px-1.5 py-0.5 shadow-lg z-20"
+                  >
+                    Future card
+                  </span>
                 </span>
               ) : (
                 <span
-                  className="shrink-0 text-emerald-300"
-                  title="Owned card in your wallet"
+                  className="relative group/icon shrink-0 text-emerald-300"
                   aria-label="Owned card"
                 >
                   <svg
@@ -1131,6 +1138,12 @@ function CardRow({
                     <path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-1" />
                     <path d="M16 12h6v4h-6a2 2 0 0 1 0-4z" />
                   </svg>
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none opacity-0 group-hover/icon:opacity-100 transition-opacity absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap text-[10px] font-normal normal-case tracking-normal bg-slate-950 text-slate-100 border border-slate-700 rounded px-1.5 py-0.5 shadow-lg z-20"
+                  >
+                    Owned card
+                  </span>
                 </span>
               )}
               {wc.is_overlay_modified && (
