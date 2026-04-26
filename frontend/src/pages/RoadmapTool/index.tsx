@@ -1016,6 +1016,11 @@ export default function RoadmapToolPage() {
           }
           existingCardIds={resolvedCards.map((wc) => wc.card_id)}
           walletCardIds={resolvedCards.map((wc) => wc.card_id)}
+          instanceLookup={resolvedCards.map((wc) => ({
+            instance_id: wc.instance_id,
+            card_id: wc.card_id,
+            card_name: wc.card_name ?? `Card #${wc.card_id}`,
+          }))}
           onClose={() => setWalletCardModal(null)}
           onAddFuture={(payload) =>
             addFutureCardMutation.mutate({

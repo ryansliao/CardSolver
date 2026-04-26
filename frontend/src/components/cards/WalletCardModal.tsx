@@ -61,6 +61,11 @@ export interface WalletCardModalProps {
   /** Same as existingCardIds today; kept for backward compat with currency
    * group derivation. */
   walletCardIds: number[]
+  /** Instance lookup for the PC picker + "Changed From" display.
+   * `pc_from_instance_id` references CardInstance.id (not library card_id),
+   * so the picker stores instance ids and the read display resolves the
+   * source via this list. Required for scenario-future + overlay modes. */
+  instanceLookup?: { instance_id: number; card_id: number; card_name: string }[]
   onClose: () => void
 
   // Owned-base callbacks
@@ -92,6 +97,7 @@ export function WalletCardModal(props: WalletCardModalProps) {
     ownedInstance,
     existingCardIds,
     walletCardIds,
+    instanceLookup,
     onClose,
     onAddOwned,
     onSaveOwned,
@@ -269,18 +275,15 @@ export function WalletCardModal(props: WalletCardModalProps) {
     if (!cards) return []
     if (!(isFuture && isAddFlow && acquisitionMode === 'pc')) return cards
     if (!pcFromInstanceId) return []
-    const fromCard = walletCards.find((c) => {
-      // pcFromInstanceId is a CardInstance.id; we don't have CardInstance
-      // objects here, so the picker shows library cards by name. The user
-      // selected a wallet card; filter the "to" picker by that card's
-      // issuer.
-      return c.id === pcFromInstanceId
-    })
+    // pcFromInstanceId is a CardInstance.id — translate to library card_id
+    // via instanceLookup, then look the library card up to get its issuer.
+    const fromInst = instanceLookup?.find((i) => i.instance_id === pcFromInstanceId)
+    const fromCard = fromInst ? cards.find((c) => c.id === fromInst.card_id) : undefined
     if (!fromCard) return cards
     return cards.filter(
       (c) => c.issuer_id === fromCard.issuer_id && !existingCardIds.includes(c.id),
     )
-  }, [cards, isFuture, isAddFlow, acquisitionMode, pcFromInstanceId, existingCardIds, walletCards])
+  }, [cards, isFuture, isAddFlow, acquisitionMode, pcFromInstanceId, existingCardIds, instanceLookup])
 
   const searchedCards = useMemo(() => {
     const q = cardSearch.trim().toLowerCase()
@@ -836,14 +839,16 @@ export function WalletCardModal(props: WalletCardModalProps) {
                     previously selected. Read-only — to change it, delete and
                     re-add the future card. */}
                 {!isAddFlow && isFuture && pcFromInstanceId !== '' && (() => {
-                  const fromCard = walletCards.find((c) => c.id === pcFromInstanceId)
+                  const fromInst = instanceLookup?.find(
+                    (i) => i.instance_id === pcFromInstanceId,
+                  )
                   return (
                     <div>
                       <label className="text-xs text-slate-400 mb-1 block">
                         Changed From
                       </label>
                       <div className="w-full bg-slate-800/60 border border-slate-700 text-slate-200 text-sm px-3 py-2 rounded-lg">
-                        {fromCard?.name ?? `Card #${pcFromInstanceId}`}
+                        {fromInst?.card_name ?? `Instance #${pcFromInstanceId}`}
                       </div>
                     </div>
                   )
@@ -899,8 +904,10 @@ export function WalletCardModal(props: WalletCardModalProps) {
                           onChange={(e) => e.target.value ? selectPcFromInstance(Number(e.target.value)) : setPcFromInstanceId('')}
                         >
                           <option value="">Select a wallet card…</option>
-                          {walletCards.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
+                          {(instanceLookup ?? []).map((inst) => (
+                            <option key={inst.instance_id} value={inst.instance_id}>
+                              {inst.card_name}
+                            </option>
                           ))}
                         </select>
                       </div>
