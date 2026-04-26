@@ -64,8 +64,15 @@ export interface WalletCardModalProps {
   /** Instance lookup for the PC picker + "Changed From" display.
    * `pc_from_instance_id` references CardInstance.id (not library card_id),
    * so the picker stores instance ids and the read display resolves the
-   * source via this list. Required for scenario-future + overlay modes. */
-  instanceLookup?: { instance_id: number; card_id: number; card_name: string }[]
+   * source via this list. `opening_date` is used so a PC add inherits the
+   * source instance's account-open date (PCs preserve `opening_date`).
+   * Required for scenario-future + overlay modes. */
+  instanceLookup?: {
+    instance_id: number
+    card_id: number
+    card_name: string
+    opening_date?: string
+  }[]
   onClose: () => void
 
   // Owned-base callbacks
@@ -148,7 +155,9 @@ export function WalletCardModal(props: WalletCardModalProps) {
     resolvedCard?.pc_from_instance_id ?? '',
   )
   const [acquisitionMode, setAcquisitionMode] = useState<'open' | 'pc'>(
-    resolvedCard?.product_changed_date != null ? 'pc' : 'open',
+    (resolvedCard?.product_changed_date ?? ownedInstance?.product_change_date) != null
+      ? 'pc'
+      : 'open',
   )
 
   const initialOpeningDate =
@@ -443,16 +452,18 @@ export function WalletCardModal(props: WalletCardModalProps) {
   function handleAcquisitionModeChange(v: 'open' | 'pc') {
     if (v === acquisitionMode) return
     setAcquisitionMode(v)
+    // In edit flows, preserve the user's existing field values across toggles
+    // so they can flip without losing data. Only the add flow seeds defaults.
+    if (!isAddFlow) return
     if (v === 'pc') {
       setSubPoints('0')
       setSubMinSpend('0')
       setSubMonths('0')
-      setProductChangeDate(openingDate)
+      if (!productChangeDate) setProductChangeDate(openingDate || today())
     } else if (lib) {
       setSubPoints(lib.sub_points != null ? String(lib.sub_points) : '')
       setSubMinSpend(lib.sub_min_spend != null ? String(lib.sub_min_spend) : '')
       setSubMonths(lib.sub_months != null ? String(lib.sub_months) : '')
-      setProductChangeDate('')
     }
   }
 
@@ -499,13 +510,14 @@ export function WalletCardModal(props: WalletCardModalProps) {
     // Owned-base EDIT
     if (isOwnedBase && !isAddFlow && ownedInstance && lib) {
       const secRate = secondaryCurrencyRate.trim() ? Number(secondaryCurrencyRate) : null
+      const isPc = acquisitionMode === 'pc'
       onSaveOwned?.(
         walletFormToOwnedUpdatePayload(
           built,
           lib,
           openingDate,
           closedDate || null,
-          productChangeDate || null,
+          isPc ? (productChangeDate || null) : null,
           secRate,
         ),
       )
@@ -517,10 +529,19 @@ export function WalletCardModal(props: WalletCardModalProps) {
       if (typeof cardId !== 'number') return
       const secRate = secondaryCurrencyRate.trim() ? Number(secondaryCurrencyRate) : null
       const isPc = acquisitionMode === 'pc'
+      // For a PC add, opening_date is inherited from the source instance
+      // (PCs preserve the original account-open date). Fall back to the
+      // user-entered openingDate if the lookup is missing the field.
+      const sourceInst = isPc
+        ? instanceLookup?.find((i) => i.instance_id === pcFromInstanceId)
+        : undefined
+      const effectiveOpeningDate =
+        isPc ? (sourceInst?.opening_date ?? openingDate) : openingDate
+      const effectivePcDate = isPc ? (productChangeDate || openingDate) : null
       const payload: FutureCardCreatePayload = {
         card_id: cardId,
-        opening_date: openingDate,
-        product_change_date: isPc ? (productChangeDate || openingDate) : null,
+        opening_date: effectiveOpeningDate,
+        product_change_date: effectivePcDate,
         pc_from_instance_id: isPc && typeof pcFromInstanceId === 'number' ? pcFromInstanceId : null,
         sub_points: built.sub_points,
         sub_min_spend: built.sub_min_spend,
@@ -827,10 +848,99 @@ export function WalletCardModal(props: WalletCardModalProps) {
                   When and how this card entered the wallet, and whether it's still active.
                 </p>
 
-                {/* Future PC edit mode: surface the source card the user
-                    previously selected. Read-only — to change it, delete and
-                    re-add the future card. */}
-                {!isAddFlow && isFuture && pcFromInstanceId !== '' && (() => {
+                {/* Acquisition toggle + matching date input. Mirrors the
+                    Card Status / Closed Date layout. The toggle is hidden for
+                    owned-base ADD (implicit "open new") and overlay
+                    (read-only); those modes show just the Opening Date. */}
+                {(isFuture || (isOwnedBase && !isAddFlow)) ? (
+                  <div className="grid grid-cols-2 gap-3 items-start">
+                    <div>
+                      <label className="text-xs text-slate-400 mb-1 block">Acquisition</label>
+                      <div role="radiogroup" className="flex flex-col bg-slate-700/30 border border-slate-600 rounded-lg overflow-hidden">
+                        {([
+                          { v: 'open' as const, label: 'Account Opening' },
+                          { v: 'pc' as const, label: 'Product Change' },
+                        ]).map(({ v, label }, i) => {
+                          const selected = acquisitionMode === v
+                          return (
+                            <button
+                              key={v}
+                              type="button"
+                              role="radio"
+                              aria-checked={selected}
+                              onClick={() => handleAcquisitionModeChange(v)}
+                              className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
+                                i > 0 ? 'border-t border-slate-600/60' : ''
+                              } ${
+                                selected
+                                  ? 'bg-slate-700 text-white'
+                                  : 'text-slate-300 hover:bg-slate-700/60'
+                              }`}
+                            >
+                              <span className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                                selected ? 'border-indigo-500' : 'border-slate-500'
+                              }`}>
+                                {selected && <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />}
+                              </span>
+                              {label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 mb-1 block">
+                        {acquisitionMode === 'pc' ? 'Product Change Date *' : 'Opening Date *'}
+                      </label>
+                      <input
+                        type="date"
+                        className="w-full bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2 rounded-lg outline-none focus:border-indigo-500"
+                        value={acquisitionMode === 'pc' ? productChangeDate : openingDate}
+                        onChange={(e) =>
+                          acquisitionMode === 'pc'
+                            ? setProductChangeDate(e.target.value)
+                            : setOpeningDate(e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">
+                      Opening Date *
+                    </label>
+                    <input
+                      type="date"
+                      disabled={isOverlay}
+                      className="w-full bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2 rounded-lg outline-none focus:border-indigo-500 disabled:opacity-50"
+                      value={openingDate}
+                      onChange={(e) => setOpeningDate(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                {/* Changing From: editable picker in scenario-future ADD (PC),
+                    read-only "Changed From" display in scenario-future EDIT
+                    when the source is already pinned. */}
+                {isFuture && acquisitionMode === 'pc' && isAddFlow && (
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">Changing From *</label>
+                    <select
+                      className="w-full bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2 rounded-lg outline-none focus:border-indigo-500"
+                      value={pcFromInstanceId}
+                      onChange={(e) => e.target.value ? selectPcFromInstance(Number(e.target.value)) : setPcFromInstanceId('')}
+                    >
+                      <option value="">Select a wallet card…</option>
+                      {(instanceLookup ?? []).map((inst) => (
+                        <option key={inst.instance_id} value={inst.instance_id}>
+                          {inst.card_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {!isAddFlow && isFuture && acquisitionMode === 'pc' && pcFromInstanceId !== '' && (() => {
                   const fromInst = instanceLookup?.find(
                     (i) => i.instance_id === pcFromInstanceId,
                   )
@@ -846,144 +956,56 @@ export function WalletCardModal(props: WalletCardModalProps) {
                   )
                 })()}
 
-                {/* Card pickers (add mode only). Owned-base only shows the
-                    library card search; Future may also show a PC parent picker. */}
+                {/* Card library search (add flow only). */}
                 {isAddFlow && (
-                  <>
-                    {isFuture && (
-                      <div>
-                        <label className="text-xs text-slate-400 mb-1 block">Acquisition</label>
-                        <div role="radiogroup" className="flex flex-col bg-slate-700/30 border border-slate-600 rounded-lg overflow-hidden">
-                          {([
-                            { v: 'open' as const, label: 'Open new' },
-                            { v: 'pc' as const, label: 'Product change from…' },
-                          ]).map(({ v, label }, i) => {
-                            const selected = acquisitionMode === v
-                            return (
-                              <button
-                                key={v}
-                                type="button"
-                                role="radio"
-                                aria-checked={selected}
-                                onClick={() => handleAcquisitionModeChange(v)}
-                                className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
-                                  i > 0 ? 'border-t border-slate-600/60' : ''
-                                } ${
-                                  selected
-                                    ? 'bg-slate-700 text-white'
-                                    : 'text-slate-300 hover:bg-slate-700/60'
-                                }`}
-                              >
-                                <span className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                                  selected ? 'border-indigo-500' : 'border-slate-500'
-                                }`}>
-                                  {selected && <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />}
-                                </span>
-                                {label}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {isFuture && acquisitionMode === 'pc' && (
-                      <div>
-                        <label className="text-xs text-slate-400 mb-1 block">Changing From *</label>
-                        <select
-                          className="w-full bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2 rounded-lg outline-none focus:border-indigo-500"
-                          value={pcFromInstanceId}
-                          onChange={(e) => e.target.value ? selectPcFromInstance(Number(e.target.value)) : setPcFromInstanceId('')}
-                        >
-                          <option value="">Select a wallet card…</option>
-                          {(instanceLookup ?? []).map((inst) => (
-                            <option key={inst.instance_id} value={inst.instance_id}>
-                              {inst.card_name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    <div ref={cardSearchRef} className="relative">
-                      <label className="text-xs text-slate-400 mb-1 block">
-                        {isFuture && acquisitionMode === 'pc' ? 'Changing To *' : 'Card *'}
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Search cards…"
-                        disabled={isFuture && acquisitionMode === 'pc' && !pcFromInstanceId}
-                        className="w-full bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2 rounded-lg outline-none focus:border-indigo-500 disabled:opacity-50"
-                        value={cardSearch}
-                        onChange={(e) => handleCardSearchChange(e.target.value)}
-                        onFocus={() => setCardDropdownOpen(true)}
-                      />
-                      {cardDropdownOpen && (
-                        <ul className="absolute z-10 mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                          {searchedCards.length === 0 ? (
-                            <li className="px-3 py-2 text-sm text-slate-500">No cards found</li>
-                          ) : (
-                            searchedCards.map((c) => (
-                              <li
-                                key={c.id}
-                                onPointerDown={(e) => { e.preventDefault(); selectCard(c.id, c.name) }}
-                                className={`px-3 py-2 text-sm cursor-pointer flex items-center gap-2 ${
-                                  cardId === c.id
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'text-slate-200 hover:bg-slate-700'
-                                }`}
-                              >
-                                <span className="flex-1 min-w-0 truncate">{c.name}</span>
-                                {c.network_tier && (
-                                  <span className={`text-[10px] font-medium shrink-0 rounded px-1.5 py-0.5 border ${
-                                    cardId === c.id
-                                      ? 'bg-indigo-500/60 text-indigo-100 border-indigo-400/50'
-                                      : 'bg-slate-700 text-slate-400 border-slate-600'
-                                  }`}>
-                                    {c.network_tier.name}
-                                  </span>
-                                )}
-                              </li>
-                            ))
-                          )}
-                        </ul>
-                      )}
-                      {isFuture && acquisitionMode === 'pc' && pcFromInstanceId && (
-                        <p className="text-[11px] text-slate-500 mt-1">Showing same-issuer cards</p>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {/* Opening date — always editable except in `overlay` mode. */}
-                <div className="grid grid-cols-2 gap-3 items-start">
-                  <div>
+                  <div ref={cardSearchRef} className="relative">
                     <label className="text-xs text-slate-400 mb-1 block">
-                      Opening Date *
+                      {isFuture && acquisitionMode === 'pc' ? 'Changing To *' : 'Card *'}
                     </label>
                     <input
-                      type="date"
-                      disabled={isOverlay}
+                      type="text"
+                      placeholder="Search cards…"
+                      disabled={isFuture && acquisitionMode === 'pc' && !pcFromInstanceId}
                       className="w-full bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2 rounded-lg outline-none focus:border-indigo-500 disabled:opacity-50"
-                      value={openingDate}
-                      onChange={(e) => setOpeningDate(e.target.value)}
+                      value={cardSearch}
+                      onChange={(e) => handleCardSearchChange(e.target.value)}
+                      onFocus={() => setCardDropdownOpen(true)}
                     />
+                    {cardDropdownOpen && (
+                      <ul className="absolute z-10 mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                        {searchedCards.length === 0 ? (
+                          <li className="px-3 py-2 text-sm text-slate-500">No cards found</li>
+                        ) : (
+                          searchedCards.map((c) => (
+                            <li
+                              key={c.id}
+                              onPointerDown={(e) => { e.preventDefault(); selectCard(c.id, c.name) }}
+                              className={`px-3 py-2 text-sm cursor-pointer flex items-center gap-2 ${
+                                cardId === c.id
+                                  ? 'bg-indigo-600 text-white'
+                                  : 'text-slate-200 hover:bg-slate-700'
+                              }`}
+                            >
+                              <span className="flex-1 min-w-0 truncate">{c.name}</span>
+                              {c.network_tier && (
+                                <span className={`text-[10px] font-medium shrink-0 rounded px-1.5 py-0.5 border ${
+                                  cardId === c.id
+                                    ? 'bg-indigo-500/60 text-indigo-100 border-indigo-400/50'
+                                    : 'bg-slate-700 text-slate-400 border-slate-600'
+                                }`}>
+                                  {c.network_tier.name}
+                                </span>
+                              )}
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    )}
+                    {isFuture && acquisitionMode === 'pc' && pcFromInstanceId && (
+                      <p className="text-[11px] text-slate-500 mt-1">Showing same-issuer cards</p>
+                    )}
                   </div>
-                  {(isOwnedBase && !isAddFlow) || (isFuture && !isAddFlow) ? (
-                    <div>
-                      <label className="text-xs text-slate-400 mb-1 block">
-                        Product Change Date
-                      </label>
-                      <input
-                        type="date"
-                        className="w-full bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2 rounded-lg outline-none focus:border-indigo-500"
-                        value={productChangeDate}
-                        onChange={(e) => setProductChangeDate(e.target.value)}
-                        placeholder="Optional"
-                      />
-                    </div>
-                  ) : null}
-                </div>
+                )}
 
                 {/* Card status / Closed date (edit only) */}
                 {!isAddFlow && (
@@ -1026,17 +1048,18 @@ export function WalletCardModal(props: WalletCardModalProps) {
                         })}
                       </div>
                     </div>
-                    <div>
-                      <label className="text-xs text-slate-400 mb-1 block">Closed Date</label>
-                      <input
-                        type="date"
-                        min={openingDate}
-                        disabled={!closedDate}
-                        className="w-full bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2 rounded-lg outline-none focus:border-indigo-500 disabled:opacity-50"
-                        value={closedDate}
-                        onChange={(e) => setClosedDate(e.target.value)}
-                      />
-                    </div>
+                    {closedDate && (
+                      <div>
+                        <label className="text-xs text-slate-400 mb-1 block">Closed Date</label>
+                        <input
+                          type="date"
+                          min={openingDate}
+                          className="w-full bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2 rounded-lg outline-none focus:border-indigo-500"
+                          value={closedDate}
+                          onChange={(e) => setClosedDate(e.target.value)}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

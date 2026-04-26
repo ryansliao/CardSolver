@@ -1033,6 +1033,7 @@ export default function RoadmapToolPage() {
             instance_id: wc.instance_id,
             card_id: wc.card_id,
             card_name: wc.card_name ?? `Card #${wc.card_id}`,
+            opening_date: wc.added_date,
           }))}
           onClose={() => setWalletCardModal(null)}
           onAddFuture={(payload) =>
